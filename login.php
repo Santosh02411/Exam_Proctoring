@@ -27,5 +27,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         if ($row['status'] != "active") {
             echo "⚠️ Account is not active!";
         } elseif (password_verify($password, $row['password']))
+        // Store session data
+            $_SESSION['user_id'] = $row['id'];
+            $_SESSION['name']    = $row['name'];
+            $_SESSION['role']    = $row['role'];
+
+            echo "✅ Login successful! Welcome " . $row['name'];
 
 ?>
