@@ -33,5 +33,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $_SESSION['role']    = $row['role'];
 
             echo "✅ Login successful! Welcome " . $row['name'];
+            / Redirect based on role
+            if ($row['role'] == "admin") {
+                header("Location: admin_dashboard.php");
+            } else {
+                header("Location: student_dashboard.php");
+            }
+            exit;
 
 ?>
