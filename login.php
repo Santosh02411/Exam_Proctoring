@@ -26,7 +26,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     if ($row = $result->fetch_assoc()) {
         if ($row['status'] != "active") {
             echo "⚠️ Account is not active!";
-        } elseif (password_verify($password, $row['password']))
+        } elseif (password_verify($password, $row['password'])){
         // Store session data
             $_SESSION['user_id'] = $row['id'];
             $_SESSION['name']    = $row['name'];
@@ -40,5 +40,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 header("Location: student_dashboard.php");
             }
             exit;
-
+         } else {
+            echo "❌ Invalid password!";
+        }
+    } else {
+        echo "❌ No account found with that email!";
+    }
+}
 ?>
