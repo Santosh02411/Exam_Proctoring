@@ -33,6 +33,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $stmt->bind_param("ssssss", $user_id, $name, $email, $password, $role, $phone);
         if ($stmt->execute()) {
             echo "✅ Registration successful as $role!";
+        } else {
+            echo "❌ Error: " . $stmt->error;
         }
 
 
