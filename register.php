@@ -20,6 +20,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     if (!in_array($role, ['student', 'admin'])) {
         die("⚠️ Invalid role selected!");
     }
+    // Check if email already exists
+    $check = $conn->prepare("SELECT id FROM users WHERE email=?");
+    $check->bind_param("s", $email);
+    $check->execute();
+    $check->store_result();
 
 
 
