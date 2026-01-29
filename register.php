@@ -31,7 +31,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $stmt = $conn->prepare("INSERT INTO users (user_id, name, email, password, role, phone) VALUES (?, ?, ?, ?, ?, ?)");
         $user_id = uniqid(strtoupper(substr($role,0,3))); // e.g. STUxxxx or ADMxxxx
         $stmt->bind_param("ssssss", $user_id, $name, $email, $password, $role, $phone);
-
+        if ($stmt->execute()) {
+            echo "✅ Registration successful as $role!";
+        }
 
 
 }
