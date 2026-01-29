@@ -25,6 +25,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $check->bind_param("s", $email);
     $check->execute();
     $check->store_result();
+    if ($check->num_rows > 0) {
+        echo "⚠️ Email already registered!";
+    }
 
 
 
