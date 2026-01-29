@@ -16,6 +16,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $phone    = $_POST['phone'];
     $role     = $_POST['role'];  // NEW: role from form
     $password = password_hash($_POST['password'], PASSWORD_BCRYPT);
+      // Validate role (must be student or admin)
+    if (!in_array($role, ['student', 'admin'])) {
+        die("⚠️ Invalid role selected!");
+    }
+
+
 
 }
 
