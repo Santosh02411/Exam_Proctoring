@@ -68,8 +68,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     .kpi { display:flex; gap:10px; flex-wrap:wrap; margin-top:8px; }
     .kpi .pill { background:#fbfdff; padding:8px 12px; border-radius:999px; font-weight:700; color:var(--muted); box-shadow: 0 6px 12px rgba(11,22,50,0.04); }
-
-
+     .actions { display:flex; gap:10px; margin-top:10px; }
+    .btn {
+      padding:10px 14px; border-radius:10px; font-weight:700; text-decoration:none; color:#fff; background:var(--primary); border:none; cursor:pointer; box-shadow:0 8px 20px rgba(11,110,246,0.12);
+    }
+    
 
 
 
