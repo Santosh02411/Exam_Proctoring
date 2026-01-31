@@ -48,6 +48,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       font-family: 'Inter', system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
     }
 
+      .row { display:flex; gap:8px; }
+    .row .col { flex:1 }
+  </style>
+</head>
 
 
 
