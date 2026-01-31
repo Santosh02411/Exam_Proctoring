@@ -3,8 +3,29 @@ session_start();
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
     die("Access denied");
 }
+$conn = new mysqli("localhost","root","","exam_proctoring");
+if ($conn->connect_error) die("DB err: ".$conn->connect_error);
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $test_id = $conn->real_escape_string($_POST['test_id']);
+    $title = $conn->real_escape_string($_POST['title']);
+    $description = $conn->real_escape_string($_POST['description']);
+    $duration = (int)$_POST['duration_minutes'];
+    $total_questions = (int)$_POST['total_questions'];
+    $passing_marks = (int)$_POST['passing_marks'];
+    $status = $conn->real_escape_string($_POST['status']);
+    $start_time = $_POST['start_time'] ?: NULL;
+    $end_time = $_POST['end_time'] ?: NULL;
+    $created_by = $_SESSION['user_id'];
 
+    $stmt = $conn->prepare("INSERT INTO tests (test_id, title, description, duration_minutes, total_questions, passing_marks, status, start_time, end_time, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    $stmt->bind_param("sssiiiisss", $test_id, $title, $description, $duration, $total_questions, $passing_marks, $status, $start_time, $end_time, $created_by);
+    if ($stmt->execute()) {
+        echo "Test created. <a href='add_question.php?test_db_id=".$stmt->insert_id."'>Add Questions</a>";
+    } else {
+        echo "Error: ".$stmt->error;
+    }
+}
 
 
 ?>
