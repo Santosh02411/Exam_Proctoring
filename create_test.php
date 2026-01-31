@@ -64,6 +64,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       width:100%; padding:10px 12px; border-radius:10px; border:1px solid #e6eef8; font-size:14px; background:#fff; color:#071033;
       box-shadow: inset 0 1px 0 rgba(0,0,0,0.02);
     }
+    textarea { min-height:120px; resize:vertical; }
+
+    .kpi { display:flex; gap:10px; flex-wrap:wrap; margin-top:8px; }
+    .kpi .pill { background:#fbfdff; padding:8px 12px; border-radius:999px; font-weight:700; color:var(--muted); box-shadow: 0 6px 12px rgba(11,22,50,0.04); }
+
+
+
+
 
       .row { display:flex; gap:8px; }
     .row .col { flex:1 }
