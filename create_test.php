@@ -53,6 +53,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     header { display:flex; justify-content:space-between; align-items:center; gap:12px; }
     .back { text-decoration:none; color:var(--muted); display:inline-flex; gap:8px; align-items:center; padding:8px 12px; border-radius:10px; background:var(--card); box-shadow:var(--shadow); font-weight:700; }
     h1{ margin:0; font-size:20px; }
+    .lead{ color:var(--muted); margin-top:6px; font-size:13px }
+
 
 
 
