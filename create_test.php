@@ -54,7 +54,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     .back { text-decoration:none; color:var(--muted); display:inline-flex; gap:8px; align-items:center; padding:8px 12px; border-radius:10px; background:var(--card); box-shadow:var(--shadow); font-weight:700; }
     h1{ margin:0; font-size:20px; }
     .lead{ color:var(--muted); margin-top:6px; font-size:13px }
-
+    .card { background:var(--card); border-radius:var(--radius); padding:20px; box-shadow:var(--shadow); }
+    form.grid{ display:grid; grid-template-columns: 1fr 360px; gap:18px; align-items:start; }
+    @media (max-width:980px){ form.grid{ grid-template-columns: 1fr; } }
 
 
 
