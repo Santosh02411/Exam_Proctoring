@@ -118,6 +118,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               <input id="total_questions" name="total_questions" type="number" min="1" value="10" required>
             </div>
           </div>
+          <div class="row">
+            <div class="col field">
+              <label for="passing_marks">Passing Marks</label>
+              <input id="passing_marks" name="passing_marks" type="number" min="0" value="5" required>
+            </div>
 
 
 
