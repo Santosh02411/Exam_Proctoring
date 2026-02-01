@@ -86,6 +86,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <h1 style="margin-top:10px">Create New Test</h1>
         <div class="lead">Define the test details — create, then add questions and assign students.</div>
       </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <a class="btn ghost" href="manage_tests.php" style="padding:8px 12px">Manage Tests</a>
+        <a class="btn" href="add_question.php" style="padding:8px 12px">Add Question</a>
+      </div>
+    </header>
 
 
 
