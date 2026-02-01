@@ -100,6 +100,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <input id="test_id" name="test_id" type="text" placeholder="EXAM2025" required>
             <div class="hint">A short unique code for the test (used internally).</div>
           </div>
+          <div class="field">
+            <label for="title">Title</label>
+            <input id="title" name="title" type="text" placeholder="e.g. Introduction to AI" required>
+          </div>
 
 
 
