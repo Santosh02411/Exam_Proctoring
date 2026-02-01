@@ -26,8 +26,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         echo "Error: ".$stmt->error;
     }
 }
-
-
 ?>
 <!doctype html>
 <html lang="en">
@@ -72,16 +70,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     .btn {
       padding:10px 14px; border-radius:10px; font-weight:700; text-decoration:none; color:#fff; background:var(--primary); border:none; cursor:pointer; box-shadow:0 8px 20px rgba(11,110,246,0.12);
     }
-    
-
-
-
       .row { display:flex; gap:8px; }
     .row .col { flex:1 }
   </style>
 </head>
 
-
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <a class="back" href="admin_dashboard.php" title="Back to dashboard">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden><path d="M15 18l-6-6 6-6" stroke="#0b1220" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Back
+        </a>
+        <h1 style="margin-top:10px">Create New Test</h1>
+        <div class="lead">Define the test details — create, then add questions and assign students.</div>
+      </div>
 
 
 
