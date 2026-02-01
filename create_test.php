@@ -104,6 +104,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <label for="title">Title</label>
             <input id="title" name="title" type="text" placeholder="e.g. Introduction to AI" required>
           </div>
+          <div class="field">
+            <label for="description">Description</label>
+            <textarea id="description" name="description" placeholder="Brief description or instructions (optional)"></textarea>
+          </div>
+
 
 
 
