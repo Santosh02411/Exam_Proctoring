@@ -113,6 +113,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               <label for="duration_minutes">Duration (minutes)</label>
               <input id="duration_minutes" name="duration_minutes" type="number" min="1" value="30" required>
             </div>
+            <div class="col field">
+              <label for="total_questions">Total Questions</label>
+              <input id="total_questions" name="total_questions" type="number" min="1" value="10" required>
+            </div>
+          </div>
 
 
 
