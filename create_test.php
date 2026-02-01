@@ -91,6 +91,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <a class="btn" href="add_question.php" style="padding:8px 12px">Add Question</a>
       </div>
     </header>
+    <div class="card">
+      <form class="grid" method="post" id="createTestForm" onsubmit="return handleSubmit();">
+        <!-- left (main form) -->
+        <div>
+          <div class="field">
+            <label for="test_id">Test Code</label>
+            <input id="test_id" name="test_id" type="text" placeholder="EXAM2025" required>
+            <div class="hint">A short unique code for the test (used internally).</div>
+          </div>
 
 
 
