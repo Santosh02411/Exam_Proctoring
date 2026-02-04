@@ -173,6 +173,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               • Use 'Published' to make the test visible to assigned students.
             </p>
           </div>
+          div class="panel">
+            <h4>Quick Actions</h4>
+            <a href="add_question.php" class="small">Add Question</a>
+            <a href="assign_students.php" class="small">Assign Students</a>
+            <a href="view_results.php" class="small">View Results</a>
+          </div>
 
 
 
