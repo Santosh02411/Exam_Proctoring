@@ -3,6 +3,7 @@ session_start();
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
     die("Access denied");
 }
+
 $conn = new mysqli("localhost","root","","exam_proctoring");
 if ($conn->connect_error) die("DB err: ".$conn->connect_error);
 
@@ -30,7 +31,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <!doctype html>
 <html lang="en">
 <head>
-    <meta charset="utf-8">
+  <meta charset="utf-8">
   <title>Create Test — Admin</title>
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
@@ -48,17 +49,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     *{box-sizing:border-box}
     body{ margin:0; background:linear-gradient(180deg,var(--bg),#f3f6fa); color:#071033; padding:28px; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; }
     .wrap{ max-width:980px; margin:0 auto; display:grid; gap:18px; }
+
     header { display:flex; justify-content:space-between; align-items:center; gap:12px; }
     .back { text-decoration:none; color:var(--muted); display:inline-flex; gap:8px; align-items:center; padding:8px 12px; border-radius:10px; background:var(--card); box-shadow:var(--shadow); font-weight:700; }
     h1{ margin:0; font-size:20px; }
     .lead{ color:var(--muted); margin-top:6px; font-size:13px }
+
     .card { background:var(--card); border-radius:var(--radius); padding:20px; box-shadow:var(--shadow); }
     form.grid{ display:grid; grid-template-columns: 1fr 360px; gap:18px; align-items:start; }
     @media (max-width:980px){ form.grid{ grid-template-columns: 1fr; } }
+
     .field{ display:flex; flex-direction:column; gap:8px; margin-bottom:6px; }
     label{ font-weight:700; font-size:13px; color:#0b1220; }
     .hint{ font-size:13px; color:var(--muted); }
-     input[type="text"], input[type="number"], input[type="datetime-local"], textarea, select {
+
+    input[type="text"], input[type="number"], input[type="datetime-local"], textarea, select {
       width:100%; padding:10px 12px; border-radius:10px; border:1px solid #e6eef8; font-size:14px; background:#fff; color:#071033;
       box-shadow: inset 0 1px 0 rgba(0,0,0,0.02);
     }
@@ -66,15 +71,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     .kpi { display:flex; gap:10px; flex-wrap:wrap; margin-top:8px; }
     .kpi .pill { background:#fbfdff; padding:8px 12px; border-radius:999px; font-weight:700; color:var(--muted); box-shadow: 0 6px 12px rgba(11,22,50,0.04); }
-     .actions { display:flex; gap:10px; margin-top:10px; }
+
+    .actions { display:flex; gap:10px; margin-top:10px; }
     .btn {
       padding:10px 14px; border-radius:10px; font-weight:700; text-decoration:none; color:#fff; background:var(--primary); border:none; cursor:pointer; box-shadow:0 8px 20px rgba(11,110,246,0.12);
     }
-      .row { display:flex; gap:8px; }
+    .btn.ghost { background:transparent; color:var(--primary); border:1px solid rgba(11,110,246,0.08); box-shadow:none; }
+    .small { font-size:13px; color:var(--muted); }
+
+    /* helper area (right column) */
+    .help { display:flex; flex-direction:column; gap:12px; }
+    .help .panel { padding:12px; border-radius:10px; background:linear-gradient(180deg,#fff,#fbfdff); box-shadow:0 8px 20px rgba(11,22,50,0.04); }
+    .help h4{ margin:0 0 6px 0; font-size:15px }
+    .help p{ margin:0; color:var(--muted); font-size:13px; line-height:1.5 }
+
+    footer.note{ font-size:13px; color:var(--muted); margin-top:6px }
+
+    .row { display:flex; gap:8px; }
     .row .col { flex:1 }
   </style>
 </head>
-
 <body>
   <div class="wrap">
     <header>
@@ -131,13 +147,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               </select>
             </div>
           </div>
+          
 
-
-
-
-
-
-
-
+         <div class="col field">
+              <label for="status">Status</label>
+              <select id="status" name="status" required>
+                <option value="draft">Draft</option>
+                <option value="published">Published</option>
+              </select>
+            </div>
+          </div>
 
 
