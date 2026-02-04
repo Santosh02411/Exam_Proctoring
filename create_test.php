@@ -182,6 +182,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           </aside>
       </form>
     </div>
+    <div class="small muted">Tip: After creating, go to Add Questions to populate MCQs and then Assign Students to open the test for participants.</div>
+  </div>
 
 
 
