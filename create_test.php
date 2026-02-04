@@ -165,5 +165,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               <input id="end_time" name="end_time" type="datetime-local">
             </div>
           </div>
+          div class="panel">
+            <h4>Tips</h4>
+            <p class="small">
+              • Use a clear title and short code.<br>
+              • Set duration in minutes (students will see this as the timer).<br>
+              • Use 'Published' to make the test visible to assigned students.
+            </p>
+          </div>
+
+
+
 
 
