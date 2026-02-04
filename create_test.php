@@ -179,6 +179,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <a href="assign_students.php" class="small">Assign Students</a>
             <a href="view_results.php" class="small">View Results</a>
           </div>
+          </aside>
+      </form>
+    </div>
 
 
 
