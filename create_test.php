@@ -147,14 +147,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               </select>
             </div>
           </div>
-          
-
          <div class="col field">
               <label for="status">Status</label>
               <select id="status" name="status" required>
                 <option value="draft">Draft</option>
                 <option value="published">Published</option>
               </select>
+            </div>
+          </div>
+           <div class="row">
+            <div class="col field">
+              <label for="start_time">Start time (optional)</label>
+              <input id="start_time" name="start_time" type="datetime-local">
+            </div>
+            <div class="col field">
+              <label for="end_time">End time (optional)</label>
+              <input id="end_time" name="end_time" type="datetime-local">
             </div>
           </div>
 
