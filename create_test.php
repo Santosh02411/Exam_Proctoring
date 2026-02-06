@@ -218,3 +218,7 @@ const pv_code = document.getElementById('pv_code');
         alert('End time must be after start time.');
         return false;
       }
+      // ensure passing marks <= total marks (simple check)
+    const total = parseInt(totalQsEl.value) || 0;
+    const passing = parseInt(passEl.value) || 0;
+    if (passing > total) {
