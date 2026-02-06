@@ -213,3 +213,8 @@ const pv_code = document.getElementById('pv_code');
     // basic client-side checks: start < end if both provided
     const st = document.getElementById('start_time').value;
     const en = document.getElementById('end_time').value;
+    if (st && en) {
+      if (new Date(st) >= new Date(en)) {
+        alert('End time must be after start time.');
+        return false;
+      }
