@@ -197,3 +197,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 const pv_code = document.getElementById('pv_code');
   const pv_title = document.getElementById('pv_title');
+  const pv_duration = document.getElementById('pv_duration');
+  const pv_total = document.getElementById('pv_total');
+  const pv_pass = document.getElementById('pv_pass');
