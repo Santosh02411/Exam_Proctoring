@@ -184,8 +184,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </div>
     <div class="small muted">Tip: After creating, go to Add Questions to populate MCQs and then Assign Students to open the test for participants.</div>
   </div>
+  
 
 
-
+<script>
+  // Small client-side UX helpers (no server changes)
+  const testIdEl = document.getElementById('test_id');
+  const titleEl = document.getElementById('title');
 
 
