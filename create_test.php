@@ -207,3 +207,5 @@ const pv_code = document.getElementById('pv_code');
     pv_total.textContent = totalQsEl.value || '-';
     pv_pass.textContent = passEl.value || '-';
   }
+   [testIdEl,titleEl,durationEl,totalQsEl,passEl].forEach(el => el.addEventListener('input', updatePreview));
+  updatePreview();
