@@ -209,3 +209,7 @@ const pv_code = document.getElementById('pv_code');
   }
    [testIdEl,titleEl,durationEl,totalQsEl,passEl].forEach(el => el.addEventListener('input', updatePreview));
   updatePreview();
+   function handleSubmit(){
+    // basic client-side checks: start < end if both provided
+    const st = document.getElementById('start_time').value;
+    const en = document.getElementById('end_time').value;
