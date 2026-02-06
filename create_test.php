@@ -200,3 +200,7 @@ const pv_code = document.getElementById('pv_code');
   const pv_duration = document.getElementById('pv_duration');
   const pv_total = document.getElementById('pv_total');
   const pv_pass = document.getElementById('pv_pass');
+  function updatePreview(){
+    pv_code.textContent = testIdEl.value || '—';
+    pv_title.textContent = titleEl.value || '—';
+    pv_duration.textContent = (durationEl.value || '-') + ' mins';
