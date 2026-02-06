@@ -204,3 +204,6 @@ const pv_code = document.getElementById('pv_code');
     pv_code.textContent = testIdEl.value || '—';
     pv_title.textContent = titleEl.value || '—';
     pv_duration.textContent = (durationEl.value || '-') + ' mins';
+    pv_total.textContent = totalQsEl.value || '-';
+    pv_pass.textContent = passEl.value || '-';
+  }
