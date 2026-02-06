@@ -225,3 +225,7 @@ const pv_code = document.getElementById('pv_code');
        if (!confirm('Passing marks is greater than total questions. Continue?')) return false;
     }
     return true; // allow submit
+    }
+</script>
+</body>
+</html>
