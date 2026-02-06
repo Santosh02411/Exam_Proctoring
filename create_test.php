@@ -191,5 +191,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   // Small client-side UX helpers (no server changes)
   const testIdEl = document.getElementById('test_id');
   const titleEl = document.getElementById('title');
-
+ const durationEl = document.getElementById('duration_minutes');
+  const totalQsEl = document.getElementById('total_questions');
+  const passEl = document.getElementById('passing_marks');
 
