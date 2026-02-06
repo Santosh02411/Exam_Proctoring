@@ -222,3 +222,6 @@ const pv_code = document.getElementById('pv_code');
     const total = parseInt(totalQsEl.value) || 0;
     const passing = parseInt(passEl.value) || 0;
     if (passing > total) {
+       if (!confirm('Passing marks is greater than total questions. Continue?')) return false;
+    }
+    return true; // allow submit
