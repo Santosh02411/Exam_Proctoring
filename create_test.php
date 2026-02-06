@@ -195,3 +195,5 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   const totalQsEl = document.getElementById('total_questions');
   const passEl = document.getElementById('passing_marks');
 
+const pv_code = document.getElementById('pv_code');
+  const pv_title = document.getElementById('pv_title');
