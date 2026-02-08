@@ -25,5 +25,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($stmt->execute()) echo "Question added.<br>";
     else echo "Err: ".$stmt->error;
 }
-
 ?>
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+  <title>Add Question — Test <?= (int)$test_db_id ?></title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg:#f6f8fb;
+      --card:#ffffff;
+      --muted:#6b7280;
+      --primary:#0b6ef6;
+      --accent:#7c3aed;
+      --danger:#ef4444;
+      --radius:12px;
+      --shadow: 0 10px 30px rgba(11,22,50,0.06);
+      font-family: 'Inter', system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    }
+
+
+  </style>
+</head>
+
+
+
+
+
+
+
+
+
+
+
+
