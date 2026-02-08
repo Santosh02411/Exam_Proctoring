@@ -57,6 +57,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden><path d="M15 18l-6-6 6-6" stroke="#0b1220" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
           Back
         </a>
+         <h1 style="margin-top:10px">Add Question</h1>
+        <div class="lead">Test ID: <strong><?= (int)$test_db_id ?></strong> — Add MCQs for this test</div>
+      </div>
 
 
 
