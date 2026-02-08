@@ -20,5 +20,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $correct = $_POST['correct_answer'];
     $marks = (int)$_POST['marks'];
 
+    $stmt = $conn->prepare("INSERT INTO questions (test_id, question_text, option_a, option_b, option_c, option_d, correct_answer, marks) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+    $stmt->bind_param("issssssi", $test_db_id, $qtext, $a, $b, $c, $d, $correct, $marks);
+    if ($stmt->execute()) echo "Question added.<br>";
+    else echo "Err: ".$stmt->error;
+}
 
 ?>
