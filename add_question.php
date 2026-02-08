@@ -10,4 +10,15 @@ if (!$test_db_id) {
     echo "Provide test_db_id";
     exit;
 }
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $qtext = $_POST['question_text'];
+    $a = $_POST['option_a'];
+    $b = $_POST['option_b'];
+    $c = $_POST['option_c'];
+    $d = $_POST['option_d'];
+    $correct = $_POST['correct_answer'];
+    $marks = (int)$_POST['marks'];
+
+
 ?>
