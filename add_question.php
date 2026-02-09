@@ -107,6 +107,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               <input id="marks" name="marks" type="number" min="1" value="1" required>
             </div>
           </div>
+          <div class="actions">
+            <button type="submit" class="btn">Add Question</button>
+            <button type="button" class="btn ghost" onclick="clearForm()">Clear</button>
+            <a class="btn ghost" href="view_test.php?test_id=<?= (int)$test_db_id ?>">Done</a>
+          </div>
 
 
 
