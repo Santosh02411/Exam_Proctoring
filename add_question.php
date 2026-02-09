@@ -65,6 +65,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <a class="btn" href="create_test.php">Create Test</a>
       </div>
       </header>
+      <div class="card">
+      <form class="grid" method="post" id="qForm" onsubmit="return validateAndSubmit();">
+        <div>
+          <div class="field">
+            <label for="question_text">Question text</label>
+            <textarea id="question_text" name="question_text" placeholder="Write the question here..." required></textarea>
+          </div>
 
 
 
