@@ -82,6 +82,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               <input id="option_b" name="option_b" type="text" placeholder="Option B" required>
             </div>
           </div>
+          <div class="row">
+            <div class="col field">
+              <label for="option_c">Option C</label>
+              <input id="option_c" name="option_c" type="text" placeholder="Option C" required>
+            </div>
 
 
 
