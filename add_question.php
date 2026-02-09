@@ -112,6 +112,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <button type="button" class="btn ghost" onclick="clearForm()">Clear</button>
             <a class="btn ghost" href="view_test.php?test_id=<?= (int)$test_db_id ?>">Done</a>
           </div>
+           <div id="msg" style="margin-top:12px"></div>
+        </div>
 
 
 
