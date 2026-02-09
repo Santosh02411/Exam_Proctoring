@@ -64,6 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <a class="btn ghost" href="view_test.php?test_id=<?= (int)$test_db_id ?>">View Test</a>
         <a class="btn" href="create_test.php">Create Test</a>
       </div>
+      </header>
 
 
 
