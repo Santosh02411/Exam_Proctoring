@@ -60,6 +60,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
          <h1 style="margin-top:10px">Add Question</h1>
         <div class="lead">Test ID: <strong><?= (int)$test_db_id ?></strong> — Add MCQs for this test</div>
       </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <a class="btn ghost" href="view_test.php?test_id=<?= (int)$test_db_id ?>">View Test</a>
+        <a class="btn" href="create_test.php">Create Test</a>
+      </div>
 
 
 
