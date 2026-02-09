@@ -102,6 +102,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <option value="d">D</option>
               </select>
             </div>
+            <div class="col field">
+              <label for="marks">Marks</label>
+              <input id="marks" name="marks" type="number" min="1" value="1" required>
+            </div>
+          </div>
 
 
 
