@@ -72,6 +72,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <label for="question_text">Question text</label>
             <textarea id="question_text" name="question_text" placeholder="Write the question here..." required></textarea>
           </div>
+          <div class="row">
+            <div class="col field">
+              <label for="option_a">Option A</label>
+              <input id="option_a" name="option_a" type="text" placeholder="Option A" required>
+            </div>
 
 
 
