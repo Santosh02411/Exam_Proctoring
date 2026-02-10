@@ -138,6 +138,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               • Use marks &amp; consistent styling for all questions.
             </p>
           </div>
+          div class="card" style="padding:12px">
+            <h4 style="margin:0 0 8px 0">Quick Links</h4>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <a class="small" href="view_test.php?test_id=<?= (int)$test_db_id ?>">View Test</a>
+              <a class="small" href="assign_students.php?test_id=<?= (int)$test_db_id ?>">Assign Students</a>
+              <a class="small" href="admin_dashboard.php">Dashboard</a>
+            </div>
 
 
 
