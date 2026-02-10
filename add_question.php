@@ -120,6 +120,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <div class="qno">Preview</div>
             <div class="qtext" id="pv_q">Your question preview will appear here as you type.</div>
             <div class="opts" id="pv_opts">
+              <div class="opt" id="pv_a">A — Option A</div>
+              <div class="opt" id="pv_b">B — Option B</div>
+              <div class="opt" id="pv_c">C — Option C</div>
+              <div class="opt" id="pv_d">D — Option D</div>
+            </div>
 
 
 
