@@ -125,6 +125,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               <div class="opt" id="pv_c">C — Option C</div>
               <div class="opt" id="pv_d">D — Option D</div>
             </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;">
+              <div class="small">Correct: <strong id="pv_correct">—</strong></div>
+              <div class="small">Marks: <strong id="pv_marks">1</strong></div>
+            </div>
+          </div>
+
+
+
 
 
 
