@@ -132,6 +132,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           </div>
           div class="card" style="padding:12px">
             <h4 style="margin:0 0 8px 0">Tips</h4>
+             <p class="small" style="margin:0">
+              • Keep question short and clear.<br>
+              • Ensure only one correct option is selected.<br>
+              • Use marks &amp; consistent styling for all questions.
+            </p>
+          </div>
 
 
 
