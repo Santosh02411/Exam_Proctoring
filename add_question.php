@@ -130,6 +130,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               <div class="small">Marks: <strong id="pv_marks">1</strong></div>
             </div>
           </div>
+          div class="card" style="padding:12px">
+            <h4 style="margin:0 0 8px 0">Tips</h4>
 
 
 
