@@ -151,7 +151,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </div>
     </div>
   </div>
-
+<script>
+  // Live preview bindings
+  const qText = document.getElementById('question_text');
+  const aEl = document.getElementById('option_a');
+  const bEl = document.getElementById('option_b');
+  const cEl = document.getElementById('option_c');
 
 
 
