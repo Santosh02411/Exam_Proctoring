@@ -157,6 +157,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   const aEl = document.getElementById('option_a');
   const bEl = document.getElementById('option_b');
   const cEl = document.getElementById('option_c');
+  const dEl = document.getElementById('option_d');
+  const correctEl = document.getElementById('correct_answer');
+  const marksEl = document.getElementById('marks');
 
 
 
