@@ -145,6 +145,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               <a class="small" href="assign_students.php?test_id=<?= (int)$test_db_id ?>">Assign Students</a>
               <a class="small" href="admin_dashboard.php">Dashboard</a>
             </div>
+             </div>
+        </aside>
+      </form>
+    </div>
 
 
 
