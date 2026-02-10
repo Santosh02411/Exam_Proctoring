@@ -114,6 +114,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           </div>
            <div id="msg" style="margin-top:12px"></div>
         </div>
+        <!-- Preview / help column -->
+        <aside class="preview">
+          <div class="qcard" aria-live="polite">
+            <div class="qno">Preview</div>
+            <div class="qtext" id="pv_q">Your question preview will appear here as you type.</div>
+            <div class="opts" id="pv_opts">
 
 
 
