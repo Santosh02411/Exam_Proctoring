@@ -166,7 +166,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   const pv_b = document.getElementById('pv_b');
   const pv_c = document.getElementById('pv_c');
   const pv_d = document.getElementById('pv_d');
-
+  const pv_correct = document.getElementById('pv_correct');
+  const pv_marks = document.getElementById('pv_marks');
+  const msg = document.getElementById('msg');
 
 
 
