@@ -161,6 +161,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   const correctEl = document.getElementById('correct_answer');
   const marksEl = document.getElementById('marks');
 
+  const pv_q = document.getElementById('pv_q');
+  const pv_a = document.getElementById('pv_a');
+  const pv_b = document.getElementById('pv_b');
+  const pv_c = document.getElementById('pv_c');
+  const pv_d = document.getElementById('pv_d');
+
 
 
 
