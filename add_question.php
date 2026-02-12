@@ -186,6 +186,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (correctEl.value === 'c') pv_c.classList.add('correct');
     if (correctEl.value === 'd') pv_d.classList.add('correct');
   }
+  
+  [qText,aEl,bEl,cEl,dEl,correctEl,marksEl].forEach(el => el.addEventListener('input', updatePreview));
+  updatePreview();
 
 
 
