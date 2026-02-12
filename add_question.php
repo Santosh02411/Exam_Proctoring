@@ -169,7 +169,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   const pv_correct = document.getElementById('pv_correct');
   const pv_marks = document.getElementById('pv_marks');
   const msg = document.getElementById('msg');
+  function safe(s){ return (s||'').toString().replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function updatePreview(){
 
+}
 
 
 
