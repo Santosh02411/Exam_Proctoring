@@ -190,12 +190,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   [qText,aEl,bEl,cEl,dEl,correctEl,marksEl].forEach(el => el.addEventListener('input', updatePreview));
   updatePreview();
 
-
-
-
-
-
-}
+   function clearForm(){
+    qText.value=''; aEl.value=''; bEl.value=''; cEl.value=''; dEl.value=''; correctEl.value='a'; marksEl.value='1';
+    updatePreview();
+    msg.innerHTML = '';
+  }
 
 
 
