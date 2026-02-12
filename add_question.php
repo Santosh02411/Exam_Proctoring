@@ -176,6 +176,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     pv_b.innerText = 'B — ' + (bEl.value || 'Option B');
     pv_c.innerText = 'C — ' + (cEl.value || 'Option C');
     pv_d.innerText = 'D — ' + (dEl.value || 'Option D');
+    pv_marks.innerText = safe(marksEl.value || '1');
+    pv_correct.innerText = safe(correctEl.value ? correctEl.value.toUpperCase() : '—');
+
+
 }
 
 
