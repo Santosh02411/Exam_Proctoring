@@ -180,6 +180,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     pv_correct.innerText = safe(correctEl.value ? correctEl.value.toUpperCase() : '—');
 
 
+    [pv_a,pv_b,pv_c,pv_d].forEach(el => el.classList.remove('correct'));
+    if (correctEl.value === 'a') pv_a.classList.add('correct');
+    if (correctEl.value === 'b') pv_b.classList.add('correct');
+    if (correctEl.value === 'c') pv_c.classList.add('correct');
+    if (correctEl.value === 'd') pv_d.classList.add('correct');
+  }
+
+
+
+
+
+
 }
 
 
