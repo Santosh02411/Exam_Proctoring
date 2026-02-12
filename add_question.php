@@ -171,7 +171,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   const msg = document.getElementById('msg');
   function safe(s){ return (s||'').toString().replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
   function updatePreview(){
-
+     pv_q.innerHTML = safe(qText.value) || 'Your question preview will appear here as you type.';
+    pv_a.innerText = 'A — ' + (aEl.value || 'Option A');
+    pv_b.innerText = 'B — ' + (bEl.value || 'Option B');
+    pv_c.innerText = 'C — ' + (cEl.value || 'Option C');
+    pv_d.innerText = 'D — ' + (dEl.value || 'Option D');
 }
 
 
