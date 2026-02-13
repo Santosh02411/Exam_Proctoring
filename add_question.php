@@ -206,6 +206,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       alert('Please fill all four options.');
       return false;
     }
+    if (!['a','b','c','d'].includes(correctEl.value)){
+      alert('Select a valid correct option.');
+      return false;
+    }
 
   }
 
