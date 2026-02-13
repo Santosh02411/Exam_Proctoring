@@ -216,7 +216,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       marksEl.focus();
       return false;
     }
-
+    return true;
   }
     
 
