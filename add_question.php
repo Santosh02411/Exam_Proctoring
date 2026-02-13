@@ -195,9 +195,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     updatePreview();
     msg.innerHTML = '';
   }
+  function validateAndSubmit(){
+    // Basic client-side validation
+    if (!qText.value.trim()){
+      alert('Please enter the question text.');
+      qText.focus();
+      return false;
+    }
 
-
-
+  }
 
 
 
