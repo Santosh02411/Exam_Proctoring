@@ -210,6 +210,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       alert('Select a valid correct option.');
       return false;
     }
+    const marks = parseInt(marksEl.value) || 0;
 
   }
 
