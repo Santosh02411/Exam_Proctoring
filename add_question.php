@@ -211,13 +211,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       return false;
     }
     const marks = parseInt(marksEl.value) || 0;
-
-  }
     if (marks <= 0){
       alert('Marks should be at least 1.');
       marksEl.focus();
       return false;
     }
+
+  }
+    
 
 
 
