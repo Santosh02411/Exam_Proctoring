@@ -202,6 +202,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       qText.focus();
       return false;
     }
+    if (!aEl.value.trim() || !bEl.value.trim() || !cEl.value.trim() || !dEl.value.trim()){
+      alert('Please fill all four options.');
+      return false;
+    }
 
   }
 
