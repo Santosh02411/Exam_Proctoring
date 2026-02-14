@@ -45,6 +45,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       --shadow: 0 10px 30px rgba(11,22,50,0.06);
       font-family: 'Inter', system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
     }
+    *{box-sizing:border-box}
+    body{ margin:0; background:linear-gradient(180deg,var(--bg),#f3f6fa); color:#071033; padding:26px; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; }
+
+    .wrap{ max-width:980px; margin:0 auto; display:grid; gap:16px; }
+
 
 
   </style>
