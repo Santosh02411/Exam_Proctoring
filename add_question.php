@@ -55,6 +55,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     .lead{ color:var(--muted); margin-top:6px; font-size:13px }
 
     .card { background:var(--card); border-radius:var(--radius); padding:18px; box-shadow:var(--shadow); }
+    form.grid { display:grid; grid-template-columns: 1fr 360px; gap:16px; align-items:start; }
+    @media (max-width:980px) { form.grid { grid-template-columns: 1fr; } }
 
 
 
