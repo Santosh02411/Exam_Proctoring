@@ -49,6 +49,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     body{ margin:0; background:linear-gradient(180deg,var(--bg),#f3f6fa); color:#071033; padding:26px; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; }
 
     .wrap{ max-width:980px; margin:0 auto; display:grid; gap:16px; }
+     header { display:flex; justify-content:space-between; align-items:center; gap:12px; }
+    .back { text-decoration:none; color:var(--muted); display:inline-flex; gap:8px; align-items:center; padding:8px 12px; border-radius:10px; background:var(--card); box-shadow:var(--shadow); font-weight:700; }
+    h1{ margin:0; font-size:20px; }
 
 
 
