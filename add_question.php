@@ -57,6 +57,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     .card { background:var(--card); border-radius:var(--radius); padding:18px; box-shadow:var(--shadow); }
     form.grid { display:grid; grid-template-columns: 1fr 360px; gap:16px; align-items:start; }
     @media (max-width:980px) { form.grid { grid-template-columns: 1fr; } }
+    .field { display:flex; flex-direction:column; gap:8px; margin-bottom:6px; }
+    label { font-weight:700; font-size:13px; color:#0b1220; }
+    .hint { font-size:13px; color:var(--muted) }
 
 
 
