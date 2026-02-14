@@ -64,6 +64,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       width:100%; padding:10px 12px; border-radius:10px; border:1px solid #e6eef8; font-size:14px; background:#fff; color:#071033;
       box-shadow: inset 0 1px 0 rgba(0,0,0,0.02);
     }
+    textarea { min-height:120px; resize:vertical; }
+
+    .row { display:flex; gap:10px; }
+    .row .col { flex:1; }
+
+    .actions { display:flex; gap:10px; margin-top:10px; }
 
 
 
