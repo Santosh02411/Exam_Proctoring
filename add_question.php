@@ -86,7 +86,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     .small { font-size:13px; color:var(--muted); }
     .success { color:var(--primary); font-weight:700; }
     .error { color:var(--danger); font-weight:700; }
-
+    @media (max-width:600px) { .opts { grid-template-columns:1fr; } }
 
   </style>
 </head>
