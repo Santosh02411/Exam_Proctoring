@@ -60,6 +60,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     .field { display:flex; flex-direction:column; gap:8px; margin-bottom:6px; }
     label { font-weight:700; font-size:13px; color:#0b1220; }
     .hint { font-size:13px; color:var(--muted) }
+    input[type="text"], textarea, select, input[type="number"] {
+      width:100%; padding:10px 12px; border-radius:10px; border:1px solid #e6eef8; font-size:14px; background:#fff; color:#071033;
+      box-shadow: inset 0 1px 0 rgba(0,0,0,0.02);
+    }
 
 
 
