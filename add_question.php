@@ -73,6 +73,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     .btn {
       padding:10px 14px; border-radius:10px; font-weight:700; text-decoration:none; color:#fff; background:var(--primary); border:none; cursor:pointer; box-shadow:0 8px 20px rgba(11,110,246,0.12);
     }
+    .btn.ghost { background:transparent; color:var(--primary); border:1px solid rgba(11,110,246,0.08); box-shadow:none; }
+
+    /* preview card */
+    .preview { display:flex; flex-direction:column; gap:12px; }
+    .qcard { background:linear-gradient(180deg,#fff,#fbfdff); padding:12px; border-radius:10px; box-shadow:0 6px 18px rgba(11,22,50,0.04); }
+    .qno { font-weight:800; color:#071033; }
+    .qtext { margin-top:6px; color:#0b1220; }
+    .opts { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px; }
+    .opt { padding:10px; border-radius:8px; background:#fff; border:1px solid #eef2f7; font-size:14px; color:#071033; }
+    .opt.correct { border-color: rgba(16,185,129,0.16); background:linear-gradient(90deg, rgba(16,185,129,0.04), #fff); }
+
 
 
   </style>
