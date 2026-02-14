@@ -84,6 +84,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     .opt { padding:10px; border-radius:8px; background:#fff; border:1px solid #eef2f7; font-size:14px; color:#071033; }
     .opt.correct { border-color: rgba(16,185,129,0.16); background:linear-gradient(90deg, rgba(16,185,129,0.04), #fff); }
     .small { font-size:13px; color:var(--muted); }
+    .success { color:var(--primary); font-weight:700; }
+    .error { color:var(--danger); font-weight:700; }
 
 
   </style>
