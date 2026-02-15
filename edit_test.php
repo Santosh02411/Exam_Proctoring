@@ -31,6 +31,10 @@ f ($_SERVER['REQUEST_METHOD'] === 'POST') {
             SET title = ?, description = ?, duration_minutes = ?, total_questions = ?, passing_marks = ?,
                 status = ?, start_time = NULLIF(?, ''), end_time = NULLIF(?, '')
             WHERE id = ?";
+            $stmt = $conn->prepare($sql);
+    if (!$stmt) {
+        $error = "Prepare failed: " . $conn->error;
+    }
     
 }
 
