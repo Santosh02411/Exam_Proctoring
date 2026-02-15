@@ -11,5 +11,8 @@ $test_id = isset($_GET['test_id']) ? (int)$_GET['test_id'] : 0;
 if (!$test_id) {
     die("Missing test_id");
 }
+// handle POST update
+$success = null;
+$error = null;
 
 ?>
