@@ -26,7 +26,11 @@ f ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // For datetime fields, keep '' if empty so we can convert to NULL via NULLIF(?, '')
     $start_time = isset($_POST['start_time']) ? $_POST['start_time'] : '';
     $end_time   = isset($_POST['end_time'])   ? $_POST['end_time']   : '';
-
+    // Use NULLIF(?, '') so empty string => SQL NULL
+    $sql = "UPDATE tests
+            SET title = ?, description = ?, duration_minutes = ?, total_questions = ?, passing_marks = ?,
+                status = ?, start_time = NULLIF(?, ''), end_time = NULLIF(?, '')
+            WHERE id = ?";
     
 }
 
