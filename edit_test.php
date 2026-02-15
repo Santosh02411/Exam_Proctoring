@@ -15,4 +15,17 @@ if (!$test_id) {
 $success = null;
 $error = null;
 
+f ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // sanitize and prepare values
+    $title = $conn->real_escape_string($_POST['title']);
+    $description = $conn->real_escape_string($_POST['description']);
+    $duration = (int)$_POST['duration_minutes'];
+    $total_questions = (int)$_POST['total_questions'];
+    $passing_marks = (int)$_POST['passing_marks'];
+    $status = $conn->real_escape_string($_POST['status']);
+
+    
+}
+
+
 ?>
