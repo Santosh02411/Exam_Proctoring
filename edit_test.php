@@ -63,8 +63,4 @@ $tstmt->execute();
 $tres = $tstmt->get_result()->fetch_assoc();
 if (!$tres) die("Test not found.");
 $tstmt->close();
-
-
-
-
 ?>
