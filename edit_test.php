@@ -60,7 +60,9 @@ $tstmt = $conn->prepare("SELECT * FROM tests WHERE id = ? LIMIT 1");
 $tstmt->bind_param("i", $test_id);
 $tstmt->execute();
 
-
+$tres = $tstmt->get_result()->fetch_assoc();
+if (!$tres) die("Test not found.");
+$tstmt->close();
 
 
 
