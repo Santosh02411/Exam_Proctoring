@@ -55,4 +55,14 @@ f ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->close();
     }
 }
+// load existing test
+$tstmt = $conn->prepare("SELECT * FROM tests WHERE id = ? LIMIT 1");
+$tstmt->bind_param("i", $test_id);
+$tstmt->execute();
+
+
+
+
+
+
 ?>
