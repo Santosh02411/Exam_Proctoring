@@ -64,3 +64,14 @@ $tres = $tstmt->get_result()->fetch_assoc();
 if (!$tres) die("Test not found.");
 $tstmt->close();
 ?>
+
+
+
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Edit Test — <?= htmlspecialchars($tres['title']) ?></title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
