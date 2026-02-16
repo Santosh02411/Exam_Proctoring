@@ -35,6 +35,18 @@ f ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!$stmt) {
         $error = "Prepare failed: " . $conn->error;
     }
+    else {
+        // Correct types:
+        // title (s), description (s),
+        // duration (i), total_questions (i), passing_marks (i),
+        // status (s), start_time (s), end_time (s), test_id (i)
+        $types = "ssiiisssi";
+        $stmt->bind_param($types,
+            $title, $description,
+            $duration, $total_questions, $passing_marks,
+            $status, $start_time, $end_time,
+            $test_id
+        );
     
 }
 
