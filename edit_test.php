@@ -47,8 +47,12 @@ f ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $status, $start_time, $end_time,
             $test_id
         );
-    
+     if ($stmt->execute()) {
+            $success = "Test updated successfully.";
+        } else {
+            $error = "Update failed: " . $stmt->error;
+        }
+        $stmt->close();
+    }
 }
-
-
 ?>
