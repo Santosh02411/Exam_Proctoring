@@ -102,7 +102,11 @@ $tstmt->close();
             <label for="description">Description</label>
             <textarea id="description" name="description"><?= htmlspecialchars($tres['description']) ?></textarea>
           </div>
-          
+          <div style="display:flex;gap:12px">
+            <div class="field" style="flex:1">
+              <label for="duration_minutes">Duration (minutes)</label>
+              <input id="duration_minutes" name="duration_minutes" type="number" min="1" value="<?= (int)$tres['duration_minutes'] ?>" required>
+            </div>
 
 
 
