@@ -147,6 +147,13 @@ $tstmt->close();
             <div class="small">Created at: <strong><?= htmlspecialchars($tres['created_at']) ?></strong></div>
             <div style="margin-top:8px" class="small">Created by (ID): <strong><?= (int)$tres['created_by'] ?></strong></div>
           </div>
+          <div class="panel" style="margin-top:12px">
+            <h4 style="margin:0 0 8px 0">Danger zone</h4>
+            <form method="post" action="manage_tests.php" onsubmit="return confirm('Delete this test? This action cannot be undone.');">
+              <input type="hidden" name="delete_test_id" value="<?= (int)$tres['id'] ?>">
+              <button type="submit" class="btn ghost" style="background:#fff;border:1px solid #f3d0d6;color:#b91c1c">Delete Test</button>
+            </form>
+          </div>
 
 
 
