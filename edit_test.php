@@ -112,6 +112,11 @@ $tstmt->close();
               <input id="total_questions" name="total_questions" type="number" min="1" value="<?= (int)$tres['total_questions'] ?>" required>
             </div>
           </div>
+          <div style="display:flex;gap:12px">
+            <div class="field" style="flex:1">
+              <label for="passing_marks">Passing marks</label>
+              <input id="passing_marks" name="passing_marks" type="number" min="0" value="<?= (int)$tres['passing_marks'] ?>" required>
+            </div>
 
 
 
