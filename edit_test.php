@@ -140,12 +140,12 @@ $tstmt->close();
             <a href="view_test.php?test_id=<?= (int)$tres['id'] ?>" class="btn ghost">Cancel</a>
           </div>
         </div>
+        <aside>
 
 
 
-
-
-        </form>
+        </aside>
+      </form>
     </div>
   </div>
 
