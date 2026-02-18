@@ -98,6 +98,11 @@ $tstmt->close();
             <label for="title">Title</label>
             <input id="title" name="title" type="text" value="<?= htmlspecialchars($tres['title']) ?>" required>
           </div>
+          <div class="field">
+            <label for="description">Description</label>
+            <textarea id="description" name="description"><?= htmlspecialchars($tres['description']) ?></textarea>
+          </div>
+          
 
 
 
