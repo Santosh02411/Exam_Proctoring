@@ -107,7 +107,11 @@ $tstmt->close();
               <label for="duration_minutes">Duration (minutes)</label>
               <input id="duration_minutes" name="duration_minutes" type="number" min="1" value="<?= (int)$tres['duration_minutes'] ?>" required>
             </div>
-
+            <div class="field" style="width:160px">
+              <label for="total_questions">Total questions</label>
+              <input id="total_questions" name="total_questions" type="number" min="1" value="<?= (int)$tres['total_questions'] ?>" required>
+            </div>
+          </div>
 
 
 
