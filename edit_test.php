@@ -117,6 +117,14 @@ $tstmt->close();
               <label for="passing_marks">Passing marks</label>
               <input id="passing_marks" name="passing_marks" type="number" min="0" value="<?= (int)$tres['passing_marks'] ?>" required>
             </div>
+            <div class="field" style="width:160px">
+              <label for="status">Status</label>
+              <select id="status" name="status" required>
+                <option value="draft" <?= $tres['status']==='draft' ? 'selected' : '' ?>>Draft</option>
+                <option value="published" <?= $tres['status']==='published' ? 'selected' : '' ?>>Published</option>
+              </select>
+            </div>
+          </div>
 
 
 
