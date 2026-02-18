@@ -154,19 +154,21 @@ $tstmt->close();
               <button type="submit" class="btn ghost" style="background:#fff;border:1px solid #f3d0d6;color:#b91c1c">Delete Test</button>
             </form>
           </div>
-
-
-
         </aside>
       </form>
     </div>
   </div>
 
-
-
-
-
-
+<script>
+function validateEdit(){
+  const st = document.getElementById('start_time').value;
+  const en = document.getElementById('end_time').value;
+  if (st && en && new Date(st) >= new Date(en)) {
+    alert('End time must be after start time.');
+    return false;
+  }
+  return true;
+}
 <script>
 </script>
 </body>
