@@ -74,7 +74,7 @@ $tstmt->close();
 <title>Edit Test — <?= htmlspecialchars($tres['title']) ?></title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
-</style>
+<style>
 :root{
   --bg:#f6f8fb; --card:#fff; --muted:#6b7280; --primary:#0b6ef6; --radius:12px; --shadow:0 12px 30px rgba(11,22,50,0.06);
   font-family:'Inter',system-ui,Arial;
@@ -83,7 +83,7 @@ $tstmt->close();
 body{margin:0;background:linear-gradient(180deg,var(--bg),#f3f6fa);color:#071033;padding:22px}
 .wrap{max-width:980px;margin:0 auto;display:grid;gap:16px}
 
-
+</style>
 
 </head>
 <body>
