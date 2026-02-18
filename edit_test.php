@@ -130,6 +130,12 @@ $tstmt->close();
               <label for="start_time">Start time (optional)</label>
               <input id="start_time" name="start_time" type="datetime-local" value="<?= $tres['start_time'] ? date('Y-m-d\TH:i', strtotime($tres['start_time'])) : '' ?>">
             </div>
+             <div class="field" style="flex:1">
+              <label for="end_time">End time (optional)</label>
+              <input id="end_time" name="end_time" type="datetime-local" value="<?= $tres['end_time'] ? date('Y-m-d\TH:i', strtotime($tres['end_time'])) : '' ?>">
+            </div>
+          </div>
+
 
 
 
