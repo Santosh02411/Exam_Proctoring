@@ -141,6 +141,12 @@ $tstmt->close();
           </div>
         </div>
         <aside>
+          <div class="panel">
+            <h4 style="margin:0 0 8px 0">Test Summary</h4>
+            <div class="small">Code: <strong><?= htmlspecialchars($tres['test_id']) ?></strong></div>
+            <div class="small">Created at: <strong><?= htmlspecialchars($tres['created_at']) ?></strong></div>
+            <div style="margin-top:8px" class="small">Created by (ID): <strong><?= (int)$tres['created_by'] ?></strong></div>
+          </div>
 
 
 
