@@ -89,6 +89,24 @@ $tstmt->close();
         <a href="view_test.php?test_id=<?= (int)$tres['id'] ?>" class="btn">View Test</a>
       </div>
     </div>
+    <div class="card">
+      <?php if ($success): ?><div class="success" style="margin-bottom:10px"><?= htmlspecialchars($success) ?></div><?php endif; ?>
+      <?php if ($error): ?><div class="error" style="margin-bottom:10px"><?= htmlspecialchars($error) ?></div><?php endif; ?>
+        <form method="post" class="form-grid" onsubmit="return validateEdit();">
+        <div>
+          <div class="field">
+            <label for="title">Title</label>
+            <input id="title" name="title" type="text" value="<?= htmlspecialchars($tres['title']) ?>" required>
+          </div>
+
+
+
+
+
+        </form>
+    </div>
+  </div>
+
 
 
 
