@@ -135,6 +135,11 @@ $tstmt->close();
               <input id="end_time" name="end_time" type="datetime-local" value="<?= $tres['end_time'] ? date('Y-m-d\TH:i', strtotime($tres['end_time'])) : '' ?>">
             </div>
           </div>
+          <div class="actions">
+            <button type="submit" class="btn">Save Changes</button>
+            <a href="view_test.php?test_id=<?= (int)$tres['id'] ?>" class="btn ghost">Cancel</a>
+          </div>
+        </div>
 
 
 
