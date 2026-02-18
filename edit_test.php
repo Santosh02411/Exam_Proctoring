@@ -125,6 +125,11 @@ $tstmt->close();
               </select>
             </div>
           </div>
+          <div style="display:flex;gap:12px">
+            <div class="field" style="flex:1">
+              <label for="start_time">Start time (optional)</label>
+              <input id="start_time" name="start_time" type="datetime-local" value="<?= $tres['start_time'] ? date('Y-m-d\TH:i', strtotime($tres['start_time'])) : '' ?>">
+            </div>
 
 
 
