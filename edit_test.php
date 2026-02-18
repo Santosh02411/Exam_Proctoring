@@ -83,6 +83,8 @@ $tstmt->close();
 body{margin:0;background:linear-gradient(180deg,var(--bg),#f3f6fa);color:#071033;padding:22px}
 .wrap{max-width:980px;margin:0 auto;display:grid;gap:16px}
 
+.header{display:flex;justify-content:space-between;align-items:center;gap:12px}
+
 </style>
 
 </head>
