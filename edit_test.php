@@ -77,6 +77,19 @@ $tstmt->close();
 </style>
 </head>
 <body>
+    <div class="wrap">
+    <div class="header">
+      <div>
+        <a class="back" href="manage_tests.php">← Back to tests</a>
+        <h1 style="margin:8px 0 0 0">Edit Test</h1>
+        <div class="small">Test code: <strong><?= htmlspecialchars($tres['test_id']) ?></strong></div>
+      </div>
+     
+    </div>
+
+
+
+
 
 <script>
 </script>
