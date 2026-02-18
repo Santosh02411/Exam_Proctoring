@@ -84,7 +84,10 @@ $tstmt->close();
         <h1 style="margin:8px 0 0 0">Edit Test</h1>
         <div class="small">Test code: <strong><?= htmlspecialchars($tres['test_id']) ?></strong></div>
       </div>
-     
+      <div style="display:flex;gap:8px">
+        <a href="add_question.php?test_db_id=<?= (int)$tres['id'] ?>" class="btn ghost">Add Questions</a>
+        <a href="view_test.php?test_id=<?= (int)$tres['id'] ?>" class="btn">View Test</a>
+      </div>
     </div>
 
 
