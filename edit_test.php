@@ -91,6 +91,8 @@ body{margin:0;background:linear-gradient(180deg,var(--bg),#f3f6fa);color:#071033
 .field{display:flex;flex-direction:column;gap:8px;margin-bottom:8px}
 label{font-weight:700;color:#0b1220}
 input,textarea,select{padding:10px;border-radius:10px;border:1px solid #e6eef8;font-size:14px;background:#fff}
+textarea{min-height:120px;resize:vertical}
+.actions{display:flex;gap:10px;justify-content:flex-end;margin-top:10px}
 
 </style>
 
