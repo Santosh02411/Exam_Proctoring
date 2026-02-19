@@ -98,6 +98,7 @@ textarea{min-height:120px;resize:vertical}
 .small{font-size:13px;color:var(--muted)}
 .success{color:#10b981;font-weight:700}
 .error{color:#ef4444;font-weight:700}
+.panel{padding:12px;border-radius:10px;background:linear-gradient(180deg,#fff,#fbfdff);box-shadow:0 6px 18px rgba(11,22,50,0.04)}
 
 </style>
 
