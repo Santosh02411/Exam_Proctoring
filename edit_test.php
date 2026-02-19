@@ -89,6 +89,8 @@ body{margin:0;background:linear-gradient(180deg,var(--bg),#f3f6fa);color:#071033
 .form-grid{display:grid;grid-template-columns:1fr 300px;gap:18px}
 @media (max-width:920px){ .form-grid{grid-template-columns:1fr} }
 .field{display:flex;flex-direction:column;gap:8px;margin-bottom:8px}
+label{font-weight:700;color:#0b1220}
+input,textarea,select{padding:10px;border-radius:10px;border:1px solid #e6eef8;font-size:14px;background:#fff}
 
 </style>
 
