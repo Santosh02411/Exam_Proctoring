@@ -88,6 +88,7 @@ body{margin:0;background:linear-gradient(180deg,var(--bg),#f3f6fa);color:#071033
 .card{background:var(--card);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow)}
 .form-grid{display:grid;grid-template-columns:1fr 300px;gap:18px}
 @media (max-width:920px){ .form-grid{grid-template-columns:1fr} }
+.field{display:flex;flex-direction:column;gap:8px;margin-bottom:8px}
 
 </style>
 
