@@ -195,6 +195,9 @@ function validateEdit(){
   return true;
 }
 <script>
+function validateEdit(){
+  const st = document.getElementById('start_time').value;
+  const en = document.getElementById('end_time').value;
 </script>
 </body>
 </html>
