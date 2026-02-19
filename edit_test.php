@@ -198,7 +198,14 @@ function validateEdit(){
 function validateEdit(){
   const st = document.getElementById('start_time').value;
   const en = document.getElementById('end_time').value;
-      }
+  if (st && en && new Date(st) >= new Date(en)) {
+    alert('End time must be after start time.');
+    return false;
+  }
+  return true;
+  
+}
+
   </script>
 </body>
 </html>
