@@ -85,6 +85,7 @@ body{margin:0;background:linear-gradient(180deg,var(--bg),#f3f6fa);color:#071033
 
 .header{display:flex;justify-content:space-between;align-items:center;gap:12px}
 .back{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:10px;background:var(--card);box-shadow:var(--shadow);text-decoration:none;color:var(--muted);font-weight:700}
+.card{background:var(--card);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow)}
 
 </style>
 
