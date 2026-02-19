@@ -205,7 +205,6 @@ function validateEdit(){
   return true;
   
 }
-
-  </script>
+</script>
 </body>
 </html>
