@@ -95,6 +95,9 @@ textarea{min-height:120px;resize:vertical}
 .actions{display:flex;gap:10px;justify-content:flex-end;margin-top:10px}
 .btn{padding:10px 14px;border-radius:10px;background:var(--primary);color:#fff;text-decoration:none;border:none;font-weight:800;cursor:pointer}
 .btn.ghost{background:transparent;border:1px solid rgba(11,110,246,0.08);color:var(--primary)}
+.small{font-size:13px;color:var(--muted)}
+.success{color:#10b981;font-weight:700}
+.error{color:#ef4444;font-weight:700}
 
 </style>
 
