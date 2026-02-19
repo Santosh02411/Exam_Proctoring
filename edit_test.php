@@ -93,6 +93,8 @@ label{font-weight:700;color:#0b1220}
 input,textarea,select{padding:10px;border-radius:10px;border:1px solid #e6eef8;font-size:14px;background:#fff}
 textarea{min-height:120px;resize:vertical}
 .actions{display:flex;gap:10px;justify-content:flex-end;margin-top:10px}
+.btn{padding:10px 14px;border-radius:10px;background:var(--primary);color:#fff;text-decoration:none;border:none;font-weight:800;cursor:pointer}
+.btn.ghost{background:transparent;border:1px solid rgba(11,110,246,0.08);color:var(--primary)}
 
 </style>
 
