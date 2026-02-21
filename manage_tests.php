@@ -51,7 +51,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 }
-
-
+$tests = $conn->query("SELECT id, test_id, title, status, duration_minutes, total_questions, passing_marks, created_at FROM tests ORDER BY created_at DESC");
 
 ?>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Manage Tests — Admin</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+
+
+
