@@ -72,7 +72,10 @@ $tests = $conn->query("SELECT id, test_id, title, status, duration_minutes, tota
         <a class="back" href="admin_dashboard.php">← Dashboard</a>
         <h1 style="margin:8px 0 0 0">Manage Tests</h1>
         <div class="small">Create, edit, duplicate or delete tests</div>
-      
+      </div>
+      <div style="display:flex;gap:8px">
+        <a class="btn" href="create_test.php">+ New Test</a>
+      </div>
     </div>
 
 
