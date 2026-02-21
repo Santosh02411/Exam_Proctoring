@@ -62,5 +62,36 @@ $tests = $conn->query("SELECT id, test_id, title, status, duration_minutes, tota
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
 
+<style>
+</style>
+</head>
+<body>
+    <div class="wrap">
+    <div class="header">
+      <div>
+        <a class="back" href="admin_dashboard.php">← Dashboard</a>
+        <h1 style="margin:8px 0 0 0">Manage Tests</h1>
+        <div class="small">Create, edit, duplicate or delete tests</div>
+      
+    </div>
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</body> 
+</html>
 
