@@ -33,7 +33,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         $ust->close();
     }
-   
+    if (isset($_POST['duplicate_test_id'])) {
+        $dup = (int)$_POST['duplicate_test_id'];
+        // duplicate basic test row (not copying questions to keep simple)
+        $orig = $conn->query("SELECT test_id, title, description, duration_minutes, total_questions, passing_marks, status FROM tests WHERE id=".$dup)->fetch_assoc();
+        if ($orig) {
+            $new_code = $orig['test_id'] . '_COPY_' . time();
+            $ist = $conn->prepare("INSERT INTO tests (test_id, title, description, duration_minutes, total_questions, passing_marks, status, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+            $created_by = $_SESSION['user_id'];
+            $ist->bind_param("sssiiiis", $new_code, $orig['title'], $orig['description'], $orig['duration_minutes'], $orig['total_questions'], $orig['passing_marks'], $orig['status'], $created_by);
+            if ($ist->execute()) {
+                $message = "Test duplicated. New test id: " . $ist->insert_id;
+            } else {
+                $message = "Duplicate failed: " . $ist->error;
+            }
+            $ist->close();
+        }
+    }
 }
 
 
