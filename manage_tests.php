@@ -115,7 +115,11 @@ $tests = $conn->query("SELECT id, test_id, title, status, duration_minutes, tota
                   <div class="actions">
                     <a class="btn ghost" href="edit_test.php?test_id=<?= (int)$t['id'] ?>">Edit</a>
 
-                  
+                    <form class="form-inline" method="post" onsubmit="return confirm('Duplicate this test (questions will not be copied)?');">
+                      <input type="hidden" name="duplicate_test_id" value="<?= (int)$t['id'] ?>">
+                      <button type="submit" class="btn ghost">Duplicate</button>
+                    </form>
+
                   
                   
                   </div>
