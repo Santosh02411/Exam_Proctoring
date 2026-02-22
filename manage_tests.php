@@ -94,6 +94,25 @@ $tests = $conn->query("SELECT id, test_id, title, status, duration_minutes, tota
               <th style="width:260px">Actions</th>
             </tr>
           </thead>
+          <tbody>
+            <?php $i=1; while($t = $tests->fetch_assoc()): ?>
+              <tr>
+                <td><?= $i++ ?></td>
+                <td style="font-weight:800"><?= htmlspecialchars($t['title']) ?></td>
+                <td class="small"><?= htmlspecialchars($t['test_id']) ?></td>
+                <td class="small"><?= (int)$t['duration_minutes'] ?> min</td>
+                <td class="small"><?= (int)$t['total_questions'] ?></td>
+                <td class="small"><?= (int)$t['passing_marks'] ?></td>
+                <td>
+                
+                  
+                  
+                  </div>
+                </td>
+              </tr>
+            <?php endwhile; ?>
+          </tbody>
+        </table>
 
 
 
