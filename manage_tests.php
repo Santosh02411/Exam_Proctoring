@@ -110,7 +110,11 @@ $tests = $conn->query("SELECT id, test_id, title, status, duration_minutes, tota
                     <span class="badge draft">Draft</span>
                   <?php endif; ?>
                 </td>
-               
+                <td class="small"><?= htmlspecialchars($t['created_at']) ?></td>
+                <td>
+                  <div class="actions">
+                    <a class="btn ghost" href="edit_test.php?test_id=<?= (int)$t['id'] ?>">Edit</a>
+
                   
                   
                   
