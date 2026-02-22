@@ -120,7 +120,11 @@ $tests = $conn->query("SELECT id, test_id, title, status, duration_minutes, tota
                       <button type="submit" class="btn ghost">Duplicate</button>
                     </form>
 
-                  
+                    <form class="form-inline" method="post" onsubmit="return confirm('Toggle publish/draft for this test?');">
+                      <input type="hidden" name="toggle_test_id" value="<?= (int)$t['id'] ?>">
+                      <button type="submit" class="btn ghost"><?= $t['status'] === 'published' ? 'Unpublish' : 'Publish' ?></button>
+                  </form>
+
                   
                   </div>
                 </td>
