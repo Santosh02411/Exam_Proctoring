@@ -132,6 +132,13 @@ $tests = $conn->query("SELECT id, test_id, title, status, duration_minutes, tota
             <?php endwhile; ?>
           </tbody>
         </table>
+        <?php else: ?>
+        <div class="small">No tests yet. Create one to get started.</div>
+      <?php endif; ?>
+    </div>
+  </div>
+</body>
+</html>
 
 
 
