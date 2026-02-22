@@ -104,7 +104,14 @@ $tests = $conn->query("SELECT id, test_id, title, status, duration_minutes, tota
                 <td class="small"><?= (int)$t['total_questions'] ?></td>
                 <td class="small"><?= (int)$t['passing_marks'] ?></td>
                 <td>
-                
+                  <?php if ($t['status'] === 'published'): ?>
+                    <span class="badge published">Published</span>
+                  <?php else: ?>
+                    <span class="badge draft">Draft</span>
+                  <?php endif; ?>
+                </td>
+               
+                  
                   
                   
                   </div>
