@@ -77,6 +77,7 @@ $tests = $conn->query("SELECT id, test_id, title, status, duration_minutes, tota
         <a class="btn" href="create_test.php">+ New Test</a>
       </div>
     </div>
+        <?php if ($message): ?><div class="message"><?= htmlspecialchars($message) ?></div><?php endif; ?>
 
 
 
