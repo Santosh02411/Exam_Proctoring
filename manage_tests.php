@@ -77,8 +77,23 @@ $tests = $conn->query("SELECT id, test_id, title, status, duration_minutes, tota
         <a class="btn" href="create_test.php">+ New Test</a>
       </div>
     </div>
-        <?php if ($message): ?><div class="message"><?= htmlspecialchars($message) ?></div><?php endif; ?>
-
+    <?php if ($message): ?><div class="message"><?= htmlspecialchars($message) ?></div><?php endif; ?>
+    <div class="card">
+      <?php if ($tests && $tests->num_rows > 0): ?>
+        <table class="table" role="table" aria-label="Tests">
+          <thead>
+            <tr>
+              <th style="width:48px">#</th>
+              <th>Title</th>
+              <th>Code</th>
+              <th>Duration</th>
+              <th>Qs</th>
+              <th>Passing</th>
+              <th>Status</th>
+              <th>Created</th>
+              <th style="width:260px">Actions</th>
+            </tr>
+          </thead>
 
 
 
