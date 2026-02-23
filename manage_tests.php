@@ -63,6 +63,11 @@ $tests = $conn->query("SELECT id, test_id, title, status, duration_minutes, tota
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
 
 <style>
+:root{ --bg:#f6f8fb; --card:#fff; --muted:#6b7280; --primary:#0b6ef6; --success:#10b981; --danger:#ef4444; --radius:12px; --shadow:0 12px 30px rgba(11,22,50,0.06); font-family:'Inter',system-ui,Arial; }
+*{box-sizing:border-box}
+
+
+
 </style>
 </head>
 <body>
