@@ -75,6 +75,10 @@ card{background:var(--card);border-radius:var(--radius);padding:16px;box-shadow:
 .table th{color:var(--muted);font-size:13px}
 .btn{padding:8px 10px;border-radius:8px;background:var(--primary);color:#fff;border:none;cursor:pointer;font-weight:700}
 .btn.ghost{background:transparent;border:1px solid rgba(11,110,246,0.08);color:var(--primary)}
+.form-inline{display:inline}
+.badge{padding:6px 10px;border-radius:999px;font-weight:700}
+.badge.published{background:rgba(16,185,129,0.12);color:var(--success)}
+.badge.draft{background:rgba(99,102,241,0.08);color:var(--muted)}
 
 
 
