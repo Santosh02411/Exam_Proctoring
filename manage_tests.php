@@ -72,6 +72,9 @@ body{margin:0;background:linear-gradient(180deg,var(--bg),#f3f6fa);color:#071033
 card{background:var(--card);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow)}
 .table{width:100%;border-collapse:collapse}
 .table th,.table td{padding:12px;border-bottom:1px solid #f1f5f9;text-align:left}
+.table th{color:var(--muted);font-size:13px}
+.btn{padding:8px 10px;border-radius:8px;background:var(--primary);color:#fff;border:none;cursor:pointer;font-weight:700}
+.btn.ghost{background:transparent;border:1px solid rgba(11,110,246,0.08);color:var(--primary)}
 
 
 
