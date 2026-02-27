@@ -82,9 +82,6 @@ card{background:var(--card);border-radius:var(--radius);padding:16px;box-shadow:
 .small{font-size:13px;color:var(--muted)}
 .actions{display:flex;gap:8px;align-items:center}
 .message{padding:10px;border-radius:10px;background:#f3f9f5;color:#065f46}
-
-
-
 </style>
 </head>
 <body>
