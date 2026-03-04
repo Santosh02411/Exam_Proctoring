@@ -18,4 +18,10 @@ $stmt->execute();
 $stmt->store_result();
 if ($stmt->num_rows === 0) die("You are not eligible for this test");
 
+
+$stmt2 = $conn->prepare("SELECT * FROM tests WHERE id=? LIMIT 1");
+$stmt2->bind_param("i", $test_id);
+$stmt2->execute();
+$tres = $stmt2->get_result()->fetch_assoc();
+$duration = (int)$tres['duration_minutes'];
 ?>
