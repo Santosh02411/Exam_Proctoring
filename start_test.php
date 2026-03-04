@@ -24,4 +24,11 @@ $stmt2->bind_param("i", $test_id);
 $stmt2->execute();
 $tres = $stmt2->get_result()->fetch_assoc();
 $duration = (int)$tres['duration_minutes'];
+
+$qstmt = $conn->prepare("SELECT id, question_text, option_a, option_b, option_c, option_d FROM questions WHERE test_id=?");
+$qstmt->bind_param("i",$test_id);
+$qstmt->execute();
+$qres = $qstmt->get_result();
+$questions = [];
+while($r = $qres->fetch_assoc()) $questions[] = $r;
 ?>
