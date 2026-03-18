@@ -55,6 +55,9 @@ $attempt_token = bin2hex(random_bytes(12));
     .meta{color:#6b7280;font-size:13px;margin-bottom:12px}
     #consentOverlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(2,6,23,0.6);z-index:9999}
     #consentBox{width:92%;max-width:760px;background:#fff;border-radius:12px;padding:20px;box-shadow:0 18px 50px rgba(2,6,23,0.35)}
+    .btn{cursor:pointer;padding:10px 14px;border-radius:8px;border:0;font-weight:700}
+    .btn.primary{background:#0b6ef6;color:#fff}
+    .btn.ghost{background:transparent;color:#0b6ef6;border:1px solid rgba(11,110,246,0.12)}
     
 
 
