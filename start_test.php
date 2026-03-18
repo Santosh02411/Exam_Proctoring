@@ -51,6 +51,8 @@ $attempt_token = bin2hex(random_bytes(12));
     body{font-family:Inter,system-ui,Arial;margin:0;background:#f5f7fb;color:#071033}
     .wrap{max-width:1000px;margin:18px auto;padding:18px}
     .card{background:#fff;border-radius:10px;padding:16px;box-shadow:0 8px 24px rgba(6,15,34,0.06)}
+    h1{margin:0 0 6px 0;font-size:20px}
+    .meta{color:#6b7280;font-size:13px;margin-bottom:12px}
     
 
 
