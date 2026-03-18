@@ -40,6 +40,14 @@ $attempt_token = bin2hex(random_bytes(12));
   <title><?=htmlspecialchars($tres['title'])?> — Proctored Test</title>
   <meta name="viewport" content="width=device-width,initial-scale=1">
 
+<!-- TensorFlow.js core -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0/dist/tf.min.js"></script>
+
+<!-- BlazeFace model -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface"></script>
+
+<!-- then your own script that calls FaceMonitor -->
+
 
 
 
