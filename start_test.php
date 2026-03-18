@@ -65,6 +65,8 @@ $attempt_token = bin2hex(random_bytes(12));
     .muted{color:#6b7280;font-size:13px}
     /* hide exam UI until started */
     #examArea{display:none}
+    .qcard{border-radius:10px;padding:14px;background:linear-gradient(180deg,#fff,#fbfdff);box-shadow:0 6px 20px rgba(11,22,50,0.04);margin-bottom:12px}
+    .options{display:grid;gap:8px;margin-top:12px}
     
 
 
