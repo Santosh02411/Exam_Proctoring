@@ -53,6 +53,8 @@ $attempt_token = bin2hex(random_bytes(12));
     .card{background:#fff;border-radius:10px;padding:16px;box-shadow:0 8px 24px rgba(6,15,34,0.06)}
     h1{margin:0 0 6px 0;font-size:20px}
     .meta{color:#6b7280;font-size:13px;margin-bottom:12px}
+    #consentOverlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(2,6,23,0.6);z-index:9999}
+    #consentBox{width:92%;max-width:760px;background:#fff;border-radius:12px;padding:20px;box-shadow:0 18px 50px rgba(2,6,23,0.35)}
     
 
 
