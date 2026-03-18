@@ -31,4 +31,5 @@ $qstmt->execute();
 $qres = $qstmt->get_result();
 $questions = [];
 while($r = $qres->fetch_assoc()) $questions[] = $r;
+$attempt_token = bin2hex(random_bytes(12));
 ?>
