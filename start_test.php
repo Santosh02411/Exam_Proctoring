@@ -47,7 +47,9 @@ $attempt_token = bin2hex(random_bytes(12));
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface"></script>
 
 <!-- then your own script that calls FaceMonitor -->
-
+    <style>
+    body{font-family:Inter,system-ui,Arial;margin:0;background:#f5f7fb;color:#071033}
+    
 
 
 
