@@ -49,6 +49,8 @@ $attempt_token = bin2hex(random_bytes(12));
 <!-- then your own script that calls FaceMonitor -->
     <style>
     body{font-family:Inter,system-ui,Arial;margin:0;background:#f5f7fb;color:#071033}
+    .wrap{max-width:1000px;margin:18px auto;padding:18px}
+    .card{background:#fff;border-radius:10px;padding:16px;box-shadow:0 8px 24px rgba(6,15,34,0.06)}
     
 
 
