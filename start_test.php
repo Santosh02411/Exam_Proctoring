@@ -33,3 +33,36 @@ $questions = [];
 while($r = $qres->fetch_assoc()) $questions[] = $r;
 $attempt_token = bin2hex(random_bytes(12));
 ?>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title><?=htmlspecialchars($tres['title'])?> — Proctored Test</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+
+
+
+
+
+
+
+
+
+  </style>
+</head>
+<body>
+
+
+  <script>
+
+</script>
+
+
+<script>
+
+
+</script>
+
+
+</body>
+</html>
