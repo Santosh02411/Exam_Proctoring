@@ -60,6 +60,11 @@ $attempt_token = bin2hex(random_bytes(12));
     .btn.ghost{background:transparent;color:#0b6ef6;border:1px solid rgba(11,110,246,0.12)}
     #consentCamPreview{width:160px;height:120px;background:#000;border-radius:8px;object-fit:cover}
     #camPreview{display:none;position:fixed;right:12px;top:12px;width:160px;height:120px;border-radius:8px;z-index:9998;box-shadow:0 10px 30px rgba(2,6,23,0.2)}
+    #consentCamPreview{width:160px;height:120px;background:#000;border-radius:8px;object-fit:cover}
+    #camPreview{display:none;position:fixed;right:12px;top:12px;width:160px;height:120px;border-radius:8px;z-index:9998;box-shadow:0 10px 30px rgba(2,6,23,0.2)}
+    .muted{color:#6b7280;font-size:13px}
+    /* hide exam UI until started */
+    #examArea{display:none}
     
 
 
