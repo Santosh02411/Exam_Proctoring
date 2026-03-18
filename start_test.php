@@ -67,7 +67,10 @@ $attempt_token = bin2hex(random_bytes(12));
     #examArea{display:none}
     .qcard{border-radius:10px;padding:14px;background:linear-gradient(180deg,#fff,#fbfdff);box-shadow:0 6px 20px rgba(11,22,50,0.04);margin-bottom:12px}
     .options{display:grid;gap:8px;margin-top:12px}
-    
+    label.opt{display:flex;gap:8px;align-items:flex-start;padding:10px;border-radius:8px;border:1px solid #e7eefb;background:#fff;cursor:pointer}
+    .timer{font-weight:800;color:#ef4444;font-size:18px}
+    .hidden{display:none}
+  
 
 
 
