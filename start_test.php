@@ -90,7 +90,10 @@ $attempt_token = bin2hex(random_bytes(12));
               <div><strong>Fullscreen:</strong> <span id="fsStatus">Not entered</span></div>
               </div>
           </div>
-
+          <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">
+            <button id="consentCancel" class="btn ghost" type="button">Cancel</button>
+            <button id="consentStart" class="btn primary" type="button">Start exam (I consent)</button>
+          </div>
 
 
   <script>
