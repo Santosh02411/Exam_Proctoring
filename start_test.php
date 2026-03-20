@@ -82,6 +82,10 @@ $attempt_token = bin2hex(random_bytes(12));
         <div id="consentBox">
           <h2>Start proctored test</h2>
           <p class="muted">We will record your camera and microphone for exam integrity. The browser will ask permission. You must enter fullscreen. Exiting fullscreen will end your attempt and disqualify you.</p>
+          <div style="display:flex;gap:12px;align-items:center;margin-top:12px">
+            <video id="consentCamPreview" autoplay muted playsinline></video>
+            <div style="flex:1">
+             
 
 
 
