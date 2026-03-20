@@ -94,7 +94,8 @@ $attempt_token = bin2hex(random_bytes(12));
             <button id="consentCancel" class="btn ghost" type="button">Cancel</button>
             <button id="consentStart" class="btn primary" type="button">Start exam (I consent)</button>
           </div>
-
+        </div>
+      </div>
 
   <script>
 
