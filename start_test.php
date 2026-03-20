@@ -98,6 +98,14 @@ $attempt_token = bin2hex(random_bytes(12));
       </div>
       <!-- floating camera preview shown during test -->
       <video id="camPreview" autoplay muted playsinline></video>
+      <!-- EXAM AREA (hidden until consent) -->
+      <div id="examArea" style="margin-top:16px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div><strong>Time left:</strong> <span id="timer" class="timer">--:--</span></div>
+          <div>
+            <button id="submitBtn" class="btn primary">Submit (Stop & Upload)</button>
+          </div>
+        </div>
 
 
 
