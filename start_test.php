@@ -78,6 +78,10 @@ $attempt_token = bin2hex(random_bytes(12));
       <h1><?=htmlspecialchars($tres['title'])?></h1>
       <div class="meta">Duration: <strong><?= (int)$duration ?> minutes</strong></div>
       <p class="muted">This test is proctored. You must allow camera & microphone and stay in fullscreen. Exiting fullscreen will disqualify you.</p>
+      <div id="consentOverlay" role="dialog" aria-modal="true">
+        <div id="consentBox">
+          <h2>Start proctored test</h2>
+          <p class="muted">We will record your camera and microphone for exam integrity. The browser will ask permission. You must enter fullscreen. Exiting fullscreen will end your attempt and disqualify you.</p>
 
 
 
