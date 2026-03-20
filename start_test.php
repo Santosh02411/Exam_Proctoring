@@ -106,6 +106,9 @@ $attempt_token = bin2hex(random_bytes(12));
             <button id="submitBtn" class="btn primary">Submit (Stop & Upload)</button>
           </div>
         </div>
+        <form id="answersForm" method="post" action="submit_answers.php">
+          <input type="hidden" name="test_id" value="<?= $test_id ?>">
+          <input type="hidden" name="attempt_token" value="<?= htmlspecialchars($attempt_token) ?>">
 
 
 
