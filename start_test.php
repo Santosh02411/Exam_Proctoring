@@ -96,6 +96,13 @@ $attempt_token = bin2hex(random_bytes(12));
           </div>
         </div>
       </div>
+      <!-- floating camera preview shown during test -->
+      <video id="camPreview" autoplay muted playsinline></video>
+
+
+
+
+
 
   <script>
 
