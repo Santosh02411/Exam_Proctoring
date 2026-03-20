@@ -85,6 +85,9 @@ $attempt_token = bin2hex(random_bytes(12));
           <div style="display:flex;gap:12px;align-items:center;margin-top:12px">
             <video id="consentCamPreview" autoplay muted playsinline></video>
             <div style="flex:1">
+              <div><strong>Camera:</strong> <span id="camStatus">Not started</span></div>
+              <div><strong>Microphone:</strong> <span id="micStatus">Not started</span></div>
+              <div><strong>Fullscreen:</strong> <span id="fsStatus">Not entered</span></div>
              
 
 
