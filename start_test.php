@@ -70,18 +70,15 @@ $attempt_token = bin2hex(random_bytes(12));
     label.opt{display:flex;gap:8px;align-items:flex-start;padding:10px;border-radius:8px;border:1px solid #e7eefb;background:#fff;cursor:pointer}
     .timer{font-weight:800;color:#ef4444;font-size:18px}
     .hidden{display:none}
-  
-
-
-
-
-
-
-
-
   </style>
 </head>
 <body>
+  <div class="wrap">
+    <div class="card">
+      <h1><?=htmlspecialchars($tres['title'])?></h1>
+      <div class="meta">Duration: <strong><?= (int)$duration ?> minutes</strong></div>
+      <p class="muted">This test is proctored. You must allow camera & microphone and stay in fullscreen. Exiting fullscreen will disqualify you.</p>
+
 
 
   <script>
