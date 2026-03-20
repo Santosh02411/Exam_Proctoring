@@ -88,7 +88,8 @@ $attempt_token = bin2hex(random_bytes(12));
               <div><strong>Camera:</strong> <span id="camStatus">Not started</span></div>
               <div><strong>Microphone:</strong> <span id="micStatus">Not started</span></div>
               <div><strong>Fullscreen:</strong> <span id="fsStatus">Not entered</span></div>
-             
+              </div>
+          </div>
 
 
 
