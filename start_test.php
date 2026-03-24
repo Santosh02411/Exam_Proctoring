@@ -158,6 +158,7 @@ let testEndAt = null;
 
 let examEnded = false;
 
+let terminateCalled = false;
 </script>
 
 
