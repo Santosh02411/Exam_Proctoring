@@ -152,6 +152,9 @@ const testId = document.querySelector('input[name="test_id"]').value;
 let sharedStream = null;
 let mediaRecorder = null;
 let isRecording = false;
+let timerInterval = null;
+let testDuration = <?= $duration ?> * 60; // seconds
+let testEndAt = null;
 
 
 
