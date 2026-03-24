@@ -155,9 +155,7 @@ let isRecording = false;
 let timerInterval = null;
 let testDuration = <?= $duration ?> * 60; // seconds
 let testEndAt = null;
-
 let examEnded = false;
-
 let terminateCalled = false;
 
 async function postJSON(url, obj) {
