@@ -112,6 +112,9 @@ $attempt_token = bin2hex(random_bytes(12));
           <div id="questionsWrap" style="margin-top:12px">
             <?php foreach($questions as $idx => $q): ?>
               <div class="qcard" data-qid="<?= (int)$q['id'] ?>" data-idx="<?= $idx ?>">
+                <div><strong>Q<?= $idx + 1 ?>.</strong></div>
+                <div style="margin-top:8px"><?= htmlspecialchars($q['question_text']) ?></div>
+                <div class="options" role="radiogroup">
 
 
 
