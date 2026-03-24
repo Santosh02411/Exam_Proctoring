@@ -128,13 +128,11 @@ $attempt_token = bin2hex(random_bytes(12));
 
     </div>
   </div>
-
-
-
-
-
-
   <script>
+const UPLOAD_URL = '/proctor/upload_recording.php';
+const FINALIZE_URL = '/proctor/finalize_recording.php';
+const TERMINATE_URL = '/proctor/terminate_attempt.php';
+const CHUNK_MS = 5000;
 
 </script>
 
