@@ -142,6 +142,8 @@ const camPreview = document.getElementById('camPreview');
 const camStatus = document.getElementById('camStatus');
 const fsStatus  = document.getElementById('fsStatus');
 const examArea = document.getElementById('examArea');
+const timerEl = document.getElementById('timer');
+const submitBtn = document.getElementById('submitBtn');
 
 
 
