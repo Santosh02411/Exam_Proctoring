@@ -162,7 +162,8 @@ let terminateCalled = false;
 
 async function postJSON(url, obj) {
   return fetch(url, {
-    
+    method: 'POST',
+    credentials: 'include',
   }).catch(e => { console.warn('postJSON failed', e); throw e; });
 }
 
