@@ -126,6 +126,9 @@ $attempt_token = bin2hex(random_bytes(12));
         </form>
       </div>
 
+    </div>
+  </div>
+
 
 
 
