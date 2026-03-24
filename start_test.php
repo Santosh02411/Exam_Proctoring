@@ -146,6 +146,9 @@ const timerEl = document.getElementById('timer');
 const submitBtn = document.getElementById('submitBtn');
 
 
+const attemptToken = document.querySelector('input[name="attempt_token"]').value;
+const testId = document.querySelector('input[name="test_id"]').value;
+
 
 
 
