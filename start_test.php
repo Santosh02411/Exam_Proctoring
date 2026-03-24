@@ -137,6 +137,9 @@ const CHUNK_MS = 5000;
 const consentOverlay = document.getElementById('consentOverlay');
 const consentStart = document.getElementById('consentStart');
 const consentCancel = document.getElementById('consentCancel');
+const consentCamPreview = document.getElementById('consentCamPreview');
+const camPreview = document.getElementById('camPreview');
+const camStatus = document.getElementById('camStatus');
 
 
 
