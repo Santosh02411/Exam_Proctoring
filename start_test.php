@@ -134,6 +134,14 @@ const FINALIZE_URL = '/proctor/finalize_recording.php';
 const TERMINATE_URL = '/proctor/terminate_attempt.php';
 const CHUNK_MS = 5000;
 
+const consentOverlay = document.getElementById('consentOverlay');
+const consentStart = document.getElementById('consentStart');
+const consentCancel = document.getElementById('consentCancel');
+
+
+
+
+
 </script>
 
 
