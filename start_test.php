@@ -156,7 +156,7 @@ let timerInterval = null;
 let testDuration = <?= $duration ?> * 60; // seconds
 let testEndAt = null;
 
-
+let examEnded = false;
 
 </script>
 
