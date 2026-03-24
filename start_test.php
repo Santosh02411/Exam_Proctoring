@@ -115,6 +115,10 @@ $attempt_token = bin2hex(random_bytes(12));
                 <div><strong>Q<?= $idx + 1 ?>.</strong></div>
                 <div style="margin-top:8px"><?= htmlspecialchars($q['question_text']) ?></div>
                 <div class="options" role="radiogroup">
+                  <label class="opt"><input type="radio" name="q_<?= (int)$q['id'] ?>" value="a"> <span>A — <?= htmlspecialchars($q['option_a']) ?></span></label>
+                  <label class="opt"><input type="radio" name="q_<?= (int)$q['id'] ?>" value="b"> <span>B — <?= htmlspecialchars($q['option_b']) ?></span></label>
+                  <label class="opt"><input type="radio" name="q_<?= (int)$q['id'] ?>" value="c"> <span>C — <?= htmlspecialchars($q['option_c']) ?></span></label>
+                  <label class="opt"><input type="radio" name="q_<?= (int)$q['id'] ?>" value="d"> <span>D — <?= htmlspecialchars($q['option_d']) ?></span></label>
 
 
 
