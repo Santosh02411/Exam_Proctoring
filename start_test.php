@@ -140,6 +140,8 @@ const consentCancel = document.getElementById('consentCancel');
 const consentCamPreview = document.getElementById('consentCamPreview');
 const camPreview = document.getElementById('camPreview');
 const camStatus = document.getElementById('camStatus');
+const fsStatus  = document.getElementById('fsStatus');
+const examArea = document.getElementById('examArea');
 
 
 
