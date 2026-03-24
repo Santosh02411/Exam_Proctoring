@@ -109,6 +109,9 @@ $attempt_token = bin2hex(random_bytes(12));
         <form id="answersForm" method="post" action="submit_answers.php">
           <input type="hidden" name="test_id" value="<?= $test_id ?>">
           <input type="hidden" name="attempt_token" value="<?= htmlspecialchars($attempt_token) ?>">
+          <div id="questionsWrap" style="margin-top:12px">
+            <?php foreach($questions as $idx => $q): ?>
+              <div class="qcard" data-qid="<?= (int)$q['id'] ?>" data-idx="<?= $idx ?>">
 
 
 
