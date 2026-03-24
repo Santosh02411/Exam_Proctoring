@@ -159,6 +159,15 @@ let testEndAt = null;
 let examEnded = false;
 
 let terminateCalled = false;
+
+async function postJSON(url, obj) {
+  return fetch(url, {
+    
+  }).catch(e => { console.warn('postJSON failed', e); throw e; });
+}
+
+
+
 </script>
 
 
