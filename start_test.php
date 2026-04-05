@@ -189,7 +189,10 @@ async function finalizeRecording(filename, duration_seconds) {
   fd.append('test_id', testId);
   fd.append('filename', filename);
   fd.append('duration_seconds', duration_seconds);
- 
+  try {
+    const res = await fetch(FINALIZE_URL, { method:'POST', body: fd, credentials: 'include' });
+    return res.json().catch(()=>({ok: res.ok}));
+  }
 }
 
 </script>
