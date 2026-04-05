@@ -187,7 +187,9 @@ async function finalizeRecording(filename, duration_seconds) {
   const fd = new FormData();
   fd.append('attempt_token', attemptToken);
   fd.append('test_id', testId);
-  
+  fd.append('filename', filename);
+  fd.append('duration_seconds', duration_seconds);
+ 
 }
 
 </script>
