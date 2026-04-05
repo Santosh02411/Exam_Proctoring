@@ -192,6 +192,8 @@ async function finalizeRecording(filename, duration_seconds) {
   try {
     const res = await fetch(FINALIZE_URL, { method:'POST', body: fd, credentials: 'include' });
     return res.json().catch(()=>({ok: res.ok}));
+  } catch(e) {
+    console.error('finalize error', e);
   }
 }
 
