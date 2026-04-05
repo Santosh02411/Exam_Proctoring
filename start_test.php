@@ -167,6 +167,11 @@ async function postJSON(url, obj) {
   }).catch(e => { console.warn('postJSON failed', e); throw e; });
 }
 
+async function uploadChunk(blob, index, isLast=0) {
+  const fd = new FormData();
+  fd.append('attempt_token', attemptToken);
+  
+}
 
 
 
