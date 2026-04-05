@@ -171,7 +171,13 @@ async function uploadChunk(blob, index, isLast=0) {
   const fd = new FormData();
   fd.append('attempt_token', attemptToken);
   fd.append('test_id', testId);
-  
+  fd.append('chunkIndex', index);
+  fd.append('isLast', isLast);
+  fd.append('chunk', blob, `chunk_${index}.webm`);
+  try {
+    const res = await fetch(UPLOAD_URL, { method:'POST', body: fd, credentials: 'include' });
+    return res.json().catch(()=>({ok: res.ok}));
+  }
 }
 
 
