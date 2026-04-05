@@ -183,7 +183,9 @@ async function uploadChunk(blob, index, isLast=0) {
   }
 }
 
+async function finalizeRecording(filename, duration_seconds) {
 
+}
 
 </script>
 
