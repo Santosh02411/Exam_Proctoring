@@ -184,7 +184,10 @@ async function uploadChunk(blob, index, isLast=0) {
 }
 
 async function finalizeRecording(filename, duration_seconds) {
-
+  const fd = new FormData();
+  fd.append('attempt_token', attemptToken);
+  fd.append('test_id', testId);
+  
 }
 
 </script>
