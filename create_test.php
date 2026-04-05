@@ -226,6 +226,7 @@ const pv_code = document.getElementById('pv_code');
     }
     return true; // allow submit
     }
+}
 </script>
 </body>
 </html>
