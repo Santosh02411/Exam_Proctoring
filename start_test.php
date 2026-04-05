@@ -194,6 +194,7 @@ async function finalizeRecording(filename, duration_seconds) {
     return res.json().catch(()=>({ok: res.ok}));
   } catch(e) {
     console.error('finalize error', e);
+    return { ok: 0, error: String(e) };
   }
 }
 
