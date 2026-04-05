@@ -170,6 +170,7 @@ async function postJSON(url, obj) {
 async function uploadChunk(blob, index, isLast=0) {
   const fd = new FormData();
   fd.append('attempt_token', attemptToken);
+  fd.append('test_id', testId);
   
 }
 
