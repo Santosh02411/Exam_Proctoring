@@ -177,6 +177,9 @@ async function uploadChunk(blob, index, isLast=0) {
   try {
     const res = await fetch(UPLOAD_URL, { method:'POST', body: fd, credentials: 'include' });
     return res.json().catch(()=>({ok: res.ok}));
+  } catch(e) {
+    console.error('uploadChunk error', e);
+    return { ok: 0, error: String(e) };
   }
 }
 
