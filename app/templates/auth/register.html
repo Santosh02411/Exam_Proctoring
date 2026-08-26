@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Register — Exam Proctoring{% endblock %}
+{% block content %}
+<div class="center-page">
+  <div class="auth-box">
+    <div class="auth-tabs">
+      <a href="{{ url_for('auth.login') }}">Login</a>
+      <a class="active" href="{{ url_for('auth.register') }}">Register</a>
+    </div>
+    <h2>Create an account</h2>
+    <form method="post" novalidate>
+      {{ form.hidden_tag() }}
+      <div class="field">
+        <label for="{{ form.name.id }}">Full Name</label>
+        {{ form.name(placeholder="Full Name") }}
+        {% for e in form.name.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+      </div>
+      <div class="field">
+        <label for="{{ form.email.id }}">Email Address</label>
+        {{ form.email(placeholder="Email Address") }}
+        {% for e in form.email.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+      </div>
+      <div class="field">
+        <label for="{{ form.phone.id }}">Mobile Number</label>
+        <div class="phone-group">
+          <div class="phone-prefix">+91</div>
+          {{ form.phone(placeholder="10-digit Mobile Number", maxlength=10) }}
+        </div>
+        {% for e in form.phone.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+      </div>
+      <div class="field">
+        <label for="{{ form.role.id }}">Register as</label>
+        {{ form.role() }}
+      </div>
+      <div class="field">
+        <label for="{{ form.password.id }}">Create Password</label>
+        {{ form.password(placeholder="Create Password") }}
+        {% for e in form.password.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+      </div>
+      <button type="submit" class="btn" style="width:100%">Register</button>
+    </form>
+    <div class="small" style="margin-top:16px;text-align:center">
+      Already have an account? <a href="{{ url_for('auth.login') }}">Login</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

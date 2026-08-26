@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Enroll Your Face{% endblock %}
+{% block head %}
+<script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+{% endblock %}
+{% block content %}
+<div class="center-page" style="max-width:560px">
+  <div class="card">
+    <h1 style="margin-top:0">Enroll your face</h1>
+    <p class="small">
+      This one-time step lets us verify it's really you at the start of — and periodically during —
+      any proctored test. Look straight at the camera in good lighting, then capture a reference photo.
+      Nothing but a numeric face signature is stored; the photo itself is never uploaded or saved.
+    </p>
+
+    <div style="display:flex;justify-content:center;margin:18px 0">
+      <video id="enrollVideo" autoplay muted playsinline style="width:280px;height:210px;background:#000;border-radius:12px;object-fit:cover"></video>
+    </div>
+
+    <div class="small" style="text-align:center;margin-bottom:14px">
+      Camera: <span id="camStatus">Starting…</span> · Model: <span id="modelStatus">Loading…</span>
+    </div>
+
+    <div id="captureMsg" class="small" style="text-align:center;min-height:18px"></div>
+
+    <div style="display:flex;justify-content:center;gap:10px;margin-top:10px">
+      <button id="captureBtn" class="btn" type="button" disabled>Capture Reference Photo</button>
+      <a class="btn ghost" href="{{ url_for('student.dashboard') }}">Back to My Tests</a>
+    </div>
+  </div>
+</div>
+
+<script>
+(async function () {
+  const video = document.getElementById('enrollVideo');
+  const camStatus = document.getElementById('camStatus');
+  const modelStatus = document.getElementById('modelStatus');
+  const captureBtn = document.getElementById('captureBtn');
+  const captureMsg = document.getElementById('captureMsg');
+
+  let stream = null;
+
+  async function initCamera() {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240 }, audio: false });
+      video.srcObject = stream;
+      camStatus.textContent = 'Ready';
+      maybeEnable();
+    } catch (e) {
+      camStatus.textContent = 'Permission denied.';
+    }
+  }
+
+  async function initModels() {
+    try {
+      const base = "{{ url_for('static', filename='models') }}";
+      await faceapi.nets.tinyFaceDetector.loadFromUri(base);
+      await faceapi.nets.faceLandmark68Net.loadFromUri(base);
+      await faceapi.nets.faceRecognitionNet.loadFromUri(base);
+      modelStatus.textContent = 'Ready';
+      maybeEnable();
+    } catch (e) {
+      modelStatus.textContent = 'Failed to load.';
+      console.error(e);
+    }
+  }
+
+  function maybeEnable() {
+    if (stream && faceapi.nets.tinyFaceDetector.isLoaded && faceapi.nets.faceRecognitionNet.isLoaded) {
+      captureBtn.disabled = false;
+    }
+  }
+
+  captureBtn.addEventListener('click', async () => {
+    captureBtn.disabled = true;
+    captureMsg.textContent = 'Analyzing…';
+    try {
+      const result = await faceapi
+        .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+        .withFaceLandmarks()
+        .withFaceDescriptor();
+
+      if (!result) {
+        captureMsg.textContent = 'No face detected — make sure your face is clearly visible and try again.';
+        captureBtn.disabled = false;
+        return;
+      }
+
+      const descriptor = Array.from(result.descriptor);
+      const res = await fetch("{{ url_for('proctoring.enroll_face') }}", {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ descriptor })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        captureMsg.textContent = 'Enrolled! Redirecting…';
+        setTimeout(() => { window.location.href = "{{ url_for('student.dashboard') }}"; }, 1200);
+      } else {
+        captureMsg.textContent = 'Something went wrong — please try again.';
+        captureBtn.disabled = false;
+      }
+    } catch (e) {
+      console.error(e);
+      captureMsg.textContent = 'Something went wrong — please try again.';
+      captureBtn.disabled = false;
+    }
+  });
+
+  initCamera();
+  initModels();
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{% block title %}Exam Proctoring{% endblock %}</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  {% block head %}{% endblock %}
+</head>
+<body>
+  {% if current_user.is_authenticated %}
+  <nav class="topnav">
+    <div class="topnav-inner">
+      <a class="brand" href="{{ url_for('index') }}">🛡️ Exam Proctoring</a>
+      <div class="nav-links">
+        {% if current_user.role == 'admin' %}
+          <a href="{{ url_for('admin.dashboard') }}">Dashboard</a>
+          <a href="{{ url_for('admin.manage_tests') }}">Manage Tests</a>
+          <a href="{{ url_for('admin.create_test') }}">+ New Test</a>
+          <a href="{{ url_for('admin.activity_log') }}">Activity Log</a>
+        {% else %}
+          <a href="{{ url_for('student.dashboard') }}">My Tests</a>
+          <a href="{{ url_for('student.enroll_face') }}">Enroll Face</a>
+        {% endif %}
+        <span class="nav-user">{{ current_user.name }} <span class="badge role">{{ current_user.role }}</span></span>
+        <a href="{{ url_for('auth.logout') }}" class="btn ghost small">Logout</a>
+      </div>
+    </div>
+  </nav>
+  {% endif %}
+
+  <main class="page">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flash-wrap">
+          {% for category, message in messages %}
+            <div class="flash flash-{{ category }}">{{ message }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Admin Dashboard{% endblock %}
+{% block content %}
+<h1>Admin Dashboard</h1>
+<div class="lead">Welcome back, {{ current_user.name }}.</div>
+
+<div class="kpi-row" style="margin-top:20px">
+  <div class="kpi"><div class="num">{{ tests|length }}</div><div class="label">Your Tests</div></div>
+  <div class="kpi"><div class="num">{{ total_students }}</div><div class="label">Students</div></div>
+  <div class="kpi"><div class="num">{{ total_attempts }}</div><div class="label">Attempts</div></div>
+</div>
+
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+    <h2 style="margin:0">Your Tests</h2>
+    <a class="btn" href="{{ url_for('admin.create_test') }}">+ New Test</a>
+  </div>
+  {% if tests %}
+  <table class="table">
+    <thead><tr><th>Title</th><th>Code</th><th>Status</th><th>Duration</th><th>Questions</th><th>Actions</th></tr></thead>
+    <tbody>
+      {% for t in tests %}
+      <tr>
+        <td style="font-weight:700">{{ t.title }}</td>
+        <td class="small">{{ t.test_code }}</td>
+        <td><span class="badge {{ t.status }}">{{ t.status|capitalize }}</span></td>
+        <td class="small">{{ t.duration_minutes }} min</td>
+        <td class="small">{{ t.questions|length }} / {{ t.total_questions }}</td>
+        <td class="actions">
+          <a class="btn ghost small" href="{{ url_for('admin.edit_test', test_id=t.id) }}">Edit</a>
+          <a class="btn ghost small" href="{{ url_for('admin.add_question', test_id=t.id) }}">Questions</a>
+          <a class="btn ghost small" href="{{ url_for('admin.view_results', test_id=t.id) }}">Results</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="small">No tests yet. <a href="{{ url_for('admin.create_test') }}">Create one</a> to get started.</div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Create Test{% endblock %}
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+  <div>
+    <a class="small" href="{{ url_for('admin.dashboard') }}">&larr; Back to dashboard</a>
+    <h1 style="margin-top:8px">Create New Test</h1>
+    <div class="lead">Define the test details — create, then add questions and assign students.</div>
+  </div>
+  <a class="btn ghost" href="{{ url_for('admin.manage_tests') }}">Manage Tests</a>
+</div>
+
+<div class="card">
+  <form method="post" novalidate onsubmit="return validateForm();" id="createTestForm">
+    {{ form.hidden_tag() }}
+    <div class="field">
+      <label for="{{ form.test_code.id }}">Test Code</label>
+      {{ form.test_code(placeholder="EXAM2025") }}
+      <div class="hint">A short unique code for the test (used internally).</div>
+      {% for e in form.test_code.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+    </div>
+    <div class="field">
+      <label for="{{ form.title.id }}">Title</label>
+      {{ form.title(placeholder="e.g. Introduction to AI") }}
+      {% for e in form.title.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+    </div>
+    <div class="field">
+      <label for="{{ form.description.id }}">Description</label>
+      {{ form.description(placeholder="Brief description or instructions (optional)") }}
+    </div>
+    <div class="row">
+      <div class="col field">
+        <label for="{{ form.duration_minutes.id }}">Duration (minutes)</label>
+        {{ form.duration_minutes() }}
+      </div>
+      <div class="col field">
+        <label for="{{ form.total_questions.id }}">Total Questions</label>
+        {{ form.total_questions() }}
+      </div>
+    </div>
+    <div class="row">
+      <div class="col field">
+        <label for="{{ form.passing_marks.id }}">Passing Marks</label>
+        {{ form.passing_marks() }}
+      </div>
+      <div class="col field">
+        <label for="{{ form.status.id }}">Status</label>
+        {{ form.status() }}
+      </div>
+    </div>
+    <div class="row">
+      <div class="col field">
+        <label for="{{ form.start_time.id }}">Start time (optional)</label>
+        {{ form.start_time() }}
+      </div>
+      <div class="col field">
+        <label for="{{ form.end_time.id }}">End time (optional)</label>
+        {{ form.end_time() }}
+      </div>
+    </div>
+    <div class="row">
+      <div class="col field">
+        <label for="{{ form.max_attempts.id }}">Max attempts per student</label>
+        {{ form.max_attempts() }}
+      </div>
+      <div class="col field">
+        <label for="{{ form.negative_marks_per_wrong.id }}">Negative marks per wrong answer</label>
+        {{ form.negative_marks_per_wrong() }}
+        <div class="hint">0 disables negative marking.</div>
+      </div>
+    </div>
+    <div class="field">
+      <label class="opt" style="display:flex;align-items:center;gap:8px">
+        {{ form.randomize_questions() }} <span>Shuffle question &amp; option order per student</span>
+      </label>
+    </div>
+    <div class="field">
+      <label class="opt" style="display:flex;align-items:center;gap:8px">
+        {{ form.allow_review() }} <span>Let students review answers after submitting</span>
+      </label>
+    </div>
+    <button type="submit" class="btn">Create Test</button>
+  </form>
+</div>
+<script>
+function validateForm(){
+  const st = document.getElementById('{{ form.start_time.id }}').value;
+  const en = document.getElementById('{{ form.end_time.id }}').value;
+  if (st && en && new Date(st) >= new Date(en)) {
+    alert('End time must be after start time.');
+    return false;
+  }
+  return true;
+}
+</script>
+{% endblock %}

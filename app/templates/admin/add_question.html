@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}Add Question — {{ test.title }}{% endblock %}
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+  <div>
+    <a class="small" href="{{ url_for('admin.dashboard') }}">&larr; Dashboard</a>
+    <h1 style="margin-top:8px">Add Question</h1>
+    <div class="lead">Test: <strong>{{ test.title }}</strong> ({{ test.test_code }}) — {{ test.questions|length }} / {{ test.total_questions }} questions added</div>
+  </div>
+  <div class="actions">
+    <a class="btn ghost" href="{{ url_for('admin.view_test', test_id=test.id) }}">View Test</a>
+    <a class="btn" href="{{ url_for('admin.edit_test', test_id=test.id) }}">Edit Test</a>
+  </div>
+</div>
+
+<div class="wrap" style="grid-template-columns:1fr 340px;display:grid">
+  <div class="card">
+    <form method="post" novalidate id="qForm" onsubmit="return validateAndSubmit();">
+      {{ form.hidden_tag() }}
+      <div class="field">
+        <label for="{{ form.question_text.id }}">Question text</label>
+        {{ form.question_text(placeholder="Write the question here...") }}
+      </div>
+      <div class="row">
+        <div class="col field">
+          <label for="{{ form.option_a.id }}">Option A</label>
+          {{ form.option_a() }}
+        </div>
+        <div class="col field">
+          <label for="{{ form.option_b.id }}">Option B</label>
+          {{ form.option_b() }}
+        </div>
+      </div>
+      <div class="row">
+        <div class="col field">
+          <label for="{{ form.option_c.id }}">Option C</label>
+          {{ form.option_c() }}
+        </div>
+        <div class="col field">
+          <label for="{{ form.option_d.id }}">Option D</label>
+          {{ form.option_d() }}
+        </div>
+      </div>
+      <div class="row">
+        <div class="col field">
+          <label for="{{ form.correct_answer.id }}">Correct answer</label>
+          {{ form.correct_answer() }}
+        </div>
+        <div class="col field">
+          <label for="{{ form.marks.id }}">Marks</label>
+          {{ form.marks() }}
+        </div>
+      </div>
+      <div class="actions">
+        <button type="submit" class="btn">Add Question</button>
+        <a class="btn ghost" href="{{ url_for('admin.view_test', test_id=test.id) }}">Done</a>
+      </div>
+    </form>
+  </div>
+
+  <aside class="wrap">
+    <div class="card">
+      <h4 style="margin:0 0 8px 0">Questions so far</h4>
+      {% if test.questions %}
+      <ol style="padding-left:18px;margin:0">
+        {% for q in test.questions %}
+        <li class="small" style="margin-bottom:10px">
+          {{ q.question_text[:70] }}{% if q.question_text|length > 70 %}…{% endif %}
+          <br>
+          <span class="muted">Correct: {{ q.correct_answer|upper }} · {{ q.marks }} mark(s)</span>
+          <form class="inline" method="post" action="{{ url_for('admin.delete_question', test_id=test.id, question_id=q.id) }}"
+                onsubmit="return confirm('Remove this question?');">
+            <button type="submit" class="btn danger ghost small" style="margin-left:6px">Remove</button>
+          </form>
+        </li>
+        {% endfor %}
+      </ol>
+      {% else %}
+      <div class="small muted">No questions added yet.</div>
+      {% endif %}
+    </div>
+    <div class="card">
+      <h4 style="margin:0 0 8px 0">Tips</h4>
+      <p class="small" style="margin:0">
+        • Keep the question short and clear.<br>
+        • Ensure only one correct option is selected.<br>
+        • Marks default to 1 — adjust for weighted questions.
+      </p>
+    </div>
+    <div class="card">
+      <h4 style="margin:0 0 8px 0">Bulk import (CSV)</h4>
+      <p class="small">
+        Columns: <code>question_text, option_a, option_b, option_c, option_d, correct_answer, marks</code>
+        (<code>marks</code> optional, defaults to 1; <code>correct_answer</code> is a/b/c/d).
+      </p>
+      <form method="post" action="{{ url_for('admin.import_questions', test_id=test.id) }}" enctype="multipart/form-data">
+        {{ import_form.hidden_tag() }}
+        {{ import_form.csv_file() }}
+        {% for e in import_form.csv_file.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+        <button type="submit" class="btn ghost small" style="margin-top:8px">Import CSV</button>
+      </form>
+    </div>
+  </aside>
+</div>
+<script>
+function validateAndSubmit(){
+  const q = document.getElementById('{{ form.question_text.id }}');
+  if (!q.value.trim()){ alert('Please enter the question text.'); q.focus(); return false; }
+  return true;
+}
+</script>
+{% endblock %}

@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}{{ test.title }} — Proctored Test{% endblock %}
+{% block head %}
+<script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+{% endblock %}
+{% block content %}
+
+<div id="consentOverlay" role="dialog" aria-modal="true">
+  <div id="consentBox">
+    <h2>Start proctored test</h2>
+    <p class="muted">
+      This test is proctored. Your camera and microphone will be monitored throughout the exam —
+      video and audio are analyzed locally in your browser, and the session is also recorded for
+      admin review. Your identity will be verified against your enrolled reference photo before you
+      begin and periodically throughout. You must stay in fullscreen; leaving fullscreen, switching
+      tabs, having no face / multiple faces visible, or an identity mismatch will be logged and can
+      end your attempt after repeated warnings.
+    </p>
+    <div style="display:flex;gap:16px;align-items:center;margin-top:14px">
+      <video id="consentCamPreview" autoplay muted playsinline></video>
+      <div style="flex:1">
+        <div><strong>Camera / mic:</strong> <span id="camStatus">Not started</span></div>
+        <div><strong>Face model:</strong> <span id="modelStatus">Loading…</span></div>
+        <div><strong>Identity check:</strong> <span id="identityStatus">Waiting…</span></div>
+        <div><strong>Fullscreen:</strong> <span id="fsStatus">Not entered</span></div>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:20px">
+      <a href="{{ url_for('student.dashboard') }}" class="btn ghost">Cancel</a>
+      <button id="verifyIdentityBtn" class="btn ghost" type="button" disabled>Verify My Identity</button>
+      <button id="consentStart" class="btn" type="button" disabled>Start exam (I consent)</button>
+    </div>
+  </div>
+</div>
+
+<video id="camPreview" autoplay muted playsinline></video>
+
+<div id="examArea">
+  <div class="sticky-exam-header">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+      <div>
+        <h1 style="margin:0">{{ test.title }}</h1>
+        <div class="small muted">{{ test.description or '' }}</div>
+      </div>
+      <div style="display:flex;gap:14px;align-items:center">
+        <div class="status-pill"><span id="proctorDot" class="status-dot"></span> <span id="proctorStatusText">Monitoring</span></div>
+        <div>Time left: <span id="timer" class="timer">--:--</span></div>
+        <button id="submitBtn" class="btn">Submit Test</button>
+      </div>
+    </div>
+    {% if extra_time_minutes %}
+    <div class="small muted" style="margin-top:6px">Includes {{ extra_time_minutes }} extra minute(s) of accommodation time.</div>
+    {% endif %}
+    <div id="violationBanner" class="violation-banner" style="display:none;margin-top:10px"></div>
+  </div>
+
+  <form id="answersForm">
+    {% for q in questions %}
+    <div class="qcard" data-qid="{{ q.id }}">
+      <div><strong>Q{{ loop.index }}.</strong> {{ q.question_text }}</div>
+      <div class="options" role="radiogroup">
+        {% set opts = {'a': q.option_a, 'b': q.option_b, 'c': q.option_c, 'd': q.option_d} %}
+        {% for key in option_order_by_qid[q.id] %}
+        <label class="opt"><input type="radio" name="q_{{ q.id }}" value="{{ key }}"> <span>{{ opts[key] }}</span></label>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </form>
+</div>
+
+<script>
+  window.EXAM_CONFIG = {
+    attemptId: {{ attempt.id }},
+    testId: {{ test.id }},
+    durationSeconds: {{ duration_seconds }},
+    eventUrl: "{{ url_for('proctoring.log_event') }}",
+    snapshotUrl: "{{ url_for('proctoring.check_snapshot') }}",
+    submitUrl: "{{ url_for('student.submit_answers', attempt_id=attempt.id) }}",
+    recordingChunkUrl: "{{ url_for('proctoring.upload_recording_chunk') }}",
+    modelsUrl: "{{ url_for('static', filename='models') }}",
+    referenceDescriptor: {{ reference_descriptor | tojson }},
+    faceMatchThreshold: {{ config.FACE_MATCH_THRESHOLD }}
+  };
+</script>
+<script src="{{ url_for('static', filename='js/proctor.js') }}"></script>
+{% endblock %}

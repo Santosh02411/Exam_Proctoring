@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Review — {{ test.title }}{% endblock %}
+{% block content %}
+<div style="margin-bottom:16px">
+  <a class="small" href="{{ url_for('student.result', attempt_id=attempt.id) }}">&larr; Back to result</a>
+  <h1 style="margin-top:8px">Review — {{ test.title }}</h1>
+  <div class="lead">
+    Score: {{ attempt.score }} / {{ test.total_marks() }}
+    {% if test.negative_marks_per_wrong %}
+      <span class="small muted">(negative marking: -{{ test.negative_marks_per_wrong }} per wrong answer)</span>
+    {% endif %}
+  </div>
+</div>
+
+{% for row in rows %}
+{% set q = row.question %}
+{% set a = row.answer %}
+<div class="qcard">
+  <div><strong>Q{{ loop.index }}.</strong> {{ q.question_text }}</div>
+  <div class="options" style="grid-template-columns:1fr 1fr">
+    {% for key, text in [('a', q.option_a), ('b', q.option_b), ('c', q.option_c), ('d', q.option_d)] %}
+      {% set css = 'correct' if key == q.correct_answer else ('opt-wrong' if a and a.selected_option == key else '') %}
+      <div class="opt {{ css }}">
+        {{ text }}
+        {% if key == q.correct_answer %} <span class="small">(correct)</span>{% endif %}
+        {% if a and a.selected_option == key and key != q.correct_answer %} <span class="small">(your answer)</span>{% endif %}
+        {% if a and a.selected_option == key and key == q.correct_answer %} <span class="small">(your answer)</span>{% endif %}
+      </div>
+    {% endfor %}
+  </div>
+  <div class="small" style="margin-top:8px">
+    {% if not a or not a.selected_option %}
+      <span class="badge fail">Not answered</span>
+    {% elif a.selected_option == q.correct_answer %}
+      <span class="badge pass">Correct</span> (+{{ q.marks }})
+    {% else %}
+      <span class="badge fail">Incorrect</span>
+      {% if test.negative_marks_per_wrong %}(-{{ test.negative_marks_per_wrong }}){% endif %}
+    {% endif %}
+  </div>
+</div>
+{% endfor %}
+{% endblock %}

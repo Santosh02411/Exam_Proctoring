@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Login — Exam Proctoring{% endblock %}
+{% block content %}
+<div class="center-page">
+  <div class="auth-box">
+    <div class="auth-tabs">
+      <a class="active" href="{{ url_for('auth.login') }}">Login</a>
+      <a href="{{ url_for('auth.register') }}">Register</a>
+    </div>
+    <h2>Welcome back</h2>
+    <form method="post" novalidate>
+      {{ form.hidden_tag() }}
+      <div class="field">
+        <label for="{{ form.email.id }}">Email</label>
+        {{ form.email(placeholder="Enter Email") }}
+        {% for e in form.email.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+      </div>
+      <div class="field">
+        <label for="{{ form.password.id }}">Password</label>
+        {{ form.password(placeholder="Enter Password") }}
+        {% for e in form.password.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+      </div>
+      <div class="field">
+        <label for="{{ form.captcha_answer.id }}">Quick check: {{ captcha_question }}</label>
+        {{ form.captcha_answer(placeholder="Your answer", autocomplete="off") }}
+        {% for e in form.captcha_answer.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+      </div>
+      <button type="submit" class="btn" style="width:100%">Login</button>
+    </form>
+
+    {% if unverified_email %}
+    <form method="post" action="{{ url_for('auth.resend_verification') }}" style="margin-top:12px;text-align:center">
+      <input type="hidden" name="email" value="{{ unverified_email }}">
+      <button type="submit" class="btn ghost small">Resend verification email</button>
+    </form>
+    {% endif %}
+
+    <div class="small" style="margin-top:16px;text-align:center">
+      New here? <a href="{{ url_for('auth.register') }}">Register</a>
+      &nbsp;·&nbsp;
+      <a href="{{ url_for('auth.forgot_password') }}">Forgot password?</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

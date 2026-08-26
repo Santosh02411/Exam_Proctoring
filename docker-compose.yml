@@ -1,0 +1,22 @@
+services:
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - SECRET_KEY=${SECRET_KEY:-change-this-in-production}
+      - DATABASE_URL=${DATABASE_URL:-}
+      - MAX_VIOLATIONS=${MAX_VIOLATIONS:-5}
+      - FACE_MATCH_THRESHOLD=${FACE_MATCH_THRESHOLD:-0.6}
+      - MAIL_SERVER=${MAIL_SERVER:-}
+      - MAIL_PORT=${MAIL_PORT:-587}
+      - MAIL_USE_TLS=${MAIL_USE_TLS:-true}
+      - MAIL_USERNAME=${MAIL_USERNAME:-}
+      - MAIL_PASSWORD=${MAIL_PASSWORD:-}
+      - MAIL_SENDER=${MAIL_SENDER:-no-reply@exam-proctoring.local}
+    volumes:
+      # Persist the SQLite DB, recordings, and snapshots across container restarts.
+      - exam_instance:/app/instance
+
+volumes:
+  exam_instance:

@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Result — {{ test.title }}{% endblock %}
+{% block content %}
+<div class="center-page" style="max-width:560px">
+  <div class="card" style="text-align:center">
+    <h1>{{ test.title }}</h1>
+    {% if attempt.status == 'terminated' %}
+      <div class="violation-banner" style="margin-top:14px">
+        Your attempt was terminated: {{ attempt.termination_reason }}
+      </div>
+    {% else %}
+      <div style="font-size:42px;font-weight:800;margin:18px 0;color:{{ 'var(--success)' if passed else 'var(--danger)' }}">
+        {{ attempt.score }} / {{ total_marks }}
+      </div>
+      <div class="badge {{ 'pass' if passed else 'fail' }}" style="font-size:14px;padding:8px 16px">
+        {{ 'PASSED' if passed else 'NOT PASSED' }}
+      </div>
+      <div class="small" style="margin-top:10px">Passing marks required: {{ test.passing_marks }}</div>
+    {% endif %}
+    <div class="small" style="margin-top:16px">Proctoring violations recorded: {{ attempt.violation_count }}</div>
+    <div style="margin-top:24px;display:flex;gap:8px;justify-content:center">
+      {% if test.allow_review and attempt.status != 'in_progress' %}
+      <a class="btn ghost" href="{{ url_for('student.review', attempt_id=attempt.id) }}">Review Answers</a>
+      {% endif %}
+      <a class="btn" href="{{ url_for('student.dashboard') }}">Back to My Tests</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

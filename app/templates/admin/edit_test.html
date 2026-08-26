@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}Edit Test{% endblock %}
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+  <div>
+    <a class="small" href="{{ url_for('admin.manage_tests') }}">&larr; Back to tests</a>
+    <h1 style="margin-top:8px">Edit Test</h1>
+    <div class="small">Test code: <strong>{{ test.test_code }}</strong></div>
+  </div>
+  <div class="actions">
+    <a class="btn ghost" href="{{ url_for('admin.add_question', test_id=test.id) }}">Add Questions</a>
+    <a class="btn" href="{{ url_for('admin.view_test', test_id=test.id) }}">View Test</a>
+  </div>
+</div>
+
+<div class="wrap" style="grid-template-columns:1fr 300px;display:grid">
+  <div class="card">
+    <form method="post" novalidate onsubmit="return validateForm();">
+      {{ form.hidden_tag() }}
+      <div class="field">
+        <label for="{{ form.test_code.id }}">Test Code</label>
+        {{ form.test_code() }}
+      </div>
+      <div class="field">
+        <label for="{{ form.title.id }}">Title</label>
+        {{ form.title() }}
+      </div>
+      <div class="field">
+        <label for="{{ form.description.id }}">Description</label>
+        {{ form.description() }}
+      </div>
+      <div class="row">
+        <div class="col field">
+          <label for="{{ form.duration_minutes.id }}">Duration (minutes)</label>
+          {{ form.duration_minutes() }}
+        </div>
+        <div class="col field">
+          <label for="{{ form.total_questions.id }}">Total questions</label>
+          {{ form.total_questions() }}
+        </div>
+      </div>
+      <div class="row">
+        <div class="col field">
+          <label for="{{ form.passing_marks.id }}">Passing marks</label>
+          {{ form.passing_marks() }}
+        </div>
+        <div class="col field">
+          <label for="{{ form.status.id }}">Status</label>
+          {{ form.status() }}
+        </div>
+      </div>
+      <div class="row">
+        <div class="col field">
+          <label for="{{ form.start_time.id }}">Start time (optional)</label>
+          {{ form.start_time() }}
+        </div>
+        <div class="col field">
+          <label for="{{ form.end_time.id }}">End time (optional)</label>
+          {{ form.end_time() }}
+        </div>
+      </div>
+      <div class="row">
+        <div class="col field">
+          <label for="{{ form.max_attempts.id }}">Max attempts per student</label>
+          {{ form.max_attempts() }}
+        </div>
+        <div class="col field">
+          <label for="{{ form.negative_marks_per_wrong.id }}">Negative marks per wrong answer</label>
+          {{ form.negative_marks_per_wrong() }}
+        </div>
+      </div>
+      <div class="field">
+        <label class="opt" style="display:flex;align-items:center;gap:8px">
+          {{ form.randomize_questions() }} <span>Shuffle question &amp; option order per student</span>
+        </label>
+      </div>
+      <div class="field">
+        <label class="opt" style="display:flex;align-items:center;gap:8px">
+          {{ form.allow_review() }} <span>Let students review answers after submitting</span>
+        </label>
+      </div>
+      <button type="submit" class="btn">Save Changes</button>
+      <a href="{{ url_for('admin.view_test', test_id=test.id) }}" class="btn ghost">Cancel</a>
+    </form>
+  </div>
+  <aside class="wrap">
+    <div class="card">
+      <h4 style="margin:0 0 8px 0">Test Summary</h4>
+      <div class="small">Code: <strong>{{ test.test_code }}</strong></div>
+      <div class="small">Created at: <strong>{{ test.created_at.strftime('%Y-%m-%d %H:%M') }}</strong></div>
+      <div class="small">Created by: <strong>{{ test.creator.name }}</strong></div>
+    </div>
+    <div class="card">
+      <h4 style="margin:0 0 8px 0">Danger zone</h4>
+      <form method="post" action="{{ url_for('admin.delete_test', test_id=test.id) }}"
+            onsubmit="return confirm('Delete this test? This action cannot be undone.');">
+        <button type="submit" class="btn danger ghost">Delete Test</button>
+      </form>
+    </div>
+  </aside>
+</div>
+<script>
+function validateForm(){
+  const st = document.getElementById('{{ form.start_time.id }}').value;
+  const en = document.getElementById('{{ form.end_time.id }}').value;
+  if (st && en && new Date(st) >= new Date(en)) {
+    alert('End time must be after start time.');
+    return false;
+  }
+  return true;
+}
+</script>
+{% endblock %}

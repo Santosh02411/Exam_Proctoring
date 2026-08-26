@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}My Tests{% endblock %}
+{% block content %}
+<h1>My Tests</h1>
+<div class="lead">Welcome, {{ current_user.name }}. Here are the tests assigned to you.</div>
+
+{% if not current_user.face_descriptor %}
+<div class="card" style="margin-top:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+  <div>
+    <strong>Identity verification not set up.</strong>
+    <div class="small muted">Enroll your face once so we can verify it's you before and during proctored tests.</div>
+  </div>
+  <a class="btn" href="{{ url_for('student.enroll_face') }}">Enroll Face</a>
+</div>
+{% endif %}
+
+<div class="card" style="margin-top:18px">
+  {% if rows %}
+  <table class="table">
+    <thead><tr><th>Test</th><th>Duration</th><th>Status</th><th>Attempts</th><th>Result</th><th></th></tr></thead>
+    <tbody>
+      {% for row in rows %}
+      {% set test = row.test %}
+      {% set attempt = row.attempt %}
+      <tr>
+        <td style="font-weight:700">{{ test.title }}<br><span class="small muted">{{ test.description or '' }}</span></td>
+        <td class="small">{{ test.duration_minutes }} min{% if row.eligibility.extra_time_minutes %} (+{{ row.eligibility.extra_time_minutes }} extra){% endif %}</td>
+        <td>
+          {% if test.status != 'published' %}
+            <span class="badge draft">Not yet published</span>
+          {% elif not test.is_open_now() %}
+            <span class="badge draft">Closed / Not open yet</span>
+          {% elif attempt and attempt.status == 'in_progress' %}
+            <span class="badge in_progress">In progress</span>
+          {% elif row.attempts_left > 0 %}
+            <span class="badge published">Available</span>
+          {% else %}
+            <span class="badge {{ attempt.status if attempt else 'draft' }}">{{ attempt.status|capitalize if attempt else 'Done' }}</span>
+          {% endif %}
+        </td>
+        <td class="small">{{ row.completed_count }} / {{ test.max_attempts }} used</td>
+        <td class="small">
+          {% if attempt and attempt.score is not none %}
+            {{ attempt.score }} / {{ test.total_marks() }}
+            {% if attempt.score >= test.passing_marks %}<span class="badge pass">Pass</span>{% else %}<span class="badge fail">Fail</span>{% endif %}
+          {% else %}—{% endif %}
+        </td>
+        <td class="actions">
+          {% if attempt and attempt.status == 'in_progress' %}
+            <a class="btn small" href="{{ url_for('student.start_test', test_id=test.id) }}">Resume Test</a>
+          {% elif test.status == 'published' and test.is_open_now() and row.attempts_left > 0 %}
+            <a class="btn small" href="{{ url_for('student.start_test', test_id=test.id) }}">{{ 'Retake Test' if row.completed_count > 0 else 'Start Test' }}</a>
+          {% endif %}
+          {% if attempt and attempt.status in ['submitted', 'terminated'] %}
+            <a class="btn ghost small" href="{{ url_for('student.result', attempt_id=attempt.id) }}">View Result</a>
+          {% endif %}
+          {% if not attempt and not (test.status == 'published' and test.is_open_now()) %}
+            <button class="btn small" disabled>Unavailable</button>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="small">No tests have been assigned to you yet.</div>
+  {% endif %}
+</div>
+{% endblock %}

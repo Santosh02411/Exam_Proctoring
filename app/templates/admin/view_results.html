@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% from "_pagination.html" import render_pagination %}
+{% block title %}Results — {{ test.title }}{% endblock %}
+{% block content %}
+<div style="margin-bottom:16px">
+  <a class="small" href="{{ url_for('admin.view_test', test_id=test.id) }}">&larr; Back to test</a>
+  <h1 style="margin-top:8px">Results — {{ test.title }}</h1>
+  <div class="lead">Passing marks: {{ test.passing_marks }} / {{ test.total_marks() }}</div>
+</div>
+
+<div class="card">
+  {% if attempts %}
+  <table class="table">
+    <thead><tr><th>Student</th><th>Status</th><th>Score</th><th>Violations</th><th>Started</th><th>Submitted</th><th></th></tr></thead>
+    <tbody>
+      {% for a in attempts %}
+      <tr>
+        <td style="font-weight:700">{{ a.student.name }}<br><span class="small muted">{{ a.student.email }}</span></td>
+        <td><span class="badge {{ a.status }}">{{ a.status|replace('_',' ')|capitalize }}</span></td>
+        <td>
+          {% if a.score is not none %}
+            {{ a.score }} / {{ test.total_marks() }}
+            {% if a.score >= test.passing_marks %}<span class="badge pass">Pass</span>{% else %}<span class="badge fail">Fail</span>{% endif %}
+          {% else %}—{% endif %}
+        </td>
+        <td>{{ a.violation_count }}</td>
+        <td class="small">{{ a.started_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td class="small">{{ a.submitted_at.strftime('%Y-%m-%d %H:%M') if a.submitted_at else '—' }}</td>
+        <td><a class="btn ghost small" href="{{ url_for('admin.view_attempt', attempt_id=a.id) }}">Details</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="small">No attempts yet.</div>
+  {% endif %}
+  {{ render_pagination(pagination, 'admin.view_results', {'test_id': test.id}) }}
+</div>
+{% endblock %}

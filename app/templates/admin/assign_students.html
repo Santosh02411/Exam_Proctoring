@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Assign Students — {{ test.title }}{% endblock %}
+{% block content %}
+<div style="margin-bottom:16px">
+  <a class="small" href="{{ url_for('admin.view_test', test_id=test.id) }}">&larr; Back to test</a>
+  <h1 style="margin-top:8px">Assign Students</h1>
+  <div class="lead">{{ test.title }} ({{ test.test_code }})</div>
+</div>
+
+<div class="wrap" style="grid-template-columns:1fr 1fr;display:grid">
+  <div class="card">
+    <h2>Add students</h2>
+    <form method="post">
+      {% if students %}
+      <div style="max-height:340px;overflow:auto">
+        {% for s in students %}
+          {% if s.id not in assigned %}
+          <label class="opt" style="margin-bottom:8px">
+            <input type="checkbox" name="student_ids" value="{{ s.id }}">
+            <span>{{ s.name }} <span class="muted small">({{ s.email }})</span></span>
+          </label>
+          {% endif %}
+        {% endfor %}
+      </div>
+      <div class="field" style="margin-top:14px">
+        <label for="extra_time_minutes">Extra time (minutes) — accessibility accommodation</label>
+        <input type="number" id="extra_time_minutes" name="extra_time_minutes" min="0" value="0" style="max-width:140px">
+        <div class="hint">Applied to everyone selected above; adjust per-student later if needed.</div>
+      </div>
+      <label class="opt" style="display:flex;align-items:center;gap:8px;margin-top:10px">
+        <input type="checkbox" name="notify" checked> <span>Email selected students that this test was assigned</span>
+      </label>
+      <button type="submit" class="btn" style="margin-top:12px">Assign Selected</button>
+      {% else %}
+      <div class="small">No students registered yet.</div>
+      {% endif %}
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Currently assigned ({{ assigned|length }})</h2>
+    {% if students %}
+    {% for s in students %}
+      {% if s.id in assigned %}
+      <div class="opt" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px">
+        <span>{{ s.name }} <span class="muted small">({{ s.email }})</span>
+          {% if assigned[s.id].extra_time_minutes %}<span class="badge draft">+{{ assigned[s.id].extra_time_minutes }} min</span>{% endif %}
+        </span>
+        <form method="post" action="{{ url_for('admin.unassign_student', test_id=test.id, student_id=s.id) }}">
+          <button type="submit" class="btn danger ghost small">Remove</button>
+        </form>
+      </div>
+      {% endif %}
+    {% endfor %}
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

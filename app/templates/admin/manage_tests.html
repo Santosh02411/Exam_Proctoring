@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% from "_pagination.html" import render_pagination %}
+{% block title %}Manage Tests{% endblock %}
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+  <div>
+    <a class="small" href="{{ url_for('admin.dashboard') }}">&larr; Dashboard</a>
+    <h1 style="margin-top:8px">{{ 'My Tests' if mine_only else 'All Tests (all admins)' }}</h1>
+    <div class="small">
+      Create, edit, duplicate or delete tests ·
+      {% if mine_only %}
+        <a href="{{ url_for('admin.manage_tests') }}">Show all admins' tests</a>
+      {% else %}
+        <a href="{{ url_for('admin.manage_tests', mine=1) }}">Show only my tests</a>
+      {% endif %}
+    </div>
+  </div>
+  <a class="btn" href="{{ url_for('admin.create_test') }}">+ New Test</a>
+</div>
+
+<div class="card">
+  {% if tests %}
+  <table class="table">
+    <thead>
+      <tr><th>#</th><th>Title</th><th>Code</th><th>Created by</th><th>Duration</th><th>Qs</th><th>Passing</th><th>Status</th><th>Created</th><th>Actions</th></tr>
+    </thead>
+    <tbody>
+      {% for t in tests %}
+      <tr>
+        <td>{{ loop.index + (pagination.page - 1) * pagination.per_page }}</td>
+        <td style="font-weight:800">{{ t.title }}</td>
+        <td class="small">{{ t.test_code }}</td>
+        <td class="small">{{ t.creator.name }}{% if t.created_by == current_user.id %} <span class="small muted">(you)</span>{% endif %}</td>
+        <td class="small">{{ t.duration_minutes }} min</td>
+        <td class="small">{{ t.questions|length }}</td>
+        <td class="small">{{ t.passing_marks }}</td>
+        <td>
+          {% if t.status == 'published' %}
+            <span class="badge published">Published</span>
+          {% else %}
+            <span class="badge draft">Draft</span>
+          {% endif %}
+        </td>
+        <td class="small">{{ t.created_at.strftime('%Y-%m-%d') }}</td>
+        <td>
+          <div class="actions">
+            <a class="btn ghost small" href="{{ url_for('admin.edit_test', test_id=t.id) }}">Edit</a>
+            <a class="btn ghost small" href="{{ url_for('admin.assign_students', test_id=t.id) }}">Assign</a>
+            <a class="btn ghost small" href="{{ url_for('admin.view_results', test_id=t.id) }}">Results</a>
+
+            <form class="inline" method="post" action="{{ url_for('admin.duplicate_test', test_id=t.id) }}"
+                  onsubmit="return confirm('Duplicate this test (questions will not be copied)?');">
+              <button type="submit" class="btn ghost small">Duplicate</button>
+            </form>
+
+            <form class="inline" method="post" action="{{ url_for('admin.toggle_test', test_id=t.id) }}"
+                  onsubmit="return confirm('Toggle publish/draft for this test?');">
+              <button type="submit" class="btn ghost small">{{ 'Unpublish' if t.status == 'published' else 'Publish' }}</button>
+            </form>
+
+            <form class="inline" method="post" action="{{ url_for('admin.delete_test', test_id=t.id) }}"
+                  onsubmit="return confirm('Delete this test? This cannot be undone.');">
+              <button type="submit" class="btn danger ghost small">Delete</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {{ render_pagination(pagination, 'admin.manage_tests', {'mine': 1 if mine_only else 0}) }}
+  {% else %}
+  <div class="small">No tests yet. Create one to get started.</div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Attempt Detail{% endblock %}
+{% block content %}
+<div style="margin-bottom:16px">
+  <a class="small" href="{{ url_for('admin.view_results', test_id=attempt.test_id) }}">&larr; Back to results</a>
+  <h1 style="margin-top:8px">{{ attempt.student.name }} — {{ attempt.test.title }}</h1>
+  <div class="lead">
+    <span class="badge {{ attempt.status }}">{{ attempt.status|replace('_',' ')|capitalize }}</span>
+    {% if attempt.score is not none %} · Score: {{ attempt.score }} / {{ attempt.test.total_marks() }}{% endif %}
+    · Violations: {{ attempt.violation_count }}
+  </div>
+  {% if attempt.termination_reason %}
+  <div class="violation-banner" style="margin-top:10px">Terminated: {{ attempt.termination_reason }}</div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Proctoring Log</h2>
+  {% if events %}
+  <ul class="events-list" style="padding-left:18px">
+    {% for e in events %}
+    <li class="{{ e.severity }}">
+      [{{ e.created_at.strftime('%H:%M:%S') }}] {{ e.event_type|replace('_',' ')|capitalize }}
+      {% if e.details %} — <span class="muted" style="font-weight:400">{{ e.details }}</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <div class="small">No proctoring events recorded.</div>
+  {% endif %}
+</div>
+
+<div class="card" style="margin-top:16px">
+  <h2>Flagged Snapshots</h2>
+  {% if attempt.snapshots %}
+  <div class="small muted" style="margin-bottom:10px">
+    Still frames saved when the server-side face check flagged an anomaly (no face / multiple faces).
+  </div>
+  <div class="wrap" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr));display:grid;gap:12px">
+    {% for snap in attempt.snapshots|sort(attribute='created_at') %}
+    <div>
+      <img src="{{ url_for('proctoring.serve_snapshot', snapshot_id=snap.id) }}" style="width:100%;border-radius:8px;background:#000">
+      <div class="small muted" style="margin-top:4px">
+        {{ snap.created_at.strftime('%H:%M:%S') }} · {{ snap.faces_detected }} face(s)
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="small">No flagged snapshots for this attempt.</div>
+  {% endif %}
+</div>
+
+<div class="card" style="margin-top:16px">
+  <h2>Session Recording</h2>
+  {% if attempt.recordings %}
+  <div class="small muted" style="margin-bottom:10px">
+    {{ attempt.recordings|length }} chunk(s), recorded in ~30s segments during the attempt.
+  </div>
+  <div class="wrap" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr));display:grid;gap:12px">
+    {% for rec in attempt.recordings|sort(attribute='chunk_index') %}
+    <div>
+      <video controls preload="none" style="width:100%;border-radius:8px;background:#000"
+             src="{{ url_for('proctoring.serve_recording', recording_id=rec.id) }}"></video>
+      <div class="small muted" style="margin-top:4px">
+        Segment {{ rec.chunk_index + 1 }} · {{ rec.created_at.strftime('%H:%M:%S') }} · {{ (rec.file_size / 1024)|round(1) }} KB
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="small">No recording available for this attempt.</div>
+  {% endif %}
+</div>
+
+<div class="card" style="margin-top:16px">
+  <h2>Answers</h2>
+  {% if attempt.answers %}
+  {% for a in attempt.answers %}
+  <div class="qcard">
+    <div><strong>{{ a.question.question_text }}</strong></div>
+    <div class="small" style="margin-top:6px">
+      Selected: <strong>{{ a.selected_option|upper if a.selected_option else 'Not answered' }}</strong>
+      · Correct: <strong>{{ a.question.correct_answer|upper }}</strong>
+      {% if a.selected_option == a.question.correct_answer %}
+        <span class="badge pass">Correct</span>
+      {% else %}
+        <span class="badge fail">Incorrect</span>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+  {% else %}
+  <div class="small">No answers submitted.</div>
+  {% endif %}
+</div>
+{% endblock %}
