@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from tests.conftest import register_and_verify, login
+from tests.conftest import register_and_verify, login, add_single_question, add_multi_question, add_short_question
 
 
 @pytest.fixture()
@@ -42,11 +42,7 @@ def test_admin_can_create_test_and_add_questions(client, app, admin_and_student)
         assert test is not None
         assert test.status == "published"
 
-    r = client.post(
-        f"/admin/tests/{test.id}/questions/add",
-        data=dict(question_text="2+2?", option_a="3", option_b="4", option_c="5", option_d="6",
-                   correct_answer="b", marks=1),
-    )
+    r = add_single_question(client, test.id, "2+2?", "3", "4", "5", "6", "b", marks=1)
     assert r.status_code in (200, 302)
 
     with app.app_context():
@@ -78,16 +74,8 @@ def test_full_exam_flow_end_to_end(client, app, admin_and_student):
         test = Test.query.filter_by(test_code="T1").first()
         student = User.query.filter_by(email="student@test.com").first()
 
-    client.post(
-        f"/admin/tests/{test.id}/questions/add",
-        data=dict(question_text="Q1", option_a="1", option_b="2", option_c="3", option_d="4",
-                   correct_answer="b", marks=2),
-    )
-    client.post(
-        f"/admin/tests/{test.id}/questions/add",
-        data=dict(question_text="Q2", option_a="w", option_b="x", option_c="y", option_d="z",
-                   correct_answer="d", marks=2),
-    )
+    add_single_question(client, test.id, "Q1", "1", "2", "3", "4", "b", marks=2)
+    add_single_question(client, test.id, "Q2", "w", "x", "y", "z", "d", marks=2)
     client.post(f"/admin/tests/{test.id}/assign", data={"student_ids": [str(student.id)]})
     client.get("/logout")
 
@@ -129,11 +117,7 @@ def test_retake_limit_enforced(client, app, admin_and_student):
         test = Test.query.filter_by(test_code="T1").first()
         student = User.query.filter_by(email="student@test.com").first()
 
-    client.post(
-        f"/admin/tests/{test.id}/questions/add",
-        data=dict(question_text="Only Q", option_a="1", option_b="2", option_c="3", option_d="4",
-                   correct_answer="a", marks=1),
-    )
+    add_single_question(client, test.id, "Only Q", "1", "2", "3", "4", "a", marks=1)
     client.post(f"/admin/tests/{test.id}/assign", data={"student_ids": [str(student.id)]})
     client.get("/logout")
 
@@ -162,11 +146,7 @@ def test_extra_time_accommodation_applied(client, app, admin_and_student):
         test = Test.query.filter_by(test_code="T1").first()
         student = User.query.filter_by(email="student@test.com").first()
 
-    client.post(
-        f"/admin/tests/{test.id}/questions/add",
-        data=dict(question_text="Q", option_a="1", option_b="2", option_c="3", option_d="4",
-                   correct_answer="a", marks=1),
-    )
+    add_single_question(client, test.id, "Q", "1", "2", "3", "4", "a", marks=1)
     client.post(f"/admin/tests/{test.id}/assign", data={"student_ids": [str(student.id)], "extra_time_minutes": "5"})
     client.get("/logout")
 

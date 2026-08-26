@@ -109,6 +109,20 @@ def start_test(test_id):
     )
 
 
+def _extract_submitted_answer(question, form):
+    """Read a submitted answer for one question from the POSTed form, in the
+    representation Question.is_correct() expects to compare against."""
+    field = f"q_{question.id}"
+    if question.question_type == "multi":
+        picks = sorted({v.strip().lower() for v in form.getlist(field) if v.strip()})
+        return ",".join(picks) if picks else None
+    if question.question_type == "short":
+        text = (form.get(field) or "").strip()
+        return text or None
+    selected = form.get(field)
+    return selected.strip().lower() if selected else None
+
+
 @bp.route("/attempts/<int:attempt_id>/submit", methods=["POST"])
 @student_required
 def submit_answers(attempt_id):
@@ -122,12 +136,10 @@ def submit_answers(attempt_id):
     questions = {q.id: q for q in Question.query.filter_by(test_id=attempt.test_id).all()}
     score = 0.0
     for q_id, question in questions.items():
-        selected = request.form.get(f"q_{q_id}")
-        if selected:
-            selected = selected.lower()
+        selected = _extract_submitted_answer(question, request.form)
         answer = Answer(attempt_id=attempt.id, question_id=q_id, selected_option=selected)
         db.session.add(answer)
-        if selected and selected == question.correct_answer:
+        if selected and question.is_correct(selected):
             score += question.marks
         elif selected and test.negative_marks_per_wrong:
             score -= test.negative_marks_per_wrong

@@ -83,3 +83,41 @@ def login(client, email, password):
         data={"email": email, "password": password, "captcha_answer": str(answer)},
         follow_redirects=True,
     )
+
+
+def add_single_question(client, test_id, question_text, option_a, option_b, option_c, option_d, correct_letter, marks=1):
+    """POST a single-choice question the way the real form does — via the
+    correct_radio field, not a plain correct_answer field."""
+    return client.post(
+        f"/admin/tests/{test_id}/questions/add",
+        data={
+            "question_type": "single", "question_text": question_text,
+            "option_a": option_a, "option_b": option_b, "option_c": option_c, "option_d": option_d,
+            "correct_radio": correct_letter, "marks": marks,
+        },
+    )
+
+
+def add_multi_question(client, test_id, question_text, option_a, option_b, option_c, option_d, correct_letters, marks=1):
+    """POST a multiple-choice question via the correct_options checkbox list."""
+    from werkzeug.datastructures import MultiDict
+
+    data = MultiDict([
+        ("question_type", "multi"), ("question_text", question_text),
+        ("option_a", option_a), ("option_b", option_b), ("option_c", option_c), ("option_d", option_d),
+        ("marks", str(marks)),
+    ])
+    for letter in correct_letters:
+        data.add("correct_options", letter)
+    return client.post(f"/admin/tests/{test_id}/questions/add", data=data)
+
+
+def add_short_question(client, test_id, question_text, answer_text, marks=1):
+    """POST a short-answer question via the short_answer_text field."""
+    return client.post(
+        f"/admin/tests/{test_id}/questions/add",
+        data={
+            "question_type": "short", "question_text": question_text,
+            "short_answer_text": answer_text, "marks": marks,
+        },
+    )

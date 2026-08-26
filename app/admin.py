@@ -151,6 +151,53 @@ def duplicate_test(test_id):
     return redirect(url_for("admin.manage_tests"))
 
 
+def _build_question_from_form(test, form):
+    """Validate and construct a Question from QuestionForm data, handling the
+    per-type rules that WTForms field validators alone can't express:
+    single/multi need options + at least one correct pick, short answer needs
+    neither options nor a letter — just the expected text. Returns
+    (question_or_none, error_message_or_none).
+    """
+    qtype = form.question_type.data
+    text = form.question_text.data
+    marks = form.marks.data
+
+    if qtype in ("single", "multi"):
+        options = [form.option_a.data, form.option_b.data, form.option_c.data, form.option_d.data]
+        if not all(o and o.strip() for o in options):
+            return None, "All four options are required for single/multiple choice questions."
+
+        if qtype == "single":
+            picked = request.form.get("correct_radio", "").strip().lower()
+            if picked not in {"a", "b", "c", "d"}:
+                return None, "Select which option is correct."
+            correct_answer = picked
+        else:
+            picked = sorted({v.strip().lower() for v in request.form.getlist("correct_options") if v.strip()})
+            if not picked or not set(picked).issubset({"a", "b", "c", "d"}):
+                return None, "Select at least one correct option for a multiple-choice question."
+            if len(picked) == 4:
+                return None, "At least one option must be marked incorrect."
+            correct_answer = ",".join(picked)
+
+        return Question(
+            test_id=test.id, question_text=text, question_type=qtype,
+            option_a=form.option_a.data, option_b=form.option_b.data,
+            option_c=form.option_c.data, option_d=form.option_d.data,
+            correct_answer=correct_answer, marks=marks,
+        ), None
+
+    # short answer
+    answer_text = (form.short_answer_text.data or "").strip()
+    if not answer_text:
+        return None, "Enter the expected correct answer for a short-answer question."
+    return Question(
+        test_id=test.id, question_text=text, question_type="short",
+        option_a=None, option_b=None, option_c=None, option_d=None,
+        correct_answer=answer_text, marks=marks,
+    ), None
+
+
 @bp.route("/tests/<int:test_id>/questions/add", methods=["GET", "POST"])
 @admin_required
 def add_question(test_id):
@@ -158,21 +205,15 @@ def add_question(test_id):
     form = QuestionForm()
     import_form = QuestionImportForm()
     if form.validate_on_submit():
-        q = Question(
-            test_id=test.id,
-            question_text=form.question_text.data,
-            option_a=form.option_a.data,
-            option_b=form.option_b.data,
-            option_c=form.option_c.data,
-            option_d=form.option_d.data,
-            correct_answer=form.correct_answer.data,
-            marks=form.marks.data,
-        )
-        db.session.add(q)
-        db.session.commit()
-        log_activity("added_question", f"Added a question to '{test.title}'")
-        flash("Question added.", "success")
-        return redirect(url_for("admin.add_question", test_id=test.id))
+        question, error = _build_question_from_form(test, form)
+        if error:
+            flash(error, "error")
+        else:
+            db.session.add(question)
+            db.session.commit()
+            log_activity("added_question", f"Added a {question.question_type} question to '{test.title}'")
+            flash("Question added.", "success")
+            return redirect(url_for("admin.add_question", test_id=test.id))
     return render_template("admin/add_question.html", form=form, import_form=import_form, test=test)
 
 
@@ -193,11 +234,13 @@ def import_questions(test_id):
         return redirect(url_for("admin.add_question", test_id=test.id))
 
     reader = csv.DictReader(io.StringIO(raw))
-    required_cols = {"question_text", "option_a", "option_b", "option_c", "option_d", "correct_answer"}
+    required_cols = {"question_text", "correct_answer"}
     if not reader.fieldnames or not required_cols.issubset({c.strip().lower() for c in reader.fieldnames}):
         flash(
-            "CSV must have columns: question_text, option_a, option_b, option_c, option_d, "
-            "correct_answer, marks (marks is optional, defaults to 1).",
+            "CSV must have columns: question_text, correct_answer, marks (optional), question_type "
+            "(optional: single/multi/short, defaults to single), option_a..option_d "
+            "(required for single/multi). For multi, correct_answer is letters joined with '+' or ';', "
+            "e.g. 'a+c'.",
             "error",
         )
         return redirect(url_for("admin.add_question", test_id=test.id))
@@ -205,24 +248,42 @@ def import_questions(test_id):
     added, skipped = 0, 0
     for i, row in enumerate(reader, start=2):
         row = {k.strip().lower(): (v.strip() if v else v) for k, v in row.items()}
-        correct = (row.get("correct_answer") or "").lower()
-        if not row.get("question_text") or correct not in {"a", "b", "c", "d"}:
+        qtype = (row.get("question_type") or "single").strip().lower()
+        if qtype not in {"single", "multi", "short"}:
+            skipped += 1
+            continue
+        if not row.get("question_text") or not row.get("correct_answer"):
             skipped += 1
             continue
         try:
             marks = int(row.get("marks") or 1)
         except ValueError:
             marks = 1
-        q = Question(
-            test_id=test.id,
-            question_text=row["question_text"],
-            option_a=row.get("option_a", ""),
-            option_b=row.get("option_b", ""),
-            option_c=row.get("option_c", ""),
-            option_d=row.get("option_d", ""),
-            correct_answer=correct,
-            marks=marks,
-        )
+
+        if qtype == "short":
+            q = Question(
+                test_id=test.id, question_text=row["question_text"], question_type="short",
+                option_a=None, option_b=None, option_c=None, option_d=None,
+                correct_answer=row["correct_answer"].strip(), marks=marks,
+            )
+        else:
+            options = [row.get(f"option_{k}") for k in ("a", "b", "c", "d")]
+            if not all(options):
+                skipped += 1
+                continue
+            raw_correct = row["correct_answer"].lower().replace(";", "+").replace(",", "+")
+            picks = sorted({p.strip() for p in raw_correct.split("+") if p.strip()})
+            if not picks or not set(picks).issubset({"a", "b", "c", "d"}):
+                skipped += 1
+                continue
+            if qtype == "single" and len(picks) != 1:
+                skipped += 1
+                continue
+            q = Question(
+                test_id=test.id, question_text=row["question_text"], question_type=qtype,
+                option_a=options[0], option_b=options[1], option_c=options[2], option_d=options[3],
+                correct_answer=",".join(picks), marks=marks,
+            )
         db.session.add(q)
         added += 1
 
@@ -280,8 +341,24 @@ def assign_students(test_id):
         return redirect(url_for("admin.assign_students", test_id=test.id))
 
     assigned = {e.student_id: e for e in test.eligibility}
-    students = User.query.filter_by(role="student", status="active").order_by(User.name).all()
-    return render_template("admin/assign_students.html", test=test, students=students, assigned=assigned)
+
+    search = request.args.get("q", "").strip()
+    page = request.args.get("page", 1, type=int)
+
+    query = User.query.filter_by(role="student", status="active")
+    if assigned:
+        query = query.filter(~User.id.in_(assigned.keys()))
+    if search:
+        like = f"%{search}%"
+        query = query.filter(db.or_(User.name.ilike(like), User.email.ilike(like)))
+    query = query.order_by(User.name)
+
+    pagination = query.paginate(page=page, per_page=PER_PAGE, error_out=False)
+
+    return render_template(
+        "admin/assign_students.html", test=test, pagination=pagination,
+        students=pagination.items, assigned=assigned, search=search,
+    )
 
 
 @bp.route("/tests/<int:test_id>/unassign/<int:student_id>", methods=["POST"])

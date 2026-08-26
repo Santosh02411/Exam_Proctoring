@@ -51,12 +51,19 @@ class TestForm(FlaskForm):
 
 
 class QuestionForm(FlaskForm):
+    question_type = SelectField(
+        "Question type",
+        choices=[("single", "Single choice (one correct answer)"),
+                  ("multi", "Multiple choice (2+ correct answers)"),
+                  ("short", "Short answer (free text)")],
+        default="single",
+    )
     question_text = TextAreaField("Question text", validators=[DataRequired()])
-    option_a = StringField("Option A", validators=[DataRequired(), Length(max=500)])
-    option_b = StringField("Option B", validators=[DataRequired(), Length(max=500)])
-    option_c = StringField("Option C", validators=[DataRequired(), Length(max=500)])
-    option_d = StringField("Option D", validators=[DataRequired(), Length(max=500)])
-    correct_answer = SelectField("Correct answer", choices=[("a", "A"), ("b", "B"), ("c", "C"), ("d", "D")])
+    option_a = StringField("Option A", validators=[Optional(), Length(max=500)])
+    option_b = StringField("Option B", validators=[Optional(), Length(max=500)])
+    option_c = StringField("Option C", validators=[Optional(), Length(max=500)])
+    option_d = StringField("Option D", validators=[Optional(), Length(max=500)])
+    short_answer_text = StringField("Correct answer (short text)", validators=[Optional(), Length(max=500)])
     marks = IntegerField("Marks", validators=[DataRequired(), NumberRange(min=1)])
 
 

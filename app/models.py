@@ -93,12 +93,38 @@ class Question(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     test_id = db.Column(db.Integer, db.ForeignKey("tests.id"), nullable=False)
     question_text = db.Column(db.Text, nullable=False)
-    option_a = db.Column(db.String(500), nullable=False)
-    option_b = db.Column(db.String(500), nullable=False)
-    option_c = db.Column(db.String(500), nullable=False)
-    option_d = db.Column(db.String(500), nullable=False)
-    correct_answer = db.Column(db.String(1), nullable=False)  # a|b|c|d
+
+    # single  -> one correct option (a-d); correct_answer = "b"
+    # multi   -> one or more correct options; correct_answer = "a,c" (sorted, comma-joined)
+    # short   -> free-text answer; options unused; correct_answer = the expected text,
+    #            graded case-insensitively with whitespace trimmed
+    question_type = db.Column(db.String(10), nullable=False, default="single")
+
+    option_a = db.Column(db.String(500), nullable=True)
+    option_b = db.Column(db.String(500), nullable=True)
+    option_c = db.Column(db.String(500), nullable=True)
+    option_d = db.Column(db.String(500), nullable=True)
+    correct_answer = db.Column(db.String(500), nullable=False)
     marks = db.Column(db.Integer, nullable=False, default=1)
+
+    def options(self):
+        return {"a": self.option_a, "b": self.option_b, "c": self.option_c, "d": self.option_d}
+
+    def correct_set(self):
+        """Correct option letters as a set, for single/multi questions."""
+        return {c.strip().lower() for c in self.correct_answer.split(",") if c.strip()}
+
+    def is_correct(self, submitted):
+        """Grade a submitted answer string against this question's correct
+        answer. For single/multi, submitted is a comma-joined set of option
+        letters (order doesn't matter). For short answer, it's free text,
+        matched case-insensitively with surrounding whitespace trimmed."""
+        if not submitted:
+            return False
+        if self.question_type == "short":
+            return submitted.strip().lower() == self.correct_answer.strip().lower()
+        submitted_set = {c.strip().lower() for c in submitted.split(",") if c.strip()}
+        return submitted_set == self.correct_set()
 
 
 class TestEligibility(db.Model):
@@ -150,7 +176,9 @@ class Answer(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     attempt_id = db.Column(db.Integer, db.ForeignKey("attempts.id"), nullable=False)
     question_id = db.Column(db.Integer, db.ForeignKey("questions.id"), nullable=False)
-    selected_option = db.Column(db.String(1), nullable=True)  # a|b|c|d or NULL if unanswered
+    # single -> "b" ; multi -> "a,c" (sorted, comma-joined) ; short -> free text.
+    # NULL/empty if unanswered.
+    selected_option = db.Column(db.String(500), nullable=True)
 
     question = db.relationship("Question")
 

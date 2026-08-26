@@ -33,9 +33,11 @@ number of production-readiness features the original never had.
 - Create tests: code, title, description, duration, passing marks, publish window, max
   attempts, negative marking, question/option randomization, and whether students can
   review their answers afterward
-- Add / remove multiple-choice questions per test, one at a time or via **bulk CSV import**
+- Add / remove questions per test — **single-choice, multiple-choice (2+ correct), or
+  short-answer** — one at a time or via **bulk CSV import**
 - Edit or delete tests, publish/unpublish, duplicate
-- Assign specific students to a test, optionally with **extra time** (accessibility
+- Assign specific students to a test — the picker is **searchable and paginated**, so it
+  scales past a handful of students — optionally with **extra time** (accessibility
   accommodation) and an **email notification**
 - View all attempts for a test (paginated), per-student score, full proctoring event log,
   **flagged snapshot images**, and **play back the recorded webcam/mic session**
@@ -83,7 +85,9 @@ exam_proctoring_python/
 │   ├── conftest.py                # fixtures: app/client, register+verify, login helpers
 │   ├── test_auth.py                # registration, verification, CAPTCHA, lockout, reset
 │   ├── test_exam_flow.py            # test creation, CSV import, retakes, negative marking, review
-│   └── test_proctoring.py            # violations, termination, snapshots, recordings, identity
+│   ├── test_proctoring.py            # violations, termination, snapshots, recordings, identity
+│   ├── test_question_types.py         # single/multi/short grading, admin validation rules
+│   └── test_pagination.py              # assign-students search + pagination
 ├── app/
 │   ├── __init__.py            # app factory, blueprint registration
 │   ├── models.py                # User, Test, Question, TestEligibility, Attempt, Answer,
@@ -215,6 +219,20 @@ while assigning a test.
 Login requires a simple session-bound math CAPTCHA and is rate-limited: 5 failed attempts
 locks the account for 15 minutes (`User.failed_login_attempts` / `locked_until`), which
 resets on a successful login.
+
+## Question types & grading
+
+Each question is `single` (exactly one correct option), `multi` (one or more correct
+options — the admin's UI enforces at least one but not all four marked correct), or
+`short` (free text). Grading (`Question.is_correct()` in `app/models.py`) is all-or-
+nothing per question: for `multi`, the student's selected set must exactly match the
+correct set — selecting only some of the correct options, or any incorrect one, scores
+zero for that question (no partial credit). `short` is graded case-insensitively with
+whitespace trimmed, so "Paris", "paris", and "  Paris  " all match but "Parris" won't —
+this is exact-text matching, not semantic grading, so word short-answer questions where
+several phrasings could be correct aren't a great fit without a synonym list of your own.
+Bulk CSV import supports a `question_type` column (`single`/`multi`/`short`, defaults to
+`single`); for `multi`, join the correct letters with `+`, e.g. `a+c`.
 
 ## Question randomization & retakes
 

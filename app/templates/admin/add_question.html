@@ -18,39 +18,68 @@
     <form method="post" novalidate id="qForm" onsubmit="return validateAndSubmit();">
       {{ form.hidden_tag() }}
       <div class="field">
+        <label for="{{ form.question_type.id }}">Question type</label>
+        {{ form.question_type(id="questionTypeSelect") }}
+      </div>
+      <div class="field">
         <label for="{{ form.question_text.id }}">Question text</label>
         {{ form.question_text(placeholder="Write the question here...") }}
       </div>
-      <div class="row">
-        <div class="col field">
-          <label for="{{ form.option_a.id }}">Option A</label>
-          {{ form.option_a() }}
+
+      <div id="optionsSection">
+        <div class="row">
+          <div class="col field">
+            <label for="{{ form.option_a.id }}">Option A</label>
+            {{ form.option_a() }}
+          </div>
+          <div class="col field">
+            <label for="{{ form.option_b.id }}">Option B</label>
+            {{ form.option_b() }}
+          </div>
         </div>
-        <div class="col field">
-          <label for="{{ form.option_b.id }}">Option B</label>
-          {{ form.option_b() }}
+        <div class="row">
+          <div class="col field">
+            <label for="{{ form.option_c.id }}">Option C</label>
+            {{ form.option_c() }}
+          </div>
+          <div class="col field">
+            <label for="{{ form.option_d.id }}">Option D</label>
+            {{ form.option_d() }}
+          </div>
+        </div>
+
+        <div class="field" id="singleCorrectField">
+          <label>Correct answer (choose one)</label>
+          <div class="row">
+            <label class="opt" style="flex:1"><input type="radio" name="correct_radio" value="a"> A</label>
+            <label class="opt" style="flex:1"><input type="radio" name="correct_radio" value="b"> B</label>
+            <label class="opt" style="flex:1"><input type="radio" name="correct_radio" value="c"> C</label>
+            <label class="opt" style="flex:1"><input type="radio" name="correct_radio" value="d"> D</label>
+          </div>
+        </div>
+
+        <div class="field" id="multiCorrectField" style="display:none">
+          <label>Correct answer(s) — choose 1 to 3</label>
+          <div class="row">
+            <label class="opt" style="flex:1"><input type="checkbox" name="correct_options" value="a"> A</label>
+            <label class="opt" style="flex:1"><input type="checkbox" name="correct_options" value="b"> B</label>
+            <label class="opt" style="flex:1"><input type="checkbox" name="correct_options" value="c"> C</label>
+            <label class="opt" style="flex:1"><input type="checkbox" name="correct_options" value="d"> D</label>
+          </div>
         </div>
       </div>
-      <div class="row">
-        <div class="col field">
-          <label for="{{ form.option_c.id }}">Option C</label>
-          {{ form.option_c() }}
-        </div>
-        <div class="col field">
-          <label for="{{ form.option_d.id }}">Option D</label>
-          {{ form.option_d() }}
-        </div>
+
+      <div class="field" id="shortAnswerField" style="display:none">
+        <label for="{{ form.short_answer_text.id }}">Expected correct answer</label>
+        {{ form.short_answer_text(placeholder="e.g. Paris") }}
+        <div class="hint">Graded automatically, case-insensitive, trimmed whitespace. Exact wording matters otherwise.</div>
       </div>
-      <div class="row">
-        <div class="col field">
-          <label for="{{ form.correct_answer.id }}">Correct answer</label>
-          {{ form.correct_answer() }}
-        </div>
-        <div class="col field">
-          <label for="{{ form.marks.id }}">Marks</label>
-          {{ form.marks() }}
-        </div>
+
+      <div class="field">
+        <label for="{{ form.marks.id }}">Marks</label>
+        {{ form.marks() }}
       </div>
+
       <div class="actions">
         <button type="submit" class="btn">Add Question</button>
         <a class="btn ghost" href="{{ url_for('admin.view_test', test_id=test.id) }}">Done</a>
@@ -67,7 +96,15 @@
         <li class="small" style="margin-bottom:10px">
           {{ q.question_text[:70] }}{% if q.question_text|length > 70 %}…{% endif %}
           <br>
-          <span class="muted">Correct: {{ q.correct_answer|upper }} · {{ q.marks }} mark(s)</span>
+          <span class="badge draft">{{ q.question_type|capitalize }}</span>
+          <span class="muted">
+            {% if q.question_type == 'short' %}
+              Answer: "{{ q.correct_answer }}"
+            {% else %}
+              Correct: {{ q.correct_answer|upper }}
+            {% endif %}
+            · {{ q.marks }} mark(s)
+          </span>
           <form class="inline" method="post" action="{{ url_for('admin.delete_question', test_id=test.id, question_id=q.id) }}"
                 onsubmit="return confirm('Remove this question?');">
             <button type="submit" class="btn danger ghost small" style="margin-left:6px">Remove</button>
@@ -82,16 +119,19 @@
     <div class="card">
       <h4 style="margin:0 0 8px 0">Tips</h4>
       <p class="small" style="margin:0">
-        • Keep the question short and clear.<br>
-        • Ensure only one correct option is selected.<br>
+        • Single choice: exactly one correct option.<br>
+        • Multiple choice: students must pick <em>all</em> correct options and no incorrect ones for credit.<br>
+        • Short answer: auto-graded by exact text match (case-insensitive).<br>
         • Marks default to 1 — adjust for weighted questions.
       </p>
     </div>
     <div class="card">
       <h4 style="margin:0 0 8px 0">Bulk import (CSV)</h4>
       <p class="small">
-        Columns: <code>question_text, option_a, option_b, option_c, option_d, correct_answer, marks</code>
-        (<code>marks</code> optional, defaults to 1; <code>correct_answer</code> is a/b/c/d).
+        Columns: <code>question_text, question_type, option_a, option_b, option_c, option_d, correct_answer, marks</code>.
+        <code>question_type</code> is <code>single</code> (default) / <code>multi</code> / <code>short</code>.
+        For <code>multi</code>, join correct letters with <code>+</code>, e.g. <code>a+c</code>. Options aren't
+        needed for <code>short</code> rows. <code>marks</code> is optional (defaults to 1).
       </p>
       <form method="post" action="{{ url_for('admin.import_questions', test_id=test.id) }}" enctype="multipart/form-data">
         {{ import_form.hidden_tag() }}
@@ -103,9 +143,46 @@
   </aside>
 </div>
 <script>
+const typeSelect = document.getElementById('questionTypeSelect');
+const optionsSection = document.getElementById('optionsSection');
+const singleField = document.getElementById('singleCorrectField');
+const multiField = document.getElementById('multiCorrectField');
+const shortField = document.getElementById('shortAnswerField');
+
+function syncTypeUI(){
+  const t = typeSelect.value;
+  optionsSection.style.display = (t === 'short') ? 'none' : 'block';
+  singleField.style.display = (t === 'single') ? 'block' : 'none';
+  multiField.style.display = (t === 'multi') ? 'block' : 'none';
+  shortField.style.display = (t === 'short') ? 'block' : 'none';
+}
+typeSelect.addEventListener('change', syncTypeUI);
+syncTypeUI();
+
 function validateAndSubmit(){
   const q = document.getElementById('{{ form.question_text.id }}');
   if (!q.value.trim()){ alert('Please enter the question text.'); q.focus(); return false; }
+
+  const t = typeSelect.value;
+  if (t === 'single') {
+    if (!document.querySelector('input[name="correct_radio"]:checked')) {
+      alert('Select the correct option.');
+      return false;
+    }
+  } else if (t === 'multi') {
+    const checked = document.querySelectorAll('input[name="correct_options"]:checked');
+    if (checked.length === 0) {
+      alert('Select at least one correct option.');
+      return false;
+    }
+  } else if (t === 'short') {
+    const ans = document.getElementById('{{ form.short_answer_text.id }}');
+    if (!ans.value.trim()) {
+      alert('Enter the expected correct answer.');
+      ans.focus();
+      return false;
+    }
+  }
   return true;
 }
 </script>

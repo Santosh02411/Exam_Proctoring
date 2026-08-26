@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from tests.conftest import register_and_verify, login
+from tests.conftest import register_and_verify, login, add_single_question
 
 
 @pytest.fixture()
@@ -21,11 +21,7 @@ def attempt_setup(client, app):
         from app.models import Test, User
         test = Test.query.filter_by(test_code="P1").first()
         student = User.query.filter_by(email="student2@test.com").first()
-    client.post(
-        f"/admin/tests/{test.id}/questions/add",
-        data=dict(question_text="Q", option_a="1", option_b="2", option_c="3", option_d="4",
-                   correct_answer="a", marks=1),
-    )
+    add_single_question(client, test.id, "Q", "1", "2", "3", "4", "a", marks=1)
     client.post(f"/admin/tests/{test.id}/assign", data={"student_ids": [str(student.id)]})
     client.get("/logout")
 

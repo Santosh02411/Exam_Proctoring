@@ -77,12 +77,21 @@
   <h2>Answers</h2>
   {% if attempt.answers %}
   {% for a in attempt.answers %}
+  {% set q = a.question %}
+  {% set correct = a.selected_option and q.is_correct(a.selected_option) %}
   <div class="qcard">
-    <div><strong>{{ a.question.question_text }}</strong></div>
+    <div><strong>{{ q.question_text }}</strong> <span class="badge draft">{{ q.question_type|capitalize }}</span></div>
     <div class="small" style="margin-top:6px">
-      Selected: <strong>{{ a.selected_option|upper if a.selected_option else 'Not answered' }}</strong>
-      · Correct: <strong>{{ a.question.correct_answer|upper }}</strong>
-      {% if a.selected_option == a.question.correct_answer %}
+      {% if q.question_type == 'short' %}
+        Answered: <strong>{{ a.selected_option if a.selected_option else 'Not answered' }}</strong>
+        · Expected: <strong>{{ q.correct_answer }}</strong>
+      {% else %}
+        Selected: <strong>{{ a.selected_option|upper if a.selected_option else 'Not answered' }}</strong>
+        · Correct: <strong>{{ q.correct_answer|upper }}</strong>
+      {% endif %}
+      {% if not a.selected_option %}
+        <span class="badge fail">Not answered</span>
+      {% elif correct %}
         <span class="badge pass">Correct</span>
       {% else %}
         <span class="badge fail">Incorrect</span>

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_pagination.html" import render_pagination %}
 {% block title %}Assign Students — {{ test.title }}{% endblock %}
 {% block content %}
 <div style="margin-bottom:16px">
@@ -10,18 +11,22 @@
 <div class="wrap" style="grid-template-columns:1fr 1fr;display:grid">
   <div class="card">
     <h2>Add students</h2>
+    <form method="get" style="margin-bottom:12px">
+      <div class="field" style="margin-bottom:0">
+        <input type="text" name="q" value="{{ search }}" placeholder="Search by name or email…">
+      </div>
+    </form>
     <form method="post">
       {% if students %}
-      <div style="max-height:340px;overflow:auto">
+      <div>
         {% for s in students %}
-          {% if s.id not in assigned %}
-          <label class="opt" style="margin-bottom:8px">
-            <input type="checkbox" name="student_ids" value="{{ s.id }}">
-            <span>{{ s.name }} <span class="muted small">({{ s.email }})</span></span>
-          </label>
-          {% endif %}
+        <label class="opt" style="margin-bottom:8px">
+          <input type="checkbox" name="student_ids" value="{{ s.id }}">
+          <span>{{ s.name }} <span class="muted small">({{ s.email }})</span></span>
+        </label>
         {% endfor %}
       </div>
+      {{ render_pagination(pagination, 'admin.assign_students', {'test_id': test.id, 'q': search}) }}
       <div class="field" style="margin-top:14px">
         <label for="extra_time_minutes">Extra time (minutes) — accessibility accommodation</label>
         <input type="number" id="extra_time_minutes" name="extra_time_minutes" min="0" value="0" style="max-width:140px">
@@ -31,27 +36,29 @@
         <input type="checkbox" name="notify" checked> <span>Email selected students that this test was assigned</span>
       </label>
       <button type="submit" class="btn" style="margin-top:12px">Assign Selected</button>
+      {% elif search %}
+      <div class="small">No unassigned students match "{{ search }}".</div>
       {% else %}
-      <div class="small">No students registered yet.</div>
+      <div class="small">No more students to assign — everyone eligible is already assigned.</div>
       {% endif %}
     </form>
   </div>
 
   <div class="card">
     <h2>Currently assigned ({{ assigned|length }})</h2>
-    {% if students %}
-    {% for s in students %}
-      {% if s.id in assigned %}
+    {% if assigned %}
+    {% for eligibility in assigned.values()|sort(attribute='student.name') %}
       <div class="opt" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px">
-        <span>{{ s.name }} <span class="muted small">({{ s.email }})</span>
-          {% if assigned[s.id].extra_time_minutes %}<span class="badge draft">+{{ assigned[s.id].extra_time_minutes }} min</span>{% endif %}
+        <span>{{ eligibility.student.name }} <span class="muted small">({{ eligibility.student.email }})</span>
+          {% if eligibility.extra_time_minutes %}<span class="badge draft">+{{ eligibility.extra_time_minutes }} min</span>{% endif %}
         </span>
-        <form method="post" action="{{ url_for('admin.unassign_student', test_id=test.id, student_id=s.id) }}">
+        <form method="post" action="{{ url_for('admin.unassign_student', test_id=test.id, student_id=eligibility.student_id) }}">
           <button type="submit" class="btn danger ghost small">Remove</button>
         </form>
       </div>
-      {% endif %}
     {% endfor %}
+    {% else %}
+    <div class="small muted">No students assigned yet.</div>
     {% endif %}
   </div>
 </div>

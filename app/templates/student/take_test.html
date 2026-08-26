@@ -57,13 +57,23 @@
   <form id="answersForm">
     {% for q in questions %}
     <div class="qcard" data-qid="{{ q.id }}">
-      <div><strong>Q{{ loop.index }}.</strong> {{ q.question_text }}</div>
-      <div class="options" role="radiogroup">
+      <div>
+        <strong>Q{{ loop.index }}.</strong> {{ q.question_text }}
+        {% if q.question_type == 'multi' %}<span class="small muted">(select all that apply)</span>{% endif %}
+      </div>
+      {% if q.question_type == 'short' %}
+      <div style="margin-top:10px">
+        <input type="text" name="q_{{ q.id }}" placeholder="Type your answer" style="max-width:400px">
+      </div>
+      {% else %}
+      <div class="options" role="{{ 'group' if q.question_type == 'multi' else 'radiogroup' }}">
         {% set opts = {'a': q.option_a, 'b': q.option_b, 'c': q.option_c, 'd': q.option_d} %}
+        {% set input_type = 'checkbox' if q.question_type == 'multi' else 'radio' %}
         {% for key in option_order_by_qid[q.id] %}
-        <label class="opt"><input type="radio" name="q_{{ q.id }}" value="{{ key }}"> <span>{{ opts[key] }}</span></label>
+        <label class="opt"><input type="{{ input_type }}" name="q_{{ q.id }}" value="{{ key }}"> <span>{{ opts[key] }}</span></label>
         {% endfor %}
       </div>
+      {% endif %}
     </div>
     {% endfor %}
   </form>
