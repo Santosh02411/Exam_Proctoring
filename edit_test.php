@@ -3,6 +3,7 @@ session_start();
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
     header("Location: login.html"); exit;
 }
+
 $conn = new mysqli("localhost","root","","exam_proctoring");
 if ($conn->connect_error) die("DB err: ".$conn->connect_error);
 
@@ -11,11 +12,12 @@ $test_id = isset($_GET['test_id']) ? (int)$_GET['test_id'] : 0;
 if (!$test_id) {
     die("Missing test_id");
 }
+
+// handle POST update
 // handle POST update
 $success = null;
 $error = null;
-
-f ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // sanitize and prepare values
     $title = $conn->real_escape_string($_POST['title']);
     $description = $conn->real_escape_string($_POST['description']);
@@ -23,19 +25,21 @@ f ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $total_questions = (int)$_POST['total_questions'];
     $passing_marks = (int)$_POST['passing_marks'];
     $status = $conn->real_escape_string($_POST['status']);
+
     // For datetime fields, keep '' if empty so we can convert to NULL via NULLIF(?, '')
     $start_time = isset($_POST['start_time']) ? $_POST['start_time'] : '';
     $end_time   = isset($_POST['end_time'])   ? $_POST['end_time']   : '';
+
     // Use NULLIF(?, '') so empty string => SQL NULL
     $sql = "UPDATE tests
             SET title = ?, description = ?, duration_minutes = ?, total_questions = ?, passing_marks = ?,
                 status = ?, start_time = NULLIF(?, ''), end_time = NULLIF(?, '')
             WHERE id = ?";
-            $stmt = $conn->prepare($sql);
+
+    $stmt = $conn->prepare($sql);
     if (!$stmt) {
         $error = "Prepare failed: " . $conn->error;
-    }
-    else {
+    } else {
         // Correct types:
         // title (s), description (s),
         // duration (i), total_questions (i), passing_marks (i),
@@ -47,7 +51,8 @@ f ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $status, $start_time, $end_time,
             $test_id
         );
-     if ($stmt->execute()) {
+
+        if ($stmt->execute()) {
             $success = "Test updated successfully.";
         } else {
             $error = "Update failed: " . $stmt->error;
@@ -55,18 +60,15 @@ f ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->close();
     }
 }
+
 // load existing test
 $tstmt = $conn->prepare("SELECT * FROM tests WHERE id = ? LIMIT 1");
 $tstmt->bind_param("i", $test_id);
 $tstmt->execute();
-
 $tres = $tstmt->get_result()->fetch_assoc();
 if (!$tres) die("Test not found.");
 $tstmt->close();
 ?>
-
-
-
 <!doctype html>
 <html lang="en">
 <head>
@@ -82,7 +84,6 @@ $tstmt->close();
 *{box-sizing:border-box}
 body{margin:0;background:linear-gradient(180deg,var(--bg),#f3f6fa);color:#071033;padding:22px}
 .wrap{max-width:980px;margin:0 auto;display:grid;gap:16px}
-
 .header{display:flex;justify-content:space-between;align-items:center;gap:12px}
 .back{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:10px;background:var(--card);box-shadow:var(--shadow);text-decoration:none;color:var(--muted);font-weight:700}
 .card{background:var(--card);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow)}
@@ -102,7 +103,7 @@ textarea{min-height:120px;resize:vertical}
 </style>
 </head>
 <body>
-    <div class="wrap">
+  <div class="wrap">
     <div class="header">
       <div>
         <a class="back" href="manage_tests.php">← Back to tests</a>
@@ -114,19 +115,23 @@ textarea{min-height:120px;resize:vertical}
         <a href="view_test.php?test_id=<?= (int)$tres['id'] ?>" class="btn">View Test</a>
       </div>
     </div>
+
     <div class="card">
       <?php if ($success): ?><div class="success" style="margin-bottom:10px"><?= htmlspecialchars($success) ?></div><?php endif; ?>
       <?php if ($error): ?><div class="error" style="margin-bottom:10px"><?= htmlspecialchars($error) ?></div><?php endif; ?>
-        <form method="post" class="form-grid" onsubmit="return validateEdit();">
+
+      <form method="post" class="form-grid" onsubmit="return validateEdit();">
         <div>
           <div class="field">
             <label for="title">Title</label>
             <input id="title" name="title" type="text" value="<?= htmlspecialchars($tres['title']) ?>" required>
           </div>
+
           <div class="field">
             <label for="description">Description</label>
             <textarea id="description" name="description"><?= htmlspecialchars($tres['description']) ?></textarea>
           </div>
+
           <div style="display:flex;gap:12px">
             <div class="field" style="flex:1">
               <label for="duration_minutes">Duration (minutes)</label>
@@ -137,6 +142,7 @@ textarea{min-height:120px;resize:vertical}
               <input id="total_questions" name="total_questions" type="number" min="1" value="<?= (int)$tres['total_questions'] ?>" required>
             </div>
           </div>
+
           <div style="display:flex;gap:12px">
             <div class="field" style="flex:1">
               <label for="passing_marks">Passing marks</label>
@@ -150,21 +156,24 @@ textarea{min-height:120px;resize:vertical}
               </select>
             </div>
           </div>
+
           <div style="display:flex;gap:12px">
             <div class="field" style="flex:1">
               <label for="start_time">Start time (optional)</label>
               <input id="start_time" name="start_time" type="datetime-local" value="<?= $tres['start_time'] ? date('Y-m-d\TH:i', strtotime($tres['start_time'])) : '' ?>">
             </div>
-             <div class="field" style="flex:1">
+            <div class="field" style="flex:1">
               <label for="end_time">End time (optional)</label>
               <input id="end_time" name="end_time" type="datetime-local" value="<?= $tres['end_time'] ? date('Y-m-d\TH:i', strtotime($tres['end_time'])) : '' ?>">
             </div>
           </div>
+
           <div class="actions">
             <button type="submit" class="btn">Save Changes</button>
             <a href="view_test.php?test_id=<?= (int)$tres['id'] ?>" class="btn ghost">Cancel</a>
           </div>
         </div>
+
         <aside>
           <div class="panel">
             <h4 style="margin:0 0 8px 0">Test Summary</h4>
@@ -172,6 +181,7 @@ textarea{min-height:120px;resize:vertical}
             <div class="small">Created at: <strong><?= htmlspecialchars($tres['created_at']) ?></strong></div>
             <div style="margin-top:8px" class="small">Created by (ID): <strong><?= (int)$tres['created_by'] ?></strong></div>
           </div>
+
           <div class="panel" style="margin-top:12px">
             <h4 style="margin:0 0 8px 0">Danger zone</h4>
             <form method="post" action="manage_tests.php" onsubmit="return confirm('Delete this test? This action cannot be undone.');">
@@ -193,17 +203,6 @@ function validateEdit(){
     return false;
   }
   return true;
-}
-<script>
-function validateEdit(){
-  const st = document.getElementById('start_time').value;
-  const en = document.getElementById('end_time').value;
-  if (st && en && new Date(st) >= new Date(en)) {
-    alert('End time must be after start time.');
-    return false;
-  }
-  return true;
-  
 }
 </script>
 </body>

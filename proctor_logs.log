@@ -1,0 +1,3 @@
+[2025-09-22 06:08:19] disqualified.php called: student_id=4 test_id=NULL token= reason=disqualified_by_proctor
+[2025-09-22 06:08:19] delete skipped: no test_id
+[2025-09-22 06:08:19] Transaction rolled back due to errors: {"delete":{"prepared":false,"executed":false,"affected_rows":0,"error":"no test_id provided"},"insert":{"prepared":true,"executed":true,"last_insert_id":17,"error":null}}

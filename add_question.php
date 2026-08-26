@@ -29,7 +29,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <!doctype html>
 <html lang="en">
 <head>
-    <meta charset="utf-8">
+  <meta charset="utf-8">
   <title>Add Question — Test <?= (int)$test_db_id ?></title>
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
@@ -49,17 +49,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     body{ margin:0; background:linear-gradient(180deg,var(--bg),#f3f6fa); color:#071033; padding:26px; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; }
 
     .wrap{ max-width:980px; margin:0 auto; display:grid; gap:16px; }
-     header { display:flex; justify-content:space-between; align-items:center; gap:12px; }
+
+    header { display:flex; justify-content:space-between; align-items:center; gap:12px; }
     .back { text-decoration:none; color:var(--muted); display:inline-flex; gap:8px; align-items:center; padding:8px 12px; border-radius:10px; background:var(--card); box-shadow:var(--shadow); font-weight:700; }
     h1{ margin:0; font-size:20px; }
     .lead{ color:var(--muted); margin-top:6px; font-size:13px }
 
     .card { background:var(--card); border-radius:var(--radius); padding:18px; box-shadow:var(--shadow); }
+
     form.grid { display:grid; grid-template-columns: 1fr 360px; gap:16px; align-items:start; }
     @media (max-width:980px) { form.grid { grid-template-columns: 1fr; } }
+
     .field { display:flex; flex-direction:column; gap:8px; margin-bottom:6px; }
     label { font-weight:700; font-size:13px; color:#0b1220; }
     .hint { font-size:13px; color:var(--muted) }
+
     input[type="text"], textarea, select, input[type="number"] {
       width:100%; padding:10px 12px; border-radius:10px; border:1px solid #e6eef8; font-size:14px; background:#fff; color:#071033;
       box-shadow: inset 0 1px 0 rgba(0,0,0,0.02);
@@ -83,36 +87,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     .opts { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px; }
     .opt { padding:10px; border-radius:8px; background:#fff; border:1px solid #eef2f7; font-size:14px; color:#071033; }
     .opt.correct { border-color: rgba(16,185,129,0.16); background:linear-gradient(90deg, rgba(16,185,129,0.04), #fff); }
+
     .small { font-size:13px; color:var(--muted); }
+
     .success { color:var(--primary); font-weight:700; }
     .error { color:var(--danger); font-weight:700; }
+
+    /* responsive */
     @media (max-width:600px) { .opts { grid-template-columns:1fr; } }
 
   </style>
 </head>
 <body>
-    <div class="wrap">
+  <div class="wrap">
     <header>
       <div>
         <a class="back" href="admin_dashboard.php" title="Back to dashboard">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden><path d="M15 18l-6-6 6-6" stroke="#0b1220" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
           Back
         </a>
-         <h1 style="margin-top:10px">Add Question</h1>
+        <h1 style="margin-top:10px">Add Question</h1>
         <div class="lead">Test ID: <strong><?= (int)$test_db_id ?></strong> — Add MCQs for this test</div>
       </div>
+
       <div style="display:flex;gap:8px;align-items:center">
         <a class="btn ghost" href="view_test.php?test_id=<?= (int)$test_db_id ?>">View Test</a>
         <a class="btn" href="create_test.php">Create Test</a>
       </div>
-      </header>
-      <div class="card">
+    </header>
+
+    <div class="card">
       <form class="grid" method="post" id="qForm" onsubmit="return validateAndSubmit();">
         <div>
           <div class="field">
             <label for="question_text">Question text</label>
             <textarea id="question_text" name="question_text" placeholder="Write the question here..." required></textarea>
           </div>
+
           <div class="row">
             <div class="col field">
               <label for="option_a">Option A</label>
@@ -123,6 +134,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               <input id="option_b" name="option_b" type="text" placeholder="Option B" required>
             </div>
           </div>
+
           <div class="row">
             <div class="col field">
               <label for="option_c">Option C</label>
@@ -133,6 +145,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               <input id="option_d" name="option_d" type="text" placeholder="Option D" required>
             </div>
           </div>
+
           <div class="row">
             <div class="col field">
               <label for="correct_answer">Correct answer</label>
@@ -143,18 +156,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <option value="d">D</option>
               </select>
             </div>
+
             <div class="col field">
               <label for="marks">Marks</label>
               <input id="marks" name="marks" type="number" min="1" value="1" required>
             </div>
           </div>
+
           <div class="actions">
             <button type="submit" class="btn">Add Question</button>
             <button type="button" class="btn ghost" onclick="clearForm()">Clear</button>
             <a class="btn ghost" href="view_test.php?test_id=<?= (int)$test_db_id ?>">Done</a>
           </div>
-           <div id="msg" style="margin-top:12px"></div>
+
+          <div id="msg" style="margin-top:12px"></div>
         </div>
+
         <!-- Preview / help column -->
         <aside class="preview">
           <div class="qcard" aria-live="polite">
@@ -171,27 +188,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               <div class="small">Marks: <strong id="pv_marks">1</strong></div>
             </div>
           </div>
-          div class="card" style="padding:12px">
+
+          <div class="card" style="padding:12px">
             <h4 style="margin:0 0 8px 0">Tips</h4>
-             <p class="small" style="margin:0">
+            <p class="small" style="margin:0">
               • Keep question short and clear.<br>
               • Ensure only one correct option is selected.<br>
               • Use marks &amp; consistent styling for all questions.
             </p>
           </div>
-          div class="card" style="padding:12px">
+
+          <div class="card" style="padding:12px">
             <h4 style="margin:0 0 8px 0">Quick Links</h4>
             <div style="display:flex;flex-direction:column;gap:8px">
               <a class="small" href="view_test.php?test_id=<?= (int)$test_db_id ?>">View Test</a>
               <a class="small" href="assign_students.php?test_id=<?= (int)$test_db_id ?>">Assign Students</a>
               <a class="small" href="admin_dashboard.php">Dashboard</a>
             </div>
-             </div>
+          </div>
         </aside>
       </form>
     </div>
-    </div>
   </div>
+
 <script>
   // Live preview bindings
   const qText = document.getElementById('question_text');
@@ -210,9 +229,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   const pv_correct = document.getElementById('pv_correct');
   const pv_marks = document.getElementById('pv_marks');
   const msg = document.getElementById('msg');
+
   function safe(s){ return (s||'').toString().replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
   function updatePreview(){
-     pv_q.innerHTML = safe(qText.value) || 'Your question preview will appear here as you type.';
+    pv_q.innerHTML = safe(qText.value) || 'Your question preview will appear here as you type.';
     pv_a.innerText = 'A — ' + (aEl.value || 'Option A');
     pv_b.innerText = 'B — ' + (bEl.value || 'Option B');
     pv_c.innerText = 'C — ' + (cEl.value || 'Option C');
@@ -220,22 +240,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     pv_marks.innerText = safe(marksEl.value || '1');
     pv_correct.innerText = safe(correctEl.value ? correctEl.value.toUpperCase() : '—');
 
-
+    // mark correct option visually
     [pv_a,pv_b,pv_c,pv_d].forEach(el => el.classList.remove('correct'));
     if (correctEl.value === 'a') pv_a.classList.add('correct');
     if (correctEl.value === 'b') pv_b.classList.add('correct');
     if (correctEl.value === 'c') pv_c.classList.add('correct');
     if (correctEl.value === 'd') pv_d.classList.add('correct');
   }
-  
+
   [qText,aEl,bEl,cEl,dEl,correctEl,marksEl].forEach(el => el.addEventListener('input', updatePreview));
   updatePreview();
 
-   function clearForm(){
+  function clearForm(){
     qText.value=''; aEl.value=''; bEl.value=''; cEl.value=''; dEl.value=''; correctEl.value='a'; marksEl.value='1';
     updatePreview();
     msg.innerHTML = '';
   }
+
   function validateAndSubmit(){
     // Basic client-side validation
     if (!qText.value.trim()){
@@ -257,18 +278,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       marksEl.focus();
       return false;
     }
+
+    // show quick inline feedback (server will still process)
+    msg.innerHTML = '<span class="success">Saving question…</span>';
+
+    // allow form to submit to server (no AJAX here to keep server logic unchanged)
     return true;
   }
-  </script>
+</script>
 </body>
 </html>
-    
-
-
-
-
-
-
-
-
-

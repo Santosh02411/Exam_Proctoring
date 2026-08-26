@@ -147,15 +147,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               </select>
             </div>
           </div>
-         <div class="col field">
-              <label for="status">Status</label>
-              <select id="status" name="status" required>
-                <option value="draft">Draft</option>
-                <option value="published">Published</option>
-              </select>
-            </div>
-          </div>
-           <div class="row">
+
+          <div class="row">
             <div class="col field">
               <label for="start_time">Start time (optional)</label>
               <input id="start_time" name="start_time" type="datetime-local">
@@ -165,7 +158,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               <input id="end_time" name="end_time" type="datetime-local">
             </div>
           </div>
-          div class="panel">
+
+          <div class="actions" style="margin-top:12px">
+            <button type="submit" class="btn">Create Test</button>
+            <a href="admin_dashboard.php" class="btn ghost" style="padding:10px 12px">Cancel</a>
+          </div>
+
+          <div class="note" style="margin-top:12px">
+            <p class="small">After creating the test you'll be prompted to add questions. Start by adding all MCQs, then assign students to the test.</p>
+          </div>
+        </div>
+
+        <!-- right (help & preview) -->
+        <aside class="help">
+          <div class="panel">
+            <h4>Test Preview</h4>
+            <div style="margin-top:8px;">
+              <div><strong>Code:</strong> <span id="pv_code" class="small muted">EXAM2025</span></div>
+              <div><strong>Title:</strong> <span id="pv_title" class="small muted">Introduction to AI</span></div>
+              <div><strong>Duration:</strong> <span id="pv_duration" class="small muted">30 mins</span></div>
+              <div><strong>Total Qs:</strong> <span id="pv_total" class="small muted">10</span></div>
+              <div><strong>Passing:</strong> <span id="pv_pass" class="small muted">5</span></div>
+              <div style="margin-top:8px;" class="small muted">Start / End times are optional — set them if the test should be time-window restricted.</div>
+            </div>
+          </div>
+
+          <div class="panel">
             <h4>Tips</h4>
             <p class="small">
               • Use a clear title and short code.<br>
@@ -173,33 +191,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               • Use 'Published' to make the test visible to assigned students.
             </p>
           </div>
-          div class="panel">
+
+          <div class="panel">
             <h4>Quick Actions</h4>
             <a href="add_question.php" class="small">Add Question</a>
             <a href="assign_students.php" class="small">Assign Students</a>
             <a href="view_results.php" class="small">View Results</a>
           </div>
-          </aside>
+        </aside>
       </form>
     </div>
+
     <div class="small muted">Tip: After creating, go to Add Questions to populate MCQs and then Assign Students to open the test for participants.</div>
   </div>
-  
-
 
 <script>
   // Small client-side UX helpers (no server changes)
   const testIdEl = document.getElementById('test_id');
   const titleEl = document.getElementById('title');
- const durationEl = document.getElementById('duration_minutes');
+  const durationEl = document.getElementById('duration_minutes');
   const totalQsEl = document.getElementById('total_questions');
   const passEl = document.getElementById('passing_marks');
 
-const pv_code = document.getElementById('pv_code');
+  const pv_code = document.getElementById('pv_code');
   const pv_title = document.getElementById('pv_title');
   const pv_duration = document.getElementById('pv_duration');
   const pv_total = document.getElementById('pv_total');
   const pv_pass = document.getElementById('pv_pass');
+
   function updatePreview(){
     pv_code.textContent = testIdEl.value || '—';
     pv_title.textContent = titleEl.value || '—';
@@ -207,9 +226,10 @@ const pv_code = document.getElementById('pv_code');
     pv_total.textContent = totalQsEl.value || '-';
     pv_pass.textContent = passEl.value || '-';
   }
-   [testIdEl,titleEl,durationEl,totalQsEl,passEl].forEach(el => el.addEventListener('input', updatePreview));
+  [testIdEl,titleEl,durationEl,totalQsEl,passEl].forEach(el => el.addEventListener('input', updatePreview));
   updatePreview();
-   function handleSubmit(){
+
+  function handleSubmit(){
     // basic client-side checks: start < end if both provided
     const st = document.getElementById('start_time').value;
     const en = document.getElementById('end_time').value;
@@ -218,15 +238,15 @@ const pv_code = document.getElementById('pv_code');
         alert('End time must be after start time.');
         return false;
       }
-      // ensure passing marks <= total marks (simple check)
+    }
+    // ensure passing marks <= total marks (simple check)
     const total = parseInt(totalQsEl.value) || 0;
     const passing = parseInt(passEl.value) || 0;
     if (passing > total) {
-       if (!confirm('Passing marks is greater than total questions. Continue?')) return false;
+      if (!confirm('Passing marks is greater than total questions. Continue?')) return false;
     }
     return true; // allow submit
-    }
-}
+  }
 </script>
 </body>
 </html>

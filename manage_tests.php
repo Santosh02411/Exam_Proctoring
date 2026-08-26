@@ -6,6 +6,8 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
 $conn = new mysqli("localhost","root","","exam_proctoring");
 if ($conn->connect_error) die("DB err: ".$conn->connect_error);
 
+// Handle POST actions: delete / toggle status / duplicate
+$message = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['delete_test_id'])) {
         $did = (int)$_POST['delete_test_id'];
@@ -51,8 +53,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 }
-$tests = $conn->query("SELECT id, test_id, title, status, duration_minutes, total_questions, passing_marks, created_at FROM tests ORDER BY created_at DESC");
 
+// fetch tests
+$tests = $conn->query("SELECT id, test_id, title, status, duration_minutes, total_questions, passing_marks, created_at FROM tests ORDER BY created_at DESC");
 ?>
 <!doctype html>
 <html lang="en">
@@ -61,13 +64,12 @@ $tests = $conn->query("SELECT id, test_id, title, status, duration_minutes, tota
 <title>Manage Tests — Admin</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
-
 <style>
 :root{ --bg:#f6f8fb; --card:#fff; --muted:#6b7280; --primary:#0b6ef6; --success:#10b981; --danger:#ef4444; --radius:12px; --shadow:0 12px 30px rgba(11,22,50,0.06); font-family:'Inter',system-ui,Arial; }
 *{box-sizing:border-box}
 body{margin:0;background:linear-gradient(180deg,var(--bg),#f3f6fa);color:#071033;padding:22px}
-.wrap{max-width:1100px;margin:0 auto;display:grid;gap:16px}
-.header{display:flex;justify-content:space-between;align-items:center}
+.back{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:10px;background:var(--card);box-shadow:var(--shadow);text-decoration:none;color:var(--muted);font-weight:700}
+..wrap{max-width:1100px;margin:0 auto;display:grid;gap:16px}
 .header{display:flex;justify-content:space-between;align-items:center}
 card{background:var(--card);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow)}
 .table{width:100%;border-collapse:collapse}
@@ -85,7 +87,7 @@ card{background:var(--card);border-radius:var(--radius);padding:16px;box-shadow:
 </style>
 </head>
 <body>
-    <div class="wrap">
+  <div class="wrap">
     <div class="header">
       <div>
         <a class="back" href="admin_dashboard.php">← Dashboard</a>
@@ -96,7 +98,9 @@ card{background:var(--card);border-radius:var(--radius);padding:16px;box-shadow:
         <a class="btn" href="create_test.php">+ New Test</a>
       </div>
     </div>
+
     <?php if ($message): ?><div class="message"><?= htmlspecialchars($message) ?></div><?php endif; ?>
+
     <div class="card">
       <?php if ($tests && $tests->num_rows > 0): ?>
         <table class="table" role="table" aria-label="Tests">
@@ -144,37 +148,20 @@ card{background:var(--card);border-radius:var(--radius);padding:16px;box-shadow:
                       <button type="submit" class="btn ghost"><?= $t['status'] === 'published' ? 'Unpublish' : 'Publish' ?></button>
                   </form>
 
-                  
+                    <form class="form-inline" method="post" onsubmit="return confirm('Delete this test and all related data?');">
+                      <input type="hidden" name="delete_test_id" value="<?= (int)$t['id'] ?>">
+                      <button type="submit" class="btn ghost" style="color:#b91c1c;border-color:rgba(185,28,28,0.08)">Delete</button>
+                    </form>
                   </div>
                 </td>
               </tr>
             <?php endwhile; ?>
           </tbody>
         </table>
-        <?php else: ?>
+      <?php else: ?>
         <div class="small">No tests yet. Create one to get started.</div>
       <?php endif; ?>
     </div>
   </div>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-</body> 
-</html>
-
