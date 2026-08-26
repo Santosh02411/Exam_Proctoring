@@ -32,6 +32,8 @@ class User(UserMixin, db.Model):
     # Login rate-limiting / brute-force protection
     failed_login_attempts = db.Column(db.Integer, nullable=False, default=0)
     locked_until = db.Column(db.DateTime, nullable=True)
+    # Basic abuse protection: throttles how often a password-reset email can be requested.
+    last_password_reset_request = db.Column(db.DateTime, nullable=True)
 
     tests_created = db.relationship("Test", backref="creator", lazy=True)
     attempts = db.relationship("Attempt", backref="student", lazy=True)
@@ -70,6 +72,10 @@ class Test(db.Model):
     negative_marks_per_wrong = db.Column(db.Float, nullable=False, default=0.0)
     # Whether students can review their answers (with correct answers shown) after submitting
     allow_review = db.Column(db.Boolean, nullable=False, default=True)
+    # Partial credit for multi-select questions: award proportional marks based on
+    # how many correct options were picked minus how many incorrect ones were,
+    # instead of all-or-nothing. Doesn't affect single-choice or short-answer grading.
+    partial_credit_multi = db.Column(db.Boolean, nullable=False, default=False)
 
     questions = db.relationship("Question", backref="test", cascade="all, delete-orphan", lazy=True)
     eligibility = db.relationship("TestEligibility", backref="test", cascade="all, delete-orphan", lazy=True)
@@ -106,6 +112,11 @@ class Question(db.Model):
     option_d = db.Column(db.String(500), nullable=True)
     correct_answer = db.Column(db.String(500), nullable=False)
     marks = db.Column(db.Integer, nullable=False, default=1)
+    # Optional soft per-question pacing limit, in seconds. All questions are shown
+    # on one page (not a stepper), so this is enforced client-side: once a
+    # question's clock runs out, its inputs lock, but the rest of the exam
+    # continues normally on the overall exam timer. NULL means no per-question limit.
+    time_limit_seconds = db.Column(db.Integer, nullable=True)
 
     def options(self):
         return {"a": self.option_a, "b": self.option_b, "c": self.option_c, "d": self.option_d}
@@ -125,6 +136,28 @@ class Question(db.Model):
             return submitted.strip().lower() == self.correct_answer.strip().lower()
         submitted_set = {c.strip().lower() for c in submitted.split(",") if c.strip()}
         return submitted_set == self.correct_set()
+
+    def score_for(self, submitted, partial_credit_multi=False):
+        """Marks earned for a submitted answer (float). Single/short questions
+        are all-or-nothing. Multi-select is all-or-nothing too unless
+        partial_credit_multi is set, in which case it awards proportional
+        credit: (correct options picked - incorrect options picked) / total
+        correct options, floored at 0 marks — so guessing extra wrong options
+        can only reduce credit toward zero, never below it."""
+        if not submitted:
+            return 0.0
+
+        if self.question_type != "multi" or not partial_credit_multi:
+            return float(self.marks) if self.is_correct(submitted) else 0.0
+
+        correct = self.correct_set()
+        selected = {c.strip().lower() for c in submitted.split(",") if c.strip()}
+        if not correct:
+            return 0.0
+        num_correct_picked = len(selected & correct)
+        num_incorrect_picked = len(selected - correct)
+        fraction = max((num_correct_picked - num_incorrect_picked) / len(correct), 0.0)
+        return round(self.marks * fraction, 2)
 
 
 class TestEligibility(db.Model):

@@ -75,9 +75,16 @@
         <div class="hint">Graded automatically, case-insensitive, trimmed whitespace. Exact wording matters otherwise.</div>
       </div>
 
-      <div class="field">
-        <label for="{{ form.marks.id }}">Marks</label>
-        {{ form.marks() }}
+      <div class="row">
+        <div class="col field">
+          <label for="{{ form.marks.id }}">Marks</label>
+          {{ form.marks() }}
+        </div>
+        <div class="col field">
+          <label for="{{ form.time_limit_seconds.id }}">Time limit for this question, seconds (optional)</label>
+          {{ form.time_limit_seconds(placeholder="e.g. 60") }}
+          <div class="hint">Soft pacing limit — locks this question's answer once time's up; the rest of the exam continues.</div>
+        </div>
       </div>
 
       <div class="actions">
@@ -103,7 +110,7 @@
             {% else %}
               Correct: {{ q.correct_answer|upper }}
             {% endif %}
-            · {{ q.marks }} mark(s)
+            · {{ q.marks }} mark(s){% if q.time_limit_seconds %} · {{ q.time_limit_seconds }}s limit{% endif %}
           </span>
           <form class="inline" method="post" action="{{ url_for('admin.delete_question', test_id=test.id, question_id=q.id) }}"
                 onsubmit="return confirm('Remove this question?');">
@@ -128,10 +135,10 @@
     <div class="card">
       <h4 style="margin:0 0 8px 0">Bulk import (CSV)</h4>
       <p class="small">
-        Columns: <code>question_text, question_type, option_a, option_b, option_c, option_d, correct_answer, marks</code>.
+        Columns: <code>question_text, question_type, option_a, option_b, option_c, option_d, correct_answer, marks, time_limit_seconds</code>.
         <code>question_type</code> is <code>single</code> (default) / <code>multi</code> / <code>short</code>.
         For <code>multi</code>, join correct letters with <code>+</code>, e.g. <code>a+c</code>. Options aren't
-        needed for <code>short</code> rows. <code>marks</code> is optional (defaults to 1).
+        needed for <code>short</code> rows. <code>marks</code> and <code>time_limit_seconds</code> are both optional.
       </p>
       <form method="post" action="{{ url_for('admin.import_questions', test_id=test.id) }}" enctype="multipart/form-data">
         {{ import_form.hidden_tag() }}

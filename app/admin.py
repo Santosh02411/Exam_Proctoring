@@ -1,16 +1,18 @@
 import csv
 import io
+import secrets
 import time
 
-from flask import Blueprint, render_template, redirect, url_for, flash, request, abort
+from flask import Blueprint, render_template, redirect, url_for, flash, request, abort, current_app
 from flask_login import current_user
 
 from app import db
 from app.forms import TestForm, QuestionForm, QuestionImportForm
-from app.models import Test, Question, User, TestEligibility, Attempt, ProctoringEvent, AdminActivityLog
+from app.models import Test, Question, User, TestEligibility, Attempt, ProctoringEvent, AdminActivityLog, gen_user_id
 from app.utils import admin_required
 from app.activity_log import log_activity
-from app.email_utils import send_email
+from app.email_utils import send_email, generate_token
+from app.auth import PASSWORD_RESET_SALT
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
 
@@ -31,6 +33,7 @@ def _apply_test_form(test, form):
     test.randomize_questions = form.randomize_questions.data
     test.negative_marks_per_wrong = form.negative_marks_per_wrong.data
     test.allow_review = form.allow_review.data
+    test.partial_credit_multi = form.partial_credit_multi.data
 
 
 @bp.route("/dashboard")
@@ -142,6 +145,7 @@ def duplicate_test(test_id):
         randomize_questions=orig.randomize_questions,
         negative_marks_per_wrong=orig.negative_marks_per_wrong,
         allow_review=orig.allow_review,
+        partial_credit_multi=orig.partial_credit_multi,
         created_by=current_user.id,
     )
     db.session.add(new_test)
@@ -161,6 +165,7 @@ def _build_question_from_form(test, form):
     qtype = form.question_type.data
     text = form.question_text.data
     marks = form.marks.data
+    time_limit = form.time_limit_seconds.data or None
 
     if qtype in ("single", "multi"):
         options = [form.option_a.data, form.option_b.data, form.option_c.data, form.option_d.data]
@@ -184,7 +189,7 @@ def _build_question_from_form(test, form):
             test_id=test.id, question_text=text, question_type=qtype,
             option_a=form.option_a.data, option_b=form.option_b.data,
             option_c=form.option_c.data, option_d=form.option_d.data,
-            correct_answer=correct_answer, marks=marks,
+            correct_answer=correct_answer, marks=marks, time_limit_seconds=time_limit,
         ), None
 
     # short answer
@@ -194,7 +199,7 @@ def _build_question_from_form(test, form):
     return Question(
         test_id=test.id, question_text=text, question_type="short",
         option_a=None, option_b=None, option_c=None, option_d=None,
-        correct_answer=answer_text, marks=marks,
+        correct_answer=answer_text, marks=marks, time_limit_seconds=time_limit,
     ), None
 
 
@@ -259,12 +264,16 @@ def import_questions(test_id):
             marks = int(row.get("marks") or 1)
         except ValueError:
             marks = 1
+        try:
+            time_limit = int(row["time_limit_seconds"]) if row.get("time_limit_seconds") else None
+        except ValueError:
+            time_limit = None
 
         if qtype == "short":
             q = Question(
                 test_id=test.id, question_text=row["question_text"], question_type="short",
                 option_a=None, option_b=None, option_c=None, option_d=None,
-                correct_answer=row["correct_answer"].strip(), marks=marks,
+                correct_answer=row["correct_answer"].strip(), marks=marks, time_limit_seconds=time_limit,
             )
         else:
             options = [row.get(f"option_{k}") for k in ("a", "b", "c", "d")]
@@ -282,7 +291,7 @@ def import_questions(test_id):
             q = Question(
                 test_id=test.id, question_text=row["question_text"], question_type=qtype,
                 option_a=options[0], option_b=options[1], option_c=options[2], option_d=options[3],
-                correct_answer=",".join(picks), marks=marks,
+                correct_answer=",".join(picks), marks=marks, time_limit_seconds=time_limit,
             )
         db.session.add(q)
         added += 1
@@ -383,6 +392,39 @@ def view_results(test_id):
     return render_template("admin/view_results.html", test=test, pagination=pagination, attempts=pagination.items)
 
 
+@bp.route("/tests/<int:test_id>/results/export.csv")
+@admin_required
+def export_results_csv(test_id):
+    test = Test.query.get_or_404(test_id)
+    attempts = Attempt.query.filter_by(test_id=test.id).order_by(Attempt.started_at.desc()).all()
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow([
+        "student_name", "student_email", "status", "score", "total_marks", "passed",
+        "violation_count", "started_at", "submitted_at", "termination_reason",
+    ])
+    total_marks = test.total_marks()
+    for a in attempts:
+        passed = (a.score or 0) >= test.passing_marks if a.status != "terminated" else False
+        writer.writerow([
+            a.student.name, a.student.email, a.status,
+            a.score if a.score is not None else "",
+            total_marks, "yes" if passed else "no",
+            a.violation_count,
+            a.started_at.strftime("%Y-%m-%d %H:%M:%S") if a.started_at else "",
+            a.submitted_at.strftime("%Y-%m-%d %H:%M:%S") if a.submitted_at else "",
+            a.termination_reason or "",
+        ])
+
+    log_activity("exported_results", f"Exported results CSV for '{test.title}' ({len(attempts)} attempts)")
+
+    response = current_app.response_class(buffer.getvalue(), mimetype="text/csv")
+    safe_code = "".join(c for c in test.test_code if c.isalnum() or c in "-_") or "test"
+    response.headers["Content-Disposition"] = f"attachment; filename={safe_code}_results.csv"
+    return response
+
+
 @bp.route("/attempts/<int:attempt_id>")
 @admin_required
 def view_attempt(attempt_id):
@@ -399,3 +441,74 @@ def activity_log():
         page=page, per_page=30, error_out=False
     )
     return render_template("admin/activity_log.html", pagination=pagination, entries=pagination.items)
+
+
+def _invite_student(user):
+    """Email a newly bulk-imported student a link to set their own password —
+    reuses the same signed-token mechanism as the self-service forgot-password
+    flow, so there's no separate "temporary password" to manage or leak."""
+    token = generate_token(user.email, PASSWORD_RESET_SALT)
+    link = url_for("auth.reset_password", token=token, _external=True)
+    mode = send_email(
+        user.email,
+        "You've been added to Exam Proctoring",
+        f"Hi {user.name},\n\nAn admin created an account for you on Exam Proctoring.\n"
+        f"Set your password to get started:\n{link}\n\nThis link expires in 1 hour.",
+    )
+    return link, mode
+
+
+@bp.route("/students/import", methods=["GET", "POST"])
+@admin_required
+def import_students():
+    form = QuestionImportForm()
+    if request.method == "POST" and form.validate_on_submit():
+        file_storage = form.csv_file.data
+        try:
+            raw = file_storage.read().decode("utf-8-sig")
+        except UnicodeDecodeError:
+            flash("Could not read the file — please upload a UTF-8 encoded CSV.", "error")
+            return redirect(url_for("admin.import_students"))
+
+        reader = csv.DictReader(io.StringIO(raw))
+        required_cols = {"name", "email"}
+        if not reader.fieldnames or not required_cols.issubset({c.strip().lower() for c in reader.fieldnames}):
+            flash("CSV must have columns: name, email, phone (phone is optional).", "error")
+            return redirect(url_for("admin.import_students"))
+
+        added, skipped = 0, 0
+        seen_emails = set()
+        dev_links = []
+        for row in reader:
+            row = {k.strip().lower(): (v.strip() if v else v) for k, v in row.items()}
+            name, email = row.get("name"), row.get("email")
+            if not name or not email or "@" not in email:
+                skipped += 1
+                continue
+            email = email.lower()
+            if email in seen_emails or User.query.filter_by(email=email).first():
+                skipped += 1
+                continue
+            seen_emails.add(email)
+
+            user = User(
+                user_id=gen_user_id("student"), name=name, email=email,
+                phone=(row.get("phone") or "")[:15], role="student", status="active",
+                email_verified=True,  # admin-created accounts skip self-verification
+            )
+            user.set_password(secrets.token_urlsafe(24))  # unused — student sets their own via the invite link
+            db.session.add(user)
+            added += 1
+            link, mode = _invite_student(user)
+            if mode == "logged":
+                dev_links.append(f"{email}: {link}")
+
+        db.session.commit()
+        log_activity("imported_students", f"Bulk-imported {added} student(s) ({skipped} skipped)")
+        flash(f"Imported {added} student(s).{f' Skipped {skipped} invalid/duplicate row(s).' if skipped else ''}", "success")
+        for line in dev_links[:10]:
+            flash(f"(Dev mode) {line}", "info")
+        return redirect(url_for("admin.import_students"))
+
+    students = User.query.filter_by(role="student").order_by(User.created_at.desc()).limit(50).all()
+    return render_template("admin/import_students.html", form=form, students=students)

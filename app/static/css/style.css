@@ -94,6 +94,9 @@ form.inline{display:inline}
 #camPreview.flagged{border-color:var(--danger)}
 #examArea{display:none}
 .qcard{border-radius:12px;padding:16px;background:linear-gradient(180deg,#fff,#fbfdff);box-shadow:0 6px 20px rgba(11,22,50,0.05);margin-bottom:14px}
+.qcard.q-locked{opacity:0.6;background:linear-gradient(180deg,#fff,#fdf5f5)}
+.q-timer{color:var(--muted);font-weight:600}
+.qcard.q-locked .q-timer{color:var(--danger)}
 .options{display:grid;gap:8px;margin-top:12px}
 label.opt{display:flex;gap:8px;align-items:flex-start;padding:10px;border-radius:8px;border:1px solid #e7eefb;background:#fff;cursor:pointer}
 label.opt:hover{border-color:var(--primary)}

@@ -79,6 +79,12 @@
         {{ form.allow_review() }} <span>Let students review answers after submitting</span>
       </label>
     </div>
+    <div class="field">
+      <label class="opt" style="display:flex;align-items:center;gap:8px">
+        {{ form.partial_credit_multi() }} <span>Award partial credit on multiple-choice questions</span>
+      </label>
+      <div class="hint">Instead of all-or-nothing: proportional to correct picks minus incorrect picks, floored at zero.</div>
+    </div>
     <button type="submit" class="btn">Create Test</button>
   </form>
 </div>

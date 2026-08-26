@@ -21,6 +21,9 @@ ENV FLASK_APP=run.py \
 
 EXPOSE 8000
 
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD python3 -c "import urllib.request,sys; sys.exit(0) if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).status == 200 else sys.exit(1)"
+
 # Run migrations/table creation, then start Gunicorn. SECRET_KEY, DATABASE_URL,
 # MAIL_* etc. should be supplied as environment variables at deploy time —
 # see .env.example.

@@ -56,10 +56,11 @@
 
   <form id="answersForm">
     {% for q in questions %}
-    <div class="qcard" data-qid="{{ q.id }}">
+    <div class="qcard" data-qid="{{ q.id }}" {% if q.time_limit_seconds %}data-time-limit="{{ q.time_limit_seconds }}"{% endif %}>
       <div>
         <strong>Q{{ loop.index }}.</strong> {{ q.question_text }}
         {% if q.question_type == 'multi' %}<span class="small muted">(select all that apply)</span>{% endif %}
+        {% if q.time_limit_seconds %}<span class="small q-timer" data-qtimer="{{ q.id }}"></span>{% endif %}
       </div>
       {% if q.question_type == 'short' %}
       <div style="margin-top:10px">

@@ -177,6 +177,74 @@ def test_multi_select_partial_selection_scores_zero(client, app, admin_and_stude
         assert updated.score == 0.0
 
 
+def test_multi_select_partial_credit_when_enabled(client, app, admin_and_student_qt):
+    login(client, "adminqt@test.com", "adminpass")
+    _create_test(client, negative_marks_per_wrong=0, total_questions=1, partial_credit_multi="y")
+    with app.app_context():
+        from app.models import Test, User
+        test = Test.query.filter_by(test_code="QT1").first()
+        student = User.query.filter_by(email="studentqt@test.com").first()
+        assert test.partial_credit_multi is True
+
+    add_multi_question(client, test.id, "Pick both a and b", "1", "2", "3", "4", ["a", "b"], marks=6)
+    client.post(f"/admin/tests/{test.id}/assign", data={"student_ids": [str(student.id)]})
+    client.get("/logout")
+
+    login(client, "studentqt@test.com", "studpass")
+    _enroll_face(client)
+    client.get(f"/student/tests/{test.id}/start")
+
+    with app.app_context():
+        from app.models import Attempt, Question
+        attempt = Attempt.query.filter_by(test_id=test.id, student_id=student.id).first()
+        q = Question.query.filter_by(test_id=test.id).first()
+
+    # Selecting only ONE of the two correct options should earn half credit (3 of 6)
+    # when partial credit is enabled for this test.
+    r = client.post(f"/student/attempts/{attempt.id}/submit", data={f"q_{q.id}": "a"})
+    assert r.get_json()["ok"] is True
+
+    with app.app_context():
+        from app.models import Attempt as AttemptModel
+        updated = AttemptModel.query.get(attempt.id)
+        assert updated.score == 3.0
+
+    r = client.get(f"/student/attempts/{attempt.id}/review")
+    assert r.status_code == 200
+    assert b"Partial credit" in r.data
+    assert b"+3.0 of 6" in r.data
+
+
+def test_partial_credit_setting_does_not_affect_single_choice(client, app, admin_and_student_qt):
+    login(client, "adminqt@test.com", "adminpass")
+    _create_test(client, negative_marks_per_wrong=0, total_questions=1, partial_credit_multi="y")
+    with app.app_context():
+        from app.models import Test, User
+        test = Test.query.filter_by(test_code="QT1").first()
+        student = User.query.filter_by(email="studentqt@test.com").first()
+
+    add_single_question(client, test.id, "2+2?", "3", "4", "5", "6", "b", marks=5)
+    client.post(f"/admin/tests/{test.id}/assign", data={"student_ids": [str(student.id)]})
+    client.get("/logout")
+
+    login(client, "studentqt@test.com", "studpass")
+    _enroll_face(client)
+    client.get(f"/student/tests/{test.id}/start")
+
+    with app.app_context():
+        from app.models import Attempt, Question
+        attempt = Attempt.query.filter_by(test_id=test.id, student_id=student.id).first()
+        q = Question.query.filter_by(test_id=test.id).first()
+
+    # Wrong single-choice answer should still score exactly 0, never partial —
+    # the partial_credit_multi setting only applies to multi-select questions.
+    r = client.post(f"/student/attempts/{attempt.id}/submit", data={f"q_{q.id}": "a"})
+    with app.app_context():
+        from app.models import Attempt as AttemptModel
+        updated = AttemptModel.query.get(attempt.id)
+        assert updated.score == 0.0
+
+
 def test_short_answer_case_insensitive_grading(client, app, admin_and_student_qt):
     login(client, "adminqt@test.com", "adminpass")
     _create_test(client, negative_marks_per_wrong=0, total_questions=1)

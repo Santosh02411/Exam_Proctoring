@@ -139,9 +139,12 @@ def submit_answers(attempt_id):
         selected = _extract_submitted_answer(question, request.form)
         answer = Answer(attempt_id=attempt.id, question_id=q_id, selected_option=selected)
         db.session.add(answer)
-        if selected and question.is_correct(selected):
-            score += question.marks
-        elif selected and test.negative_marks_per_wrong:
+        if not selected:
+            continue
+        earned = question.score_for(selected, partial_credit_multi=test.partial_credit_multi)
+        if earned > 0:
+            score += earned
+        elif test.negative_marks_per_wrong:
             score -= test.negative_marks_per_wrong
 
     attempt.score = round(score, 2)

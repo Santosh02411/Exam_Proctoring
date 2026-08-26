@@ -38,6 +38,8 @@
   let analyser = null;
   let audioDataArray = null;
 
+  let questionTimerIntervals = [];
+
   // ---------- helpers ----------
   function fmtTime(s) {
     const m = Math.floor(s / 60).toString().padStart(2, '0');
@@ -181,6 +183,7 @@
     startIdentityRecheck();
     startAudioMonitoring();
     startRecording();
+    startPerQuestionTimers();
   }
 
   function startTimer() {
@@ -193,6 +196,58 @@
         submitExam('Time expired — auto-submitted.');
       }
     }, 1000);
+  }
+
+  function startPerQuestionTimers() {
+    // Optional soft pacing limit per question (Question.time_limit_seconds).
+    // All questions render on one page (not a stepper), so this can't block
+    // navigation — instead, once a question's clock runs out, its inputs lock
+    // in place and the rest of the exam continues normally on the overall timer.
+    const qcards = document.querySelectorAll('.qcard[data-time-limit]');
+    qcards.forEach((card) => {
+      const qid = card.dataset.qid;
+      const limit = parseInt(card.dataset.timeLimit, 10);
+      if (!limit || isNaN(limit)) return;
+
+      const timerLabel = card.querySelector(`[data-qtimer="${qid}"]`);
+      let remaining = limit;
+
+      const render = () => {
+        if (timerLabel) timerLabel.textContent = ` — ${fmtTime(remaining)} left for this question`;
+      };
+      render();
+
+      const intervalId = setInterval(() => {
+        if (!examActive || examEnded) {
+          clearInterval(intervalId);
+          return;
+        }
+        remaining -= 1;
+        if (remaining <= 0) {
+          clearInterval(intervalId);
+          remaining = 0;
+          lockQuestionCard(card, timerLabel);
+        } else {
+          render();
+        }
+      }, 1000);
+
+      questionTimerIntervals.push(intervalId);
+    });
+  }
+
+  function lockQuestionCard(card, timerLabel) {
+    card.classList.add('q-locked');
+    if (timerLabel) timerLabel.textContent = ' — time expired for this question';
+
+    // Deliberately NOT using `disabled` here: disabled fields are excluded from
+    // FormData on submit, which would silently drop an answer the student had
+    // already picked before time ran out. readOnly + blocking further clicks
+    // keeps the existing value intact while preventing further changes.
+    card.querySelectorAll('input[type="text"]').forEach((el) => { el.readOnly = true; });
+    card.querySelectorAll('input[type="radio"], input[type="checkbox"]').forEach((el) => {
+      el.addEventListener('click', (e) => { e.preventDefault(); }, true);
+    });
   }
 
   function startFaceMonitoring() {
@@ -337,6 +392,8 @@
     clearInterval(snapshotInterval);
     clearInterval(identityCheckInterval);
     clearInterval(audioCheckInterval);
+    questionTimerIntervals.forEach((id) => clearInterval(id));
+    questionTimerIntervals = [];
 
     if (mediaRecorder && mediaRecorder.state !== 'inactive') {
       try { mediaRecorder.stop(); } catch (e) { /* noop */ }

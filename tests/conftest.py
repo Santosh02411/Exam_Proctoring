@@ -85,17 +85,17 @@ def login(client, email, password):
     )
 
 
-def add_single_question(client, test_id, question_text, option_a, option_b, option_c, option_d, correct_letter, marks=1):
+def add_single_question(client, test_id, question_text, option_a, option_b, option_c, option_d, correct_letter, marks=1, time_limit_seconds=None):
     """POST a single-choice question the way the real form does — via the
     correct_radio field, not a plain correct_answer field."""
-    return client.post(
-        f"/admin/tests/{test_id}/questions/add",
-        data={
-            "question_type": "single", "question_text": question_text,
-            "option_a": option_a, "option_b": option_b, "option_c": option_c, "option_d": option_d,
-            "correct_radio": correct_letter, "marks": marks,
-        },
-    )
+    data = {
+        "question_type": "single", "question_text": question_text,
+        "option_a": option_a, "option_b": option_b, "option_c": option_c, "option_d": option_d,
+        "correct_radio": correct_letter, "marks": marks,
+    }
+    if time_limit_seconds is not None:
+        data["time_limit_seconds"] = time_limit_seconds
+    return client.post(f"/admin/tests/{test_id}/questions/add", data=data)
 
 
 def add_multi_question(client, test_id, question_text, option_a, option_b, option_c, option_d, correct_letters, marks=1):

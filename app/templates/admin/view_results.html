@@ -2,10 +2,15 @@
 {% from "_pagination.html" import render_pagination %}
 {% block title %}Results — {{ test.title }}{% endblock %}
 {% block content %}
-<div style="margin-bottom:16px">
-  <a class="small" href="{{ url_for('admin.view_test', test_id=test.id) }}">&larr; Back to test</a>
-  <h1 style="margin-top:8px">Results — {{ test.title }}</h1>
-  <div class="lead">Passing marks: {{ test.passing_marks }} / {{ test.total_marks() }}</div>
+<div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:16px">
+  <div>
+    <a class="small" href="{{ url_for('admin.view_test', test_id=test.id) }}">&larr; Back to test</a>
+    <h1 style="margin-top:8px">Results — {{ test.title }}</h1>
+    <div class="lead">Passing marks: {{ test.passing_marks }} / {{ test.total_marks() }}</div>
+  </div>
+  {% if attempts %}
+  <a class="btn ghost" href="{{ url_for('admin.export_results_csv', test_id=test.id) }}">Export CSV</a>
+  {% endif %}
 </div>
 
 <div class="card">

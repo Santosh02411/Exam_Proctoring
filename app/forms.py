@@ -34,6 +34,16 @@ class ResetPasswordForm(FlaskForm):
             raise ValidationError("Passwords do not match.")
 
 
+class ChangePasswordForm(FlaskForm):
+    current_password = PasswordField("Current Password", validators=[DataRequired()])
+    new_password = PasswordField("New Password", validators=[DataRequired(), Length(min=6, message="Min 6 characters")])
+    confirm_password = PasswordField("Confirm New Password", validators=[DataRequired()])
+
+    def validate_confirm_password(self, field):
+        if field.data != self.new_password.data:
+            raise ValidationError("Passwords do not match.")
+
+
 class TestForm(FlaskForm):
     test_code = StringField("Test Code", validators=[DataRequired(), Length(max=64)])
     title = StringField("Title", validators=[DataRequired(), Length(max=200)])
@@ -48,6 +58,9 @@ class TestForm(FlaskForm):
     randomize_questions = BooleanField("Shuffle question & option order per student", default=True)
     negative_marks_per_wrong = FloatField("Negative marks per wrong answer", default=0.0, validators=[NumberRange(min=0)])
     allow_review = BooleanField("Let students review answers after submitting", default=True)
+    partial_credit_multi = BooleanField(
+        "Award partial credit on multiple-choice questions (instead of all-or-nothing)", default=False
+    )
 
 
 class QuestionForm(FlaskForm):
@@ -65,6 +78,9 @@ class QuestionForm(FlaskForm):
     option_d = StringField("Option D", validators=[Optional(), Length(max=500)])
     short_answer_text = StringField("Correct answer (short text)", validators=[Optional(), Length(max=500)])
     marks = IntegerField("Marks", validators=[DataRequired(), NumberRange(min=1)])
+    time_limit_seconds = IntegerField(
+        "Time limit for this question, in seconds (optional)", validators=[Optional(), NumberRange(min=5)]
+    )
 
 
 class QuestionImportForm(FlaskForm):

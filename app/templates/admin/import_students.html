@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Import Students{% endblock %}
+{% block content %}
+<div style="margin-bottom:16px">
+  <a class="small" href="{{ url_for('admin.dashboard') }}">&larr; Dashboard</a>
+  <h1 style="margin-top:8px">Import Students</h1>
+  <div class="lead">Bulk-create student accounts from a CSV — each one gets an email to set their own password.</div>
+</div>
+
+<div class="wrap" style="grid-template-columns:1fr 1fr;display:grid">
+  <div class="card">
+    <h2>Upload CSV</h2>
+    <p class="small">
+      Columns: <code>name, email, phone</code> (<code>phone</code> is optional). Rows with a
+      missing name/email, an invalid email, or an email that's already registered are skipped.
+    </p>
+    <form method="post" enctype="multipart/form-data">
+      {{ form.hidden_tag() }}
+      {{ form.csv_file() }}
+      {% for e in form.csv_file.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+      <button type="submit" class="btn" style="margin-top:12px">Import</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Recently added students</h2>
+    {% if students %}
+    <table class="table">
+      <thead><tr><th>Name</th><th>Email</th><th>Joined</th></tr></thead>
+      <tbody>
+        {% for s in students %}
+        <tr>
+          <td class="small">{{ s.name }}</td>
+          <td class="small">{{ s.email }}</td>
+          <td class="small">{{ s.created_at.strftime('%Y-%m-%d') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="small">No students yet.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

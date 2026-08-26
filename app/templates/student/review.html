@@ -15,7 +15,7 @@
 {% for row in rows %}
 {% set q = row.question %}
 {% set a = row.answer %}
-{% set is_correct = a and a.selected_option and q.is_correct(a.selected_option) %}
+{% set earned = q.score_for(a.selected_option, partial_credit_multi=test.partial_credit_multi) if a and a.selected_option else 0.0 %}
 <div class="qcard">
   <div>
     <strong>Q{{ loop.index }}.</strong> {{ q.question_text }}
@@ -45,8 +45,10 @@
   <div class="small" style="margin-top:8px">
     {% if not a or not a.selected_option %}
       <span class="badge fail">Not answered</span>
-    {% elif is_correct %}
-      <span class="badge pass">Correct</span> (+{{ q.marks }})
+    {% elif earned == q.marks %}
+      <span class="badge pass">Correct</span> (+{{ earned }})
+    {% elif earned > 0 %}
+      <span class="badge draft">Partial credit</span> (+{{ earned }} of {{ q.marks }})
     {% else %}
       <span class="badge fail">Incorrect</span>
       {% if test.negative_marks_per_wrong %}(-{{ test.negative_marks_per_wrong }}){% endif %}
