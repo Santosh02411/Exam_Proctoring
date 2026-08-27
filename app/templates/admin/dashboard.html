@@ -1,12 +1,16 @@
 {% extends "base.html" %}
-{% block title %}Admin Dashboard{% endblock %}
+{% block title %}{{ 'Examiner' if current_user.role == 'examiner' else 'Admin' }} Dashboard{% endblock %}
 {% block content %}
-<h1>Admin Dashboard</h1>
+<h1>{{ 'Examiner' if current_user.role == 'examiner' else 'Admin' }} Dashboard</h1>
 <div class="lead">Welcome back, {{ current_user.name }}.</div>
 
 <div class="kpi-row" style="margin-top:20px">
   <div class="kpi"><div class="num">{{ tests|length }}</div><div class="label">Your Tests</div></div>
+  {% if current_user.role == 'admin' %}
   <a class="kpi" style="text-decoration:none;color:inherit" href="{{ url_for('admin.manage_users') }}"><div class="num">{{ total_students }}</div><div class="label">Students</div></a>
+  {% else %}
+  <div class="kpi"><div class="num">{{ total_students }}</div><div class="label">Students</div></div>
+  {% endif %}
   <div class="kpi"><div class="num">{{ total_attempts }}</div><div class="label">Attempts</div></div>
 </div>
 

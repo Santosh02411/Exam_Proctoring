@@ -14,13 +14,19 @@ from app.models import (
     Test, Question, User, TestEligibility, Attempt, ProctoringEvent, AdminActivityLog,
     QuestionBankItem, gen_user_id,
 )
-from app.utils import admin_required
+from app.utils import admin_required, roles_required
 from app.activity_log import log_activity
 from app.email_utils import send_email
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
 
 PER_PAGE = 15
+
+# Test/question authoring and grading is shared between admins and examiners.
+# Proctoring review (results + individual attempt/violation review) additionally
+# opens up to the proctor role, whose whole job is that review queue.
+content_access = roles_required("admin", "examiner")
+review_access = roles_required("admin", "examiner", "proctor")
 
 
 def _generate_temp_password():
@@ -54,7 +60,7 @@ def _apply_test_form(test, form):
 
 
 @bp.route("/dashboard")
-@admin_required
+@content_access
 def dashboard():
     tests = Test.query.filter_by(created_by=current_user.id).order_by(Test.created_at.desc()).all()
     total_students = User.query.filter_by(role="student").count()
@@ -65,7 +71,7 @@ def dashboard():
 
 
 @bp.route("/tests/create", methods=["GET", "POST"])
-@admin_required
+@content_access
 def create_test():
     form = TestForm()
     if request.method == "GET":
@@ -87,7 +93,7 @@ def create_test():
 
 
 @bp.route("/tests/<int:test_id>/edit", methods=["GET", "POST"])
-@admin_required
+@content_access
 def edit_test(test_id):
     test = Test.query.get_or_404(test_id)
     form = TestForm(obj=test)
@@ -107,7 +113,7 @@ def edit_test(test_id):
 
 
 @bp.route("/tests")
-@admin_required
+@content_access
 def manage_tests():
     page = request.args.get("page", 1, type=int)
     mine_only = request.args.get("mine") == "1"
@@ -121,7 +127,7 @@ def manage_tests():
 
 
 @bp.route("/tests/<int:test_id>/delete", methods=["POST"])
-@admin_required
+@content_access
 def delete_test(test_id):
     test = Test.query.get_or_404(test_id)
     title = test.title
@@ -133,7 +139,7 @@ def delete_test(test_id):
 
 
 @bp.route("/tests/<int:test_id>/toggle", methods=["POST"])
-@admin_required
+@content_access
 def toggle_test(test_id):
     test = Test.query.get_or_404(test_id)
     test.status = "draft" if test.status == "published" else "published"
@@ -147,7 +153,7 @@ def toggle_test(test_id):
 
 
 @bp.route("/tests/<int:test_id>/duplicate", methods=["POST"])
-@admin_required
+@content_access
 def duplicate_test(test_id):
     orig = Test.query.get_or_404(test_id)
     new_test = Test(
@@ -228,7 +234,7 @@ def _build_question_from_form(test, form):
 
 
 @bp.route("/tests/<int:test_id>/questions/add", methods=["GET", "POST"])
-@admin_required
+@content_access
 def add_question(test_id):
     test = Test.query.get_or_404(test_id)
     form = QuestionForm()
@@ -247,7 +253,7 @@ def add_question(test_id):
 
 
 @bp.route("/tests/<int:test_id>/questions/import", methods=["POST"])
-@admin_required
+@content_access
 def import_questions(test_id):
     test = Test.query.get_or_404(test_id)
     form = QuestionImportForm()
@@ -327,7 +333,7 @@ def import_questions(test_id):
 
 
 @bp.route("/tests/<int:test_id>/questions/<int:question_id>/delete", methods=["POST"])
-@admin_required
+@content_access
 def delete_question(test_id, question_id):
     q = Question.query.filter_by(id=question_id, test_id=test_id).first_or_404()
     db.session.delete(q)
@@ -338,7 +344,7 @@ def delete_question(test_id, question_id):
 
 
 @bp.route("/tests/<int:test_id>/questions/<int:question_id>/save-to-bank", methods=["POST"])
-@admin_required
+@content_access
 def save_question_to_bank(test_id, question_id):
     q = Question.query.filter_by(id=question_id, test_id=test_id).first_or_404()
     category = (request.form.get("category") or "").strip() or None
@@ -356,7 +362,7 @@ def save_question_to_bank(test_id, question_id):
 
 
 @bp.route("/tests/<int:test_id>/questions/from-bank", methods=["GET", "POST"])
-@admin_required
+@content_access
 def pick_from_bank(test_id):
     test = Test.query.get_or_404(test_id)
 
@@ -400,14 +406,14 @@ def pick_from_bank(test_id):
 
 
 @bp.route("/tests/<int:test_id>/view")
-@admin_required
+@content_access
 def view_test(test_id):
     test = Test.query.get_or_404(test_id)
     return render_template("admin/view_test.html", test=test)
 
 
 @bp.route("/tests/<int:test_id>/assign", methods=["GET", "POST"])
-@admin_required
+@content_access
 def assign_students(test_id):
     test = Test.query.get_or_404(test_id)
     if request.method == "POST":
@@ -461,7 +467,7 @@ def assign_students(test_id):
 
 
 @bp.route("/tests/<int:test_id>/unassign/<int:student_id>", methods=["POST"])
-@admin_required
+@content_access
 def unassign_student(test_id, student_id):
     e = TestEligibility.query.filter_by(test_id=test_id, student_id=student_id).first_or_404()
     db.session.delete(e)
@@ -472,7 +478,7 @@ def unassign_student(test_id, student_id):
 
 
 @bp.route("/tests/<int:test_id>/eligibility/<int:student_id>/update", methods=["POST"])
-@admin_required
+@content_access
 def update_eligibility(test_id, student_id):
     e = TestEligibility.query.filter_by(test_id=test_id, student_id=student_id).first_or_404()
     e.extra_time_minutes = max(request.form.get("extra_time_minutes", type=int, default=0) or 0, 0)
@@ -488,7 +494,7 @@ def update_eligibility(test_id, student_id):
 
 
 @bp.route("/tests/<int:test_id>/results")
-@admin_required
+@review_access
 def view_results(test_id):
     test = Test.query.get_or_404(test_id)
     page = request.args.get("page", 1, type=int)
@@ -499,11 +505,27 @@ def view_results(test_id):
 
 
 @bp.route("/attempts/<int:attempt_id>")
-@admin_required
+@review_access
 def view_attempt(attempt_id):
     attempt = Attempt.query.get_or_404(attempt_id)
     events = ProctoringEvent.query.filter_by(attempt_id=attempt.id).order_by(ProctoringEvent.created_at).all()
     return render_template("admin/view_attempt.html", attempt=attempt, events=events)
+
+
+@bp.route("/review-queue")
+@review_access
+def proctor_queue():
+    """Landing page for the proctor role (also open to admin/examiner):
+    every attempt that was auto-terminated or picked up at least one
+    violation, most recent first, across all tests — not scoped to
+    tests the current user created, since proctoring review isn't
+    ownership-based the way test authoring is."""
+    page = request.args.get("page", 1, type=int)
+    query = Attempt.query.filter(
+        db.or_(Attempt.status == "terminated", Attempt.violation_count > 0)
+    ).order_by(Attempt.started_at.desc())
+    pagination = query.paginate(page=page, per_page=PER_PAGE, error_out=False)
+    return render_template("admin/proctor_queue.html", pagination=pagination, attempts=pagination.items)
 
 
 @bp.route("/activity-log")
@@ -517,7 +539,7 @@ def activity_log():
 
 
 @bp.route("/bank")
-@admin_required
+@content_access
 def manage_bank():
     page = request.args.get("page", 1, type=int)
     search = request.args.get("q", "").strip()
@@ -546,7 +568,7 @@ def manage_bank():
 
 
 @bp.route("/bank/add", methods=["GET", "POST"])
-@admin_required
+@content_access
 def add_bank_item():
     form = QuestionBankForm()
     if form.validate_on_submit():
@@ -566,7 +588,7 @@ def add_bank_item():
 
 
 @bp.route("/bank/<int:item_id>/edit", methods=["GET", "POST"])
-@admin_required
+@content_access
 def edit_bank_item(item_id):
     item = QuestionBankItem.query.get_or_404(item_id)
     form = QuestionBankForm(obj=item)
@@ -589,7 +611,7 @@ def edit_bank_item(item_id):
 
 
 @bp.route("/bank/<int:item_id>/delete", methods=["POST"])
-@admin_required
+@content_access
 def delete_bank_item(item_id):
     item = QuestionBankItem.query.get_or_404(item_id)
     # Copies already made from this item stay in their tests — only the
@@ -616,7 +638,7 @@ def manage_users():
         query = query.filter(
             db.or_(User.name.ilike(like), User.email.ilike(like), User.user_id.ilike(like))
         )
-    if role_filter in ("student", "admin"):
+    if role_filter in ("student", "examiner", "proctor", "admin"):
         query = query.filter_by(role=role_filter)
     if status_filter in ("active", "inactive"):
         query = query.filter_by(status=status_filter)
@@ -687,7 +709,7 @@ def export_users():
     status_filter = request.args.get("status", "")
 
     query = User.query
-    if role_filter in ("student", "admin"):
+    if role_filter in ("student", "examiner", "proctor", "admin"):
         query = query.filter_by(role=role_filter)
     if status_filter in ("active", "inactive"):
         query = query.filter_by(status=status_filter)

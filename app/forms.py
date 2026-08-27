@@ -32,7 +32,9 @@ class RegisterForm(FlaskForm):
     name = StringField("Full Name", validators=[DataRequired(), Length(max=120)])
     email = StringField("Email", validators=[DataRequired(), Email(), Length(max=150)])
     phone = StringField("Mobile Number", validators=[DataRequired(), Regexp(r"^\d{10}$", message="Enter exactly 10 digits")])
-    role = SelectField("Register as", choices=[("student", "Student"), ("admin", "Admin")], validators=[DataRequired()])
+    role = SelectField("Register as", choices=[
+        ("student", "Student"), ("examiner", "Examiner"), ("proctor", "Proctor"), ("admin", "Admin"),
+    ], validators=[DataRequired()])
     password = PasswordField("Password", validators=[
         DataRequired(),
         Length(min=PASSWORD_MIN_LENGTH, message=f"Min {PASSWORD_MIN_LENGTH} characters"),
@@ -116,3 +118,22 @@ class UserImportForm(FlaskForm):
     csv_file = FileField("CSV file", validators=[
         FileRequired(), FileAllowed(["csv"], "CSV files only"),
     ])
+
+
+class ProfileForm(FlaskForm):
+    name = StringField("Full Name", validators=[DataRequired(), Length(max=120)])
+    phone = StringField("Mobile Number", validators=[DataRequired(), Regexp(r"^\d{10}$", message="Enter exactly 10 digits")])
+
+
+class ChangePasswordForm(FlaskForm):
+    current_password = PasswordField("Current Password", validators=[DataRequired()])
+    new_password = PasswordField("New Password", validators=[
+        DataRequired(),
+        Length(min=PASSWORD_MIN_LENGTH, message=f"Min {PASSWORD_MIN_LENGTH} characters"),
+        validate_password_complexity,
+    ])
+    confirm_new_password = PasswordField("Confirm New Password", validators=[DataRequired()])
+
+    def validate_confirm_new_password(self, field):
+        if field.data != self.new_password.data:
+            raise ValidationError("New passwords do not match.")

@@ -32,6 +32,8 @@
       <select id="role" name="role">
         <option value="" {{ 'selected' if not role_filter }}>All roles</option>
         <option value="student" {{ 'selected' if role_filter == 'student' }}>Student</option>
+        <option value="examiner" {{ 'selected' if role_filter == 'examiner' }}>Examiner</option>
+        <option value="proctor" {{ 'selected' if role_filter == 'proctor' }}>Proctor</option>
         <option value="admin" {{ 'selected' if role_filter == 'admin' }}>Admin</option>
       </select>
     </div>

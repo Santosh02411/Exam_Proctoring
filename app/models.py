@@ -20,7 +20,7 @@ class User(UserMixin, db.Model):
     email = db.Column(db.String(150), unique=True, nullable=False, index=True)
     phone = db.Column(db.String(15))
     password_hash = db.Column(db.String(255), nullable=False)
-    role = db.Column(db.String(20), nullable=False, default="student")  # student | admin
+    role = db.Column(db.String(20), nullable=False, default="student")  # student | examiner | proctor | admin
     status = db.Column(db.String(20), nullable=False, default="active")  # active | inactive
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 

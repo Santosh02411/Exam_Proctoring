@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}My Profile{% endblock %}
+{% block content %}
+<div style="margin-bottom:16px">
+  <h1>My Profile</h1>
+  <div class="lead">Manage your account details and password.</div>
+</div>
+
+<div class="wrap" style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+  <div class="card">
+    <h2>Account Details</h2>
+    <form method="post" novalidate>
+      <input type="hidden" name="form_name" value="profile">
+      {{ form.hidden_tag() }}
+      <div class="field">
+        <label>Email</label>
+        <input type="text" value="{{ current_user.email }}" disabled>
+        <div class="hint">Email can't be changed here — contact an admin if it needs to move.</div>
+      </div>
+      <div class="field">
+        <label>Role</label>
+        <input type="text" value="{{ current_user.role|capitalize }}" disabled>
+      </div>
+      <div class="field">
+        <label>User ID</label>
+        <input type="text" value="{{ current_user.user_id }}" disabled>
+      </div>
+      <div class="field">
+        <label for="{{ form.name.id }}">Full Name</label>
+        {{ form.name(placeholder="Full Name") }}
+        {% for e in form.name.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+      </div>
+      <div class="field">
+        <label for="{{ form.phone.id }}">Mobile Number</label>
+        <div class="phone-group">
+          <div class="phone-prefix">+91</div>
+          {{ form.phone(placeholder="10-digit Mobile Number", maxlength=10) }}
+        </div>
+        {% for e in form.phone.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+      </div>
+      <button type="submit" class="btn">Save Changes</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Change Password</h2>
+    <form method="post" novalidate>
+      <input type="hidden" name="form_name" value="password">
+      {{ password_form.hidden_tag() }}
+      <div class="field">
+        <label for="{{ password_form.current_password.id }}">Current Password</label>
+        {{ password_form.current_password(placeholder="Current Password") }}
+        {% for e in password_form.current_password.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+      </div>
+      <div class="field">
+        <label for="{{ password_form.new_password.id }}">New Password</label>
+        {{ password_form.new_password(placeholder="New Password") }}
+        <div class="hint">At least 8 characters, with a lowercase letter, an uppercase letter, a number, and a special character.</div>
+        {% for e in password_form.new_password.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+      </div>
+      <div class="field">
+        <label for="{{ password_form.confirm_new_password.id }}">Confirm New Password</label>
+        {{ password_form.confirm_new_password(placeholder="Confirm New Password") }}
+        {% for e in password_form.confirm_new_password.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+      </div>
+      <button type="submit" class="btn">Change Password</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

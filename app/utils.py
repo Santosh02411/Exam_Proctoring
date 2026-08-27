@@ -5,26 +5,27 @@ from flask import abort, request, current_app
 from flask_login import current_user, login_required
 
 
-def admin_required(f):
-    @wraps(f)
-    @login_required
-    def wrapper(*args, **kwargs):
-        if current_user.role != "admin":
-            abort(403)
-        return f(*args, **kwargs)
+def roles_required(*roles):
+    """Generic RBAC decorator: allows only the given User.role values.
+    admin_required / student_required below are the two single-role cases
+    kept as named decorators since they're used everywhere; routes that
+    need to be shared across several roles (e.g. admin + examiner) use
+    this directly — see app.admin's content_access / review_access."""
+    def decorator(f):
+        @wraps(f)
+        @login_required
+        def wrapper(*args, **kwargs):
+            if current_user.role not in roles:
+                abort(403)
+            return f(*args, **kwargs)
 
-    return wrapper
+        return wrapper
+
+    return decorator
 
 
-def student_required(f):
-    @wraps(f)
-    @login_required
-    def wrapper(*args, **kwargs):
-        if current_user.role != "student":
-            abort(403)
-        return f(*args, **kwargs)
-
-    return wrapper
+admin_required = roles_required("admin")
+student_required = roles_required("student")
 
 
 def get_client_ip():

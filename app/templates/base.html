@@ -26,17 +26,23 @@
     <div class="topnav-inner">
       <a class="brand" href="{{ url_for('index') }}">🛡️ Exam Proctoring</a>
       <div class="nav-links">
-        {% if current_user.role == 'admin' %}
+        {% if current_user.role in ('admin', 'examiner') %}
           <a href="{{ url_for('admin.dashboard') }}">Dashboard</a>
           <a href="{{ url_for('admin.manage_tests') }}">Manage Tests</a>
           <a href="{{ url_for('admin.create_test') }}">+ New Test</a>
           <a href="{{ url_for('admin.manage_bank') }}">Question Bank</a>
-          <a href="{{ url_for('admin.manage_users') }}">Manage Users</a>
-          <a href="{{ url_for('admin.activity_log') }}">Activity Log</a>
+          <a href="{{ url_for('admin.proctor_queue') }}">Review Queue</a>
+          {% if current_user.role == 'admin' %}
+            <a href="{{ url_for('admin.manage_users') }}">Manage Users</a>
+            <a href="{{ url_for('admin.activity_log') }}">Activity Log</a>
+          {% endif %}
+        {% elif current_user.role == 'proctor' %}
+          <a href="{{ url_for('admin.proctor_queue') }}">Review Queue</a>
         {% else %}
           <a href="{{ url_for('student.dashboard') }}">My Tests</a>
           <a href="{{ url_for('student.enroll_face') }}">Enroll Face</a>
         {% endif %}
+        <a href="{{ url_for('profile.view_profile') }}">Profile</a>
         <button type="button" class="theme-toggle" id="themeToggle" aria-pressed="false" aria-label="Switch to dark mode">
           <span id="themeToggleIcon" aria-hidden="true">🌙</span><span id="themeToggleLabel">Dark</span>
         </button>

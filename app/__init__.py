@@ -31,11 +31,13 @@ def create_app(config_object="config.Config"):
     from app.admin import bp as admin_bp
     from app.student import bp as student_bp
     from app.proctoring import bp as proctoring_bp
+    from app.profile import bp as profile_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(student_bp)
     app.register_blueprint(proctoring_bp)
+    app.register_blueprint(profile_bp)
 
     from flask import redirect, url_for
     from flask_login import current_user
@@ -43,8 +45,10 @@ def create_app(config_object="config.Config"):
     @app.route("/")
     def index():
         if current_user.is_authenticated:
-            if current_user.role == "admin":
+            if current_user.role in ("admin", "examiner"):
                 return redirect(url_for("admin.dashboard"))
+            if current_user.role == "proctor":
+                return redirect(url_for("admin.proctor_queue"))
             return redirect(url_for("student.dashboard"))
         return redirect(url_for("auth.login"))
 
