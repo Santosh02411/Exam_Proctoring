@@ -6,7 +6,7 @@ from flask import Blueprint, render_template, redirect, url_for, flash, request,
 from flask_login import current_user
 
 from app import db
-from app.models import Test, TestEligibility, Attempt, Answer, Question
+from app.models import Test, TestEligibility, Attempt, Answer, Question, Section
 from app.utils import student_required
 from app.randomize import build_attempt_order, ordered_questions, get_option_order
 
@@ -49,7 +49,9 @@ def _get_or_create_attempt(test, eligibility):
 
     questions = Question.query.filter_by(test_id=test.id).order_by(Question.id).all()
     token = secrets.token_hex(16)
-    question_order, option_order = build_attempt_order(questions, token, test.randomize_questions)
+    question_order, option_order = build_attempt_order(
+        questions, token, test.randomize_questions, test.randomize_options
+    )
 
     attempt = Attempt(
         attempt_token=token,
@@ -102,13 +104,50 @@ def start_test(test_id):
     reference_descriptor = json.loads(current_user.face_descriptor) if current_user.face_descriptor else None
     duration_seconds = (test.duration_minutes + eligibility.extra_time_minutes) * 60
 
+    saved_answers = json.loads(attempt.autosaved_answers) if attempt.autosaved_answers else {}
+
+    sections = Section.query.filter_by(test_id=test.id).order_by(Section.order_index).all()
+    questions_by_section = {s.id: [] for s in sections}
+    unsectioned = []
+    for q in questions:
+        if q.section_id and q.section_id in questions_by_section:
+            questions_by_section[q.section_id].append(q)
+        else:
+            unsectioned.append(q)
+
     return render_template(
         "student/take_test.html", test=test, attempt=attempt, questions=questions,
         option_order_by_qid=option_order_by_qid,
         reference_descriptor=reference_descriptor,
         duration_seconds=duration_seconds,
         extra_time_minutes=eligibility.extra_time_minutes,
+        saved_answers=saved_answers,
+        sections=sections, questions_by_section=questions_by_section, unsectioned=unsectioned,
     )
+
+
+@bp.route("/attempts/<int:attempt_id>/autosave", methods=["POST"])
+@student_required
+def autosave_answers(attempt_id):
+    """Periodic in-progress save so a refresh/crash mid-exam doesn't lose
+    answers already picked — see Attempt.autosaved_answers. Never affects
+    grading; final scoring only ever reads the real POST to submit_answers."""
+    attempt = Attempt.query.get_or_404(attempt_id)
+    if attempt.student_id != current_user.id:
+        abort(403)
+    if attempt.status != "in_progress":
+        return jsonify({"ok": True, "saved": False, "reason": "attempt not in progress"})
+
+    questions = Question.query.filter_by(test_id=attempt.test_id).all()
+    answers = {}
+    for q in questions:
+        value = _extract_submitted_answer(q, request.form)
+        if value is not None:
+            answers[str(q.id)] = value
+
+    attempt.autosaved_answers = json.dumps(answers)
+    db.session.commit()
+    return jsonify({"ok": True, "saved": True, "saved_at": datetime.utcnow().isoformat()})
 
 
 def _extract_submitted_answer(question, form):
@@ -152,6 +191,7 @@ def submit_answers(attempt_id):
     attempt.score = round(score, 2)
     attempt.submitted_at = datetime.utcnow()
     attempt.status = "submitted"
+    attempt.autosaved_answers = None
     db.session.commit()
 
     return jsonify({"ok": True, "redirect": url_for("student.result", attempt_id=attempt.id)})

@@ -9,10 +9,12 @@ from flask import Blueprint, render_template, redirect, url_for, flash, request,
 from flask_login import current_user
 
 from app import db
-from app.forms import TestForm, QuestionForm, QuestionImportForm, UserImportForm, QuestionBankForm
+from app.forms import (
+    TestForm, QuestionForm, QuestionImportForm, UserImportForm, QuestionBankForm, SectionForm,
+)
 from app.models import (
     Test, Question, User, TestEligibility, Attempt, ProctoringEvent, AdminActivityLog,
-    QuestionBankItem, gen_user_id,
+    QuestionBankItem, Section, gen_user_id,
 )
 from app.utils import admin_required, roles_required
 from app.activity_log import log_activity
@@ -46,6 +48,7 @@ def _apply_test_form(test, form):
     test.test_code = form.test_code.data.strip()
     test.title = form.title.data.strip()
     test.description = form.description.data
+    test.instructions = form.instructions.data
     test.duration_minutes = form.duration_minutes.data
     test.total_questions = form.total_questions.data
     test.passing_marks = form.passing_marks.data
@@ -54,6 +57,7 @@ def _apply_test_form(test, form):
     test.end_time = form.end_time.data
     test.max_attempts = form.max_attempts.data
     test.randomize_questions = form.randomize_questions.data
+    test.randomize_options = form.randomize_options.data
     test.negative_marks_per_wrong = form.negative_marks_per_wrong.data
     test.allow_review = form.allow_review.data
     test.partial_credit_multi = form.partial_credit_multi.data
@@ -77,6 +81,7 @@ def create_test():
     if request.method == "GET":
         form.max_attempts.data = 1
         form.randomize_questions.data = True
+        form.randomize_options.data = True
         form.allow_review.data = True
     if form.validate_on_submit():
         if Test.query.filter_by(test_code=form.test_code.data.strip()).first():
@@ -160,12 +165,14 @@ def duplicate_test(test_id):
         test_code=f"{orig.test_code}_COPY_{int(time.time())}",
         title=orig.title,
         description=orig.description,
+        instructions=orig.instructions,
         duration_minutes=orig.duration_minutes,
         total_questions=orig.total_questions,
         passing_marks=orig.passing_marks,
         status="draft",
         max_attempts=orig.max_attempts,
         randomize_questions=orig.randomize_questions,
+        randomize_options=orig.randomize_options,
         negative_marks_per_wrong=orig.negative_marks_per_wrong,
         allow_review=orig.allow_review,
         partial_credit_multi=orig.partial_credit_multi,
@@ -189,6 +196,8 @@ def _parse_question_fields(form):
     text = form.question_text.data
     marks = form.marks.data
     time_limit = form.time_limit_seconds.data or None
+    category = (form.category.data or "").strip() or None
+    difficulty = form.difficulty.data or "medium"
 
     if qtype in ("single", "multi"):
         options = [form.option_a.data, form.option_b.data, form.option_c.data, form.option_d.data]
@@ -213,6 +222,7 @@ def _parse_question_fields(form):
             "option_a": form.option_a.data, "option_b": form.option_b.data,
             "option_c": form.option_c.data, "option_d": form.option_d.data,
             "correct_answer": correct_answer, "marks": marks, "time_limit_seconds": time_limit,
+            "category": category, "difficulty": difficulty,
         }, None
 
     # short answer
@@ -223,6 +233,7 @@ def _parse_question_fields(form):
         "question_text": text, "question_type": "short",
         "option_a": None, "option_b": None, "option_c": None, "option_d": None,
         "correct_answer": answer_text, "marks": marks, "time_limit_seconds": time_limit,
+        "category": category, "difficulty": difficulty,
     }, None
 
 
@@ -230,7 +241,10 @@ def _build_question_from_form(test, form):
     fields, error = _parse_question_fields(form)
     if error:
         return None, error
-    return Question(test_id=test.id, **fields), None
+    section_id = request.form.get("section_id", type=int)
+    if section_id and not Section.query.filter_by(id=section_id, test_id=test.id).first():
+        section_id = None
+    return Question(test_id=test.id, section_id=section_id, **fields), None
 
 
 @bp.route("/tests/<int:test_id>/questions/add", methods=["GET", "POST"])
@@ -249,7 +263,10 @@ def add_question(test_id):
             log_activity("added_question", f"Added a {question.question_type} question to '{test.title}'")
             flash("Question added.", "success")
             return redirect(url_for("admin.add_question", test_id=test.id))
-    return render_template("admin/add_question.html", form=form, import_form=import_form, test=test)
+    return render_template(
+        "admin/add_question.html", form=form, import_form=import_form, test=test,
+        sections=Section.query.filter_by(test_id=test.id).order_by(Section.order_index).all(),
+    )
 
 
 @bp.route("/tests/<int:test_id>/questions/import", methods=["POST"])
@@ -274,8 +291,8 @@ def import_questions(test_id):
         flash(
             "CSV must have columns: question_text, correct_answer, marks (optional), question_type "
             "(optional: single/multi/short, defaults to single), option_a..option_d "
-            "(required for single/multi). For multi, correct_answer is letters joined with '+' or ';', "
-            "e.g. 'a+c'.",
+            "(required for single/multi), category (optional), difficulty (optional: easy/medium/hard). "
+            "For multi, correct_answer is letters joined with '+' or ';', e.g. 'a+c'.",
             "error",
         )
         return redirect(url_for("admin.add_question", test_id=test.id))
@@ -298,12 +315,17 @@ def import_questions(test_id):
             time_limit = int(row["time_limit_seconds"]) if row.get("time_limit_seconds") else None
         except ValueError:
             time_limit = None
+        category = row.get("category") or None
+        difficulty = (row.get("difficulty") or "medium").strip().lower()
+        if difficulty not in {"easy", "medium", "hard"}:
+            difficulty = "medium"
 
         if qtype == "short":
             q = Question(
                 test_id=test.id, question_text=row["question_text"], question_type="short",
                 option_a=None, option_b=None, option_c=None, option_d=None,
                 correct_answer=row["correct_answer"].strip(), marks=marks, time_limit_seconds=time_limit,
+                category=category, difficulty=difficulty,
             )
         else:
             options = [row.get(f"option_{k}") for k in ("a", "b", "c", "d")]
@@ -322,6 +344,7 @@ def import_questions(test_id):
                 test_id=test.id, question_text=row["question_text"], question_type=qtype,
                 option_a=options[0], option_b=options[1], option_c=options[2], option_d=options[3],
                 correct_answer=",".join(picks), marks=marks, time_limit_seconds=time_limit,
+                category=category, difficulty=difficulty,
             )
         db.session.add(q)
         added += 1
@@ -349,7 +372,7 @@ def save_question_to_bank(test_id, question_id):
     q = Question.query.filter_by(id=question_id, test_id=test_id).first_or_404()
     category = (request.form.get("category") or "").strip() or None
     item = QuestionBankItem(
-        created_by=current_user.id, category=category,
+        created_by=current_user.id, category=category, difficulty=q.difficulty,
         question_text=q.question_text, question_type=q.question_type,
         option_a=q.option_a, option_b=q.option_b, option_c=q.option_c, option_d=q.option_d,
         correct_answer=q.correct_answer, marks=q.marks, time_limit_seconds=q.time_limit_seconds,
@@ -371,7 +394,7 @@ def pick_from_bank(test_id):
         added = 0
         for item in QuestionBankItem.query.filter(QuestionBankItem.id.in_(item_ids)).all():
             db.session.add(Question(
-                test_id=test.id, bank_item_id=item.id,
+                test_id=test.id, bank_item_id=item.id, category=item.category, difficulty=item.difficulty,
                 question_text=item.question_text, question_type=item.question_type,
                 option_a=item.option_a, option_b=item.option_b, option_c=item.option_c, option_d=item.option_d,
                 correct_answer=item.correct_answer, marks=item.marks, time_limit_seconds=item.time_limit_seconds,
@@ -410,6 +433,73 @@ def pick_from_bank(test_id):
 def view_test(test_id):
     test = Test.query.get_or_404(test_id)
     return render_template("admin/view_test.html", test=test)
+
+
+@bp.route("/tests/<int:test_id>/sections", methods=["GET", "POST"])
+@content_access
+def manage_sections(test_id):
+    test = Test.query.get_or_404(test_id)
+    form = SectionForm()
+    if form.validate_on_submit():
+        next_order = (
+            db.session.query(db.func.max(Section.order_index)).filter_by(test_id=test.id).scalar() or 0
+        ) + 1
+        section = Section(
+            test_id=test.id, name=form.name.data.strip(), description=form.description.data,
+            duration_minutes=form.duration_minutes.data, order_index=next_order,
+        )
+        db.session.add(section)
+        db.session.commit()
+        log_activity("added_section", f"Added section '{section.name}' to '{test.title}'")
+        flash("Section added.", "success")
+        return redirect(url_for("admin.manage_sections", test_id=test.id))
+
+    sections = Section.query.filter_by(test_id=test.id).order_by(Section.order_index).all()
+    return render_template("admin/manage_sections.html", test=test, form=form, sections=sections)
+
+
+@bp.route("/tests/<int:test_id>/sections/<int:section_id>/edit", methods=["POST"])
+@content_access
+def edit_section(test_id, section_id):
+    section = Section.query.filter_by(id=section_id, test_id=test_id).first_or_404()
+    name = (request.form.get("name") or "").strip()
+    if not name:
+        flash("Section name is required.", "error")
+        return redirect(url_for("admin.manage_sections", test_id=test_id))
+    section.name = name
+    section.description = request.form.get("description") or None
+    duration = request.form.get("duration_minutes", type=int)
+    section.duration_minutes = duration if duration and duration > 0 else None
+    db.session.commit()
+    log_activity("edited_section", f"Edited section '{section.name}' on '{section.test.title}'")
+    flash("Section updated.", "success")
+    return redirect(url_for("admin.manage_sections", test_id=test_id))
+
+
+@bp.route("/tests/<int:test_id>/sections/<int:section_id>/delete", methods=["POST"])
+@content_access
+def delete_section(test_id, section_id):
+    section = Section.query.filter_by(id=section_id, test_id=test_id).first_or_404()
+    # Questions in this section aren't deleted — they just fall back to being
+    # unsectioned, same as any question that was never assigned a section.
+    Question.query.filter_by(section_id=section.id).update({"section_id": None})
+    name = section.name
+    db.session.delete(section)
+    db.session.commit()
+    log_activity("deleted_section", f"Deleted section '{name}' from test #{test_id}")
+    flash("Section removed. Its questions are kept, now unsectioned.", "success")
+    return redirect(url_for("admin.manage_sections", test_id=test_id))
+
+
+@bp.route("/tests/<int:test_id>/sections/reorder", methods=["POST"])
+@content_access
+def reorder_sections(test_id):
+    order = request.form.getlist("section_id")
+    for index, sid in enumerate(order):
+        Section.query.filter_by(id=int(sid), test_id=test_id).update({"order_index": index})
+    db.session.commit()
+    flash("Section order updated.", "success")
+    return redirect(url_for("admin.manage_sections", test_id=test_id))
 
 
 @bp.route("/tests/<int:test_id>/assign", methods=["GET", "POST"])
@@ -576,9 +666,7 @@ def add_bank_item():
         if error:
             flash(error, "error")
         else:
-            item = QuestionBankItem(
-                created_by=current_user.id, category=(form.category.data or "").strip() or None, **fields
-            )
+            item = QuestionBankItem(created_by=current_user.id, **fields)
             db.session.add(item)
             db.session.commit()
             log_activity("added_bank_item", f"Added a {item.question_type} question to the question bank")
@@ -602,7 +690,6 @@ def edit_bank_item(item_id):
         else:
             for key, value in fields.items():
                 setattr(item, key, value)
-            item.category = (form.category.data or "").strip() or None
             db.session.commit()
             log_activity("edited_bank_item", f"Edited a question bank item (#{item.id})")
             flash("Question bank item updated.", "success")

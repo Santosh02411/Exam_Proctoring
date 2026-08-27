@@ -53,6 +53,10 @@ class Test(db.Model):
     test_code = db.Column(db.String(64), unique=True, nullable=False)
     title = db.Column(db.String(200), nullable=False)
     description = db.Column(db.Text)
+    # Longer-form rules/instructions shown to the student on the pre-exam
+    # consent screen, separate from the short `description` blurb shown
+    # everywhere else (dashboard, results, etc).
+    instructions = db.Column(db.Text, nullable=True)
     duration_minutes = db.Column(db.Integer, nullable=False, default=30)
     total_questions = db.Column(db.Integer, nullable=False, default=0)
     passing_marks = db.Column(db.Integer, nullable=False, default=0)
@@ -64,8 +68,10 @@ class Test(db.Model):
 
     # Retake policy
     max_attempts = db.Column(db.Integer, nullable=False, default=1)
-    # Anti-collusion: shuffle question order and per-question option order per attempt
+    # Anti-collusion shuffling — question order and per-question option order
+    # are independent toggles so an admin can shuffle one without the other.
     randomize_questions = db.Column(db.Boolean, nullable=False, default=True)
+    randomize_options = db.Column(db.Boolean, nullable=False, default=True)
     # Negative marking: points deducted per wrong answer (0 disables it)
     negative_marks_per_wrong = db.Column(db.Float, nullable=False, default=0.0)
     # Whether students can review their answers (with correct answers shown) after submitting
@@ -78,6 +84,10 @@ class Test(db.Model):
     questions = db.relationship("Question", backref="test", cascade="all, delete-orphan", lazy=True)
     eligibility = db.relationship("TestEligibility", backref="test", cascade="all, delete-orphan", lazy=True)
     attempts = db.relationship("Attempt", backref="test", cascade="all, delete-orphan", lazy=True)
+    sections = db.relationship(
+        "Section", backref="test", cascade="all, delete-orphan", lazy=True,
+        order_by="Section.order_index",
+    )
 
     def total_marks(self):
         return sum(q.marks for q in self.questions) or 0
@@ -89,6 +99,26 @@ class Test(db.Model):
         if self.end_time and now > self.end_time:
             return False
         return True
+
+
+class Section(db.Model):
+    """An optional named grouping of a test's questions (e.g. 'Verbal
+    Reasoning', 'Coding'). A test with no sections behaves exactly as
+    before — sections are purely additive. duration_minutes, if set,
+    gives the section its own countdown in the exam UI independent of
+    the overall test timer; questions in a section with no duration are
+    only bound by the overall exam timer."""
+
+    __tablename__ = "sections"
+
+    id = db.Column(db.Integer, primary_key=True)
+    test_id = db.Column(db.Integer, db.ForeignKey("tests.id"), nullable=False)
+    name = db.Column(db.String(150), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    order_index = db.Column(db.Integer, nullable=False, default=0)
+    duration_minutes = db.Column(db.Integer, nullable=True)  # None = no section-specific timer
+
+    questions = db.relationship("Question", backref="section", lazy=True)
 
 
 class QuestionBankItem(db.Model):
@@ -104,6 +134,8 @@ class QuestionBankItem(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     # Free-text topic/category tag for filtering (e.g. "Python Basics", "HR Policy").
     category = db.Column(db.String(100), nullable=True, index=True)
+    difficulty = db.Column(db.String(10), nullable=True, default="medium")  # easy | medium | hard
+    difficulty = db.Column(db.String(10), nullable=True, default="medium")  # easy | medium | hard
 
     question_type = db.Column(db.String(10), nullable=False, default="single")
     option_a = db.Column(db.String(500), nullable=True)
@@ -136,6 +168,14 @@ class Question(db.Model):
     # — editing/deleting it here never touches the bank item or other tests
     # that copied the same item.
     bank_item_id = db.Column(db.Integer, db.ForeignKey("question_bank.id"), nullable=True)
+    # Optional grouping into one of the test's Sections (see Section above).
+    # NULL means the question isn't in any section — fine for tests that
+    # don't use sections at all.
+    section_id = db.Column(db.Integer, db.ForeignKey("sections.id"), nullable=True)
+    # Free-text topic/category tag, independent of any section assignment
+    # (e.g. filtering/reporting by topic even within a single section).
+    category = db.Column(db.String(100), nullable=True, index=True)
+    difficulty = db.Column(db.String(10), nullable=True, default="medium")  # easy | medium | hard
     question_text = db.Column(db.Text, nullable=False)
 
     # single  -> one correct option (a-d); correct_answer = "b"
@@ -239,6 +279,13 @@ class Attempt(db.Model):
     # so this only randomizes what's shown, not how answers are scored.
     question_order = db.Column(db.Text, nullable=True)
     option_order = db.Column(db.Text, nullable=True)
+
+    # Periodically saved in-progress answers (JSON: question_id -> value or
+    # list of values), so a refresh/crash/browser close mid-exam doesn't lose
+    # what the student had already picked. Written by the autosave endpoint,
+    # read back to pre-fill the form when an in-progress attempt is resumed,
+    # and cleared once the attempt is actually submitted/terminated.
+    autosaved_answers = db.Column(db.Text, nullable=True)
 
     answers = db.relationship("Answer", backref="attempt", cascade="all, delete-orphan", lazy=True)
     events = db.relationship("ProctoringEvent", backref="attempt", cascade="all, delete-orphan", lazy=True)

@@ -2,25 +2,26 @@ import json
 import random
 
 
-def build_attempt_order(questions, attempt_token, randomize):
+def build_attempt_order(questions, attempt_token, randomize_questions=True, randomize_options=True):
     """Given a list of Question objects, return (question_order, option_order) as
     JSON strings — question_order is a list of question ids in display order,
     option_order maps question id -> list of option keys ('a'..'d') in display
     order. Deterministic per attempt_token so re-rendering the page (refresh,
     resume) doesn't reshuffle mid-exam. Grading always uses the *actual* option
     letter the student picked, so this only changes what's displayed, never how
-    answers are scored.
+    answers are scored. Question-order and option-order shuffling are
+    independent switches — a test can shuffle one without the other.
     """
     rng = random.Random(attempt_token)
 
     question_ids = [q.id for q in questions]
-    if randomize:
+    if randomize_questions:
         rng.shuffle(question_ids)
 
     option_order = {}
     for q in questions:
         keys = ["a", "b", "c", "d"]
-        if randomize:
+        if randomize_options:
             rng.shuffle(keys)
         option_order[str(q.id)] = keys
 

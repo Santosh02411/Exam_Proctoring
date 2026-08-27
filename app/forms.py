@@ -69,6 +69,9 @@ class TestForm(FlaskForm):
     test_code = StringField("Test Code", validators=[DataRequired(), Length(max=64)])
     title = StringField("Title", validators=[DataRequired(), Length(max=200)])
     description = TextAreaField("Description", validators=[Optional()])
+    instructions = TextAreaField(
+        "Instructions for students (optional)", validators=[Optional()]
+    )
     duration_minutes = IntegerField("Duration (minutes)", validators=[DataRequired(), NumberRange(min=1)])
     total_questions = IntegerField("Total Questions", validators=[DataRequired(), NumberRange(min=1)])
     passing_marks = IntegerField("Passing Marks", validators=[DataRequired(), NumberRange(min=0)])
@@ -76,11 +79,20 @@ class TestForm(FlaskForm):
     start_time = DateTimeLocalField("Start time (optional)", format="%Y-%m-%dT%H:%M", validators=[Optional()])
     end_time = DateTimeLocalField("End time (optional)", format="%Y-%m-%dT%H:%M", validators=[Optional()])
     max_attempts = IntegerField("Max attempts per student", default=1, validators=[DataRequired(), NumberRange(min=1, max=20)])
-    randomize_questions = BooleanField("Shuffle question & option order per student", default=True)
+    randomize_questions = BooleanField("Shuffle question order per student", default=True)
+    randomize_options = BooleanField("Shuffle answer-option order per student", default=True)
     negative_marks_per_wrong = FloatField("Negative marks per wrong answer", default=0.0, validators=[NumberRange(min=0)])
     allow_review = BooleanField("Let students review answers after submitting", default=True)
     partial_credit_multi = BooleanField(
         "Award partial credit on multiple-choice questions (instead of all-or-nothing)", default=False
+    )
+
+
+class SectionForm(FlaskForm):
+    name = StringField("Section name", validators=[DataRequired(), Length(max=150)])
+    description = TextAreaField("Description (optional)", validators=[Optional()])
+    duration_minutes = IntegerField(
+        "Time limit for this section, in minutes (optional)", validators=[Optional(), NumberRange(min=1)]
     )
 
 
@@ -102,10 +114,14 @@ class QuestionForm(FlaskForm):
     time_limit_seconds = IntegerField(
         "Time limit for this question, in seconds (optional)", validators=[Optional(), NumberRange(min=5)]
     )
+    category = StringField("Category / topic (optional)", validators=[Optional(), Length(max=100)])
+    difficulty = SelectField(
+        "Difficulty", choices=[("easy", "Easy"), ("medium", "Medium"), ("hard", "Hard")], default="medium",
+    )
 
 
 class QuestionBankForm(QuestionForm):
-    category = StringField("Category / topic (optional)", validators=[Optional(), Length(max=100)])
+    pass
 
 
 class QuestionImportForm(FlaskForm):

@@ -135,6 +135,8 @@ form.inline{display:inline}
 #camPreview.flagged{border-color:var(--danger)}
 #examArea{display:none}
 .qcard{border-radius:12px;padding:16px;background:var(--card);box-shadow:0 6px 20px rgba(11,22,50,0.08);margin-bottom:14px;border:1px solid var(--border-soft)}
+.section-header{border-bottom:2px solid var(--border-soft);padding-bottom:6px;margin-top:22px}
+.section-header:first-child{margin-top:0}
 .qcard.q-locked{opacity:0.6}
 .q-timer{color:var(--muted);font-weight:600}
 .qcard.q-locked .q-timer{color:var(--danger)}

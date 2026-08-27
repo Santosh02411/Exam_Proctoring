@@ -184,6 +184,8 @@
     startAudioMonitoring();
     startRecording();
     startPerQuestionTimers();
+    startSectionTimers();
+    startAutosave();
   }
 
   function startTimer() {
@@ -248,6 +250,78 @@
     card.querySelectorAll('input[type="radio"], input[type="checkbox"]').forEach((el) => {
       el.addEventListener('click', (e) => { e.preventDefault(); }, true);
     });
+  }
+
+  let sectionTimerIntervals = [];
+
+  function startSectionTimers() {
+    // Optional per-section time limit (Section.duration_minutes). Like the
+    // per-question timer, this can't block navigation since every section's
+    // questions are already visible on the page — instead, once a section's
+    // clock runs out, every question card in that section locks in place
+    // (same readOnly/click-blocking approach as lockQuestionCard) and the
+    // rest of the exam continues on the overall timer.
+    const headers = document.querySelectorAll('.section-header[data-section-duration]');
+    headers.forEach((header) => {
+      const sectionId = header.dataset.sectionId;
+      let remaining = parseInt(header.dataset.sectionDuration, 10);
+      if (!remaining || isNaN(remaining)) return;
+
+      const timerLabel = header.querySelector(`[data-section-timer="${sectionId}"]`);
+      const cards = document.querySelectorAll(`.qcard[data-section-id="${sectionId}"]`);
+
+      const render = () => {
+        if (timerLabel) timerLabel.textContent = ` — ${fmtTime(remaining)} left for this section`;
+      };
+      render();
+
+      const intervalId = setInterval(() => {
+        if (!examActive || examEnded) {
+          clearInterval(intervalId);
+          return;
+        }
+        remaining -= 1;
+        if (remaining <= 0) {
+          clearInterval(intervalId);
+          remaining = 0;
+          if (timerLabel) timerLabel.textContent = ' — time expired for this section';
+          cards.forEach((card) => lockQuestionCard(card, card.querySelector('[data-qtimer]')));
+        } else {
+          render();
+        }
+      }, 1000);
+
+      sectionTimerIntervals.push(intervalId);
+    });
+  }
+
+  // ---------- autosave ----------
+  let autosaveInterval = null;
+  let autosaveDebounce = null;
+  const AUTOSAVE_INTERVAL_MS = 20000;
+  const AUTOSAVE_DEBOUNCE_MS = 2000;
+
+  async function saveAnswersNow() {
+    if (!examActive || examEnded) return;
+    try {
+      const formData = new FormData(answersForm);
+      await fetch(cfg.autosaveUrl, { method: 'POST', body: formData });
+    } catch (e) {
+      console.warn('autosave failed', e);
+    }
+  }
+
+  function startAutosave() {
+    autosaveInterval = setInterval(saveAnswersNow, AUTOSAVE_INTERVAL_MS);
+    answersForm.addEventListener('change', () => {
+      clearTimeout(autosaveDebounce);
+      autosaveDebounce = setTimeout(saveAnswersNow, AUTOSAVE_DEBOUNCE_MS);
+    });
+  }
+
+  function stopAutosave() {
+    clearInterval(autosaveInterval);
+    clearTimeout(autosaveDebounce);
   }
 
   function startFaceMonitoring() {
@@ -394,6 +468,9 @@
     clearInterval(audioCheckInterval);
     questionTimerIntervals.forEach((id) => clearInterval(id));
     questionTimerIntervals = [];
+    sectionTimerIntervals.forEach((id) => clearInterval(id));
+    sectionTimerIntervals = [];
+    stopAutosave();
 
     if (mediaRecorder && mediaRecorder.state !== 'inactive') {
       try { mediaRecorder.stop(); } catch (e) { /* noop */ }
