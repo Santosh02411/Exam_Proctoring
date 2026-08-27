@@ -8,6 +8,7 @@
     <div class="lead">Test: <strong>{{ test.title }}</strong> ({{ test.test_code }}) — {{ test.questions|length }} / {{ test.total_questions }} questions added</div>
   </div>
   <div class="actions">
+    <a class="btn ghost" href="{{ url_for('admin.manage_sections', test_id=test.id) }}">Sections</a>
     <a class="btn ghost" href="{{ url_for('admin.pick_from_bank', test_id=test.id) }}">+ Add from Bank</a>
     <a class="btn ghost" href="{{ url_for('admin.view_test', test_id=test.id) }}">View Test</a>
     <a class="btn" href="{{ url_for('admin.edit_test', test_id=test.id) }}">Edit Test</a>
@@ -88,6 +89,29 @@
         </div>
       </div>
 
+      <div class="row">
+        <div class="col field">
+          <label for="{{ form.category.id }}">Category / topic (optional)</label>
+          {{ form.category(placeholder="e.g. Algebra") }}
+        </div>
+        <div class="col field">
+          <label for="{{ form.difficulty.id }}">Difficulty</label>
+          {{ form.difficulty() }}
+        </div>
+      </div>
+
+      {% if sections %}
+      <div class="field">
+        <label for="section_id">Section (optional)</label>
+        <select name="section_id" id="section_id">
+          <option value="">No section</option>
+          {% for s in sections %}
+          <option value="{{ s.id }}">{{ s.name }}{% if s.duration_minutes %} ({{ s.duration_minutes }} min){% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% endif %}
+
       <div class="actions">
         <button type="submit" class="btn">Add Question</button>
         <a class="btn ghost" href="{{ url_for('admin.view_test', test_id=test.id) }}">Done</a>
@@ -105,6 +129,9 @@
           {{ q.question_text[:70] }}{% if q.question_text|length > 70 %}…{% endif %}
           <br>
           <span class="badge draft">{{ q.question_type|capitalize }}</span>
+          <span class="badge role">{{ q.difficulty|default('medium')|capitalize }}</span>
+          {% if q.section %}<span class="badge draft">{{ q.section.name }}</span>{% endif %}
+          {% if q.category %}<span class="muted">· {{ q.category }}</span>{% endif %}
           <span class="muted">
             {% if q.question_type == 'short' %}
               Answer: "{{ q.correct_answer }}"
@@ -141,10 +168,11 @@
     <div class="card">
       <h4 style="margin:0 0 8px 0">Bulk import (CSV)</h4>
       <p class="small">
-        Columns: <code>question_text, question_type, option_a, option_b, option_c, option_d, correct_answer, marks, time_limit_seconds</code>.
+        Columns: <code>question_text, question_type, option_a, option_b, option_c, option_d, correct_answer, marks, time_limit_seconds, category, difficulty</code>.
         <code>question_type</code> is <code>single</code> (default) / <code>multi</code> / <code>short</code>.
         For <code>multi</code>, join correct letters with <code>+</code>, e.g. <code>a+c</code>. Options aren't
-        needed for <code>short</code> rows. <code>marks</code> and <code>time_limit_seconds</code> are both optional.
+        needed for <code>short</code> rows. <code>marks</code>, <code>time_limit_seconds</code>, <code>category</code>
+        and <code>difficulty</code> (<code>easy</code>/<code>medium</code>/<code>hard</code>) are all optional.
       </p>
       <form method="post" action="{{ url_for('admin.import_questions', test_id=test.id) }}" enctype="multipart/form-data">
         {{ import_form.hidden_tag() }}

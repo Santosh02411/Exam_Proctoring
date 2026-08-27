@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Sections — {{ test.title }}{% endblock %}
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+  <div>
+    <a class="small" href="{{ url_for('admin.view_test', test_id=test.id) }}">&larr; {{ test.title }}</a>
+    <h1 style="margin-top:8px">Sections</h1>
+    <div class="lead">Optionally split this test into named sections, each with its own time limit.</div>
+  </div>
+  <a class="btn ghost" href="{{ url_for('admin.add_question', test_id=test.id) }}">Add Questions</a>
+</div>
+
+<div class="wrap" style="grid-template-columns:1fr 340px;display:grid">
+  <div class="card">
+    <h2>Current sections</h2>
+    {% if sections %}
+    {% for s in sections %}
+    <div class="opt" style="margin-bottom:10px">
+      <form method="post" action="{{ url_for('admin.edit_section', test_id=test.id, section_id=s.id) }}"
+            style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end">
+        <div class="field" style="margin-bottom:0;flex:1;min-width:160px">
+          <label class="small">Name</label>
+          <input type="text" name="name" value="{{ s.name }}">
+        </div>
+        <div class="field" style="margin-bottom:0;min-width:120px">
+          <label class="small">Time limit (min)</label>
+          <input type="number" name="duration_minutes" min="1" value="{{ s.duration_minutes or '' }}" placeholder="No limit">
+        </div>
+        <div class="field" style="margin-bottom:0;flex:2;min-width:200px">
+          <label class="small">Description</label>
+          <input type="text" name="description" value="{{ s.description or '' }}">
+        </div>
+        <button type="submit" class="btn ghost small">Save</button>
+      </form>
+      <div class="small muted" style="margin-top:6px">
+        {{ s.questions|length }} question(s) in this section
+      </div>
+      <form class="inline" method="post" action="{{ url_for('admin.delete_section', test_id=test.id, section_id=s.id) }}"
+            onsubmit="return confirm('Delete this section? Its questions are kept, just unsectioned.');" style="margin-top:6px">
+        <button type="submit" class="btn danger ghost small">Delete section</button>
+      </form>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="small muted">No sections yet — this test's questions are shown as one flat list to students.</div>
+    {% endif %}
+  </div>
+
+  <aside class="wrap">
+    <div class="card">
+      <h4 style="margin:0 0 8px 0">Add a section</h4>
+      <form method="post">
+        {{ form.hidden_tag() }}
+        <div class="field">
+          <label for="{{ form.name.id }}">Name</label>
+          {{ form.name(placeholder="e.g. Verbal Reasoning") }}
+          {% for e in form.name.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+        </div>
+        <div class="field">
+          <label for="{{ form.duration_minutes.id }}">Time limit, minutes (optional)</label>
+          {{ form.duration_minutes(placeholder="No section-specific limit") }}
+          <div class="hint">Leave blank to only bound this section by the overall exam timer.</div>
+        </div>
+        <div class="field">
+          <label for="{{ form.description.id }}">Description (optional)</label>
+          {{ form.description(placeholder="Shown to students above this section's questions") }}
+        </div>
+        <button type="submit" class="btn small">Add Section</button>
+      </form>
+    </div>
+    <div class="card">
+      <h4 style="margin:0 0 8px 0">How it works</h4>
+      <p class="small" style="margin:0">
+        Assign a question to a section from the <a href="{{ url_for('admin.add_question', test_id=test.id) }}">Add Question</a>
+        page. A test with no sections behaves exactly as before — this is entirely optional.
+      </p>
+    </div>
+  </aside>
+</div>
+{% endblock %}

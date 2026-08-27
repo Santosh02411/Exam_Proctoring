@@ -28,6 +28,10 @@
       <label for="{{ form.description.id }}">Description</label>
       {{ form.description(placeholder="Brief description or instructions (optional)") }}
     </div>
+    <div class="field">
+      <label for="{{ form.instructions.id }}">Instructions for students</label>
+      {{ form.instructions(placeholder="Shown on the pre-exam screen — rules, allowed materials, grading notes, etc. (optional)") }}
+    </div>
     <div class="row">
       <div class="col field">
         <label for="{{ form.duration_minutes.id }}">Duration (minutes)</label>
@@ -71,7 +75,12 @@
     </div>
     <div class="field">
       <label class="opt" style="display:flex;align-items:center;gap:8px">
-        {{ form.randomize_questions() }} <span>Shuffle question &amp; option order per student</span>
+        {{ form.randomize_questions() }} <span>Shuffle question order per student</span>
+      </label>
+    </div>
+    <div class="field">
+      <label class="opt" style="display:flex;align-items:center;gap:8px">
+        {{ form.randomize_options() }} <span>Shuffle answer-option order per student</span>
       </label>
     </div>
     <div class="field">

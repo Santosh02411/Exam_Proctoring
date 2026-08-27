@@ -8,6 +8,7 @@
     <div class="small">Test code: <strong>{{ test.test_code }}</strong></div>
   </div>
   <div class="actions">
+    <a class="btn ghost" href="{{ url_for('admin.manage_sections', test_id=test.id) }}">Sections</a>
     <a class="btn ghost" href="{{ url_for('admin.add_question', test_id=test.id) }}">Add Questions</a>
     <a class="btn" href="{{ url_for('admin.view_test', test_id=test.id) }}">View Test</a>
   </div>
@@ -28,6 +29,10 @@
       <div class="field">
         <label for="{{ form.description.id }}">Description</label>
         {{ form.description() }}
+      </div>
+      <div class="field">
+        <label for="{{ form.instructions.id }}">Instructions for students</label>
+        {{ form.instructions(placeholder="Shown on the pre-exam screen — rules, allowed materials, grading notes, etc. (optional)") }}
       </div>
       <div class="row">
         <div class="col field">
@@ -71,7 +76,12 @@
       </div>
       <div class="field">
         <label class="opt" style="display:flex;align-items:center;gap:8px">
-          {{ form.randomize_questions() }} <span>Shuffle question &amp; option order per student</span>
+          {{ form.randomize_questions() }} <span>Shuffle question order per student</span>
+        </label>
+      </div>
+      <div class="field">
+        <label class="opt" style="display:flex;align-items:center;gap:8px">
+          {{ form.randomize_options() }} <span>Shuffle answer-option order per student</span>
         </label>
       </div>
       <div class="field">

@@ -9,6 +9,7 @@
   </div>
   <div class="actions">
     <a class="btn ghost" href="{{ url_for('admin.edit_test', test_id=test.id) }}">Edit</a>
+    <a class="btn ghost" href="{{ url_for('admin.manage_sections', test_id=test.id) }}">Sections</a>
     <a class="btn ghost" href="{{ url_for('admin.add_question', test_id=test.id) }}">Add Questions</a>
     <a class="btn ghost" href="{{ url_for('admin.assign_students', test_id=test.id) }}">Assign Students</a>
     <a class="btn" href="{{ url_for('admin.view_results', test_id=test.id) }}">View Results</a>
@@ -26,14 +27,38 @@
 <div class="card">
   <h2>Description</h2>
   <p class="small">{{ test.description or 'No description provided.' }}</p>
+  {% if test.instructions %}
+  <h2 style="margin-top:16px">Instructions for students</h2>
+  <p class="small" style="white-space:pre-wrap">{{ test.instructions }}</p>
+  {% endif %}
 </div>
+
+{% if test.sections %}
+<div class="card" style="margin-top:16px">
+  <h2>Sections</h2>
+  {% for s in test.sections %}
+  <div class="opt" style="margin-bottom:8px">
+    <strong>{{ s.name }}</strong>
+    {% if s.duration_minutes %}<span class="badge draft">{{ s.duration_minutes }} min</span>{% endif %}
+    <span class="small muted">— {{ s.questions|length }} question(s)</span>
+    {% if s.description %}<div class="small muted">{{ s.description }}</div>{% endif %}
+  </div>
+  {% endfor %}
+  <a class="small" href="{{ url_for('admin.manage_sections', test_id=test.id) }}">Manage sections</a>
+</div>
+{% endif %}
 
 <div class="card" style="margin-top:16px">
   <h2>Questions</h2>
   {% if test.questions %}
   {% for q in test.questions %}
   <div class="qcard">
-    <div><strong>Q{{ loop.index }}.</strong> {{ q.question_text }} <span class="badge draft">{{ q.question_type|capitalize }}</span></div>
+    <div>
+      <strong>Q{{ loop.index }}.</strong> {{ q.question_text }} <span class="badge draft">{{ q.question_type|capitalize }}</span>
+      <span class="badge role">{{ q.difficulty|default('medium')|capitalize }}</span>
+      {% if q.section %}<span class="badge draft">{{ q.section.name }}</span>{% endif %}
+      {% if q.category %}<span class="small muted">· {{ q.category }}</span>{% endif %}
+    </div>
     {% if q.question_type == 'short' %}
     <div class="small" style="margin-top:8px">Expected answer: <strong>"{{ q.correct_answer }}"</strong></div>
     {% else %}

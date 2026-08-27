@@ -10,10 +10,16 @@
 <div class="card" style="max-width:640px">
   <form method="post" novalidate id="qForm" onsubmit="return validateAndSubmit();">
     {{ form.hidden_tag() }}
-    <div class="field">
-      <label for="{{ form.category.id }}">Category / topic (optional)</label>
-      {{ form.category(placeholder="e.g. Python Basics") }}
-      {% for e in form.category.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+    <div class="row">
+      <div class="col field">
+        <label for="{{ form.category.id }}">Category / topic (optional)</label>
+        {{ form.category(placeholder="e.g. Python Basics") }}
+        {% for e in form.category.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+      </div>
+      <div class="col field">
+        <label for="{{ form.difficulty.id }}">Difficulty</label>
+        {{ form.difficulty() }}
+      </div>
     </div>
     <div class="field">
       <label for="{{ form.question_type.id }}">Question type</label>
