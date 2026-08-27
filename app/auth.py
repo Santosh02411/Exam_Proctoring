@@ -4,10 +4,11 @@ from flask import Blueprint, render_template, redirect, url_for, flash, request,
 from flask_login import login_user, logout_user, login_required, current_user
 
 from app import db
-from app.forms import RegisterForm, LoginForm, ForgotPasswordForm, ResetPasswordForm, ChangePasswordForm
+from app.forms import RegisterForm, LoginForm, ForgotPasswordForm, ResetPasswordForm
 from app.models import User, gen_user_id
 from app.email_utils import generate_token, verify_token, send_email
 from app.captcha import generate_captcha, verify_captcha
+from app.utils import is_rate_limited
 
 bp = Blueprint("auth", __name__)
 
@@ -46,6 +47,13 @@ def register():
         return redirect(url_for("index"))
 
     form = RegisterForm()
+
+    if request.method == "POST" and is_rate_limited(
+        "register", current_app.config["REGISTER_MAX_PER_IP"], current_app.config["REGISTER_WINDOW_MINUTES"]
+    ):
+        flash("Too many registration attempts from this network. Please try again later.", "error")
+        return render_template("auth/register.html", form=form)
+
     if form.validate_on_submit():
         existing = User.query.filter_by(email=form.email.data.lower().strip()).first()
         if existing:
@@ -95,6 +103,14 @@ def verify_email(token):
 
 @bp.route("/resend-verification", methods=["POST"])
 def resend_verification():
+    if is_rate_limited(
+        "resend_verification",
+        current_app.config["RESEND_VERIFICATION_MAX_PER_IP"],
+        current_app.config["RESEND_VERIFICATION_WINDOW_MINUTES"],
+    ):
+        flash("Too many requests from this network. Please try again later.", "error")
+        return redirect(url_for("auth.login"))
+
     email = request.form.get("email", "").lower().strip()
     user = User.query.filter_by(email=email).first()
     if user and not user.email_verified:
@@ -167,32 +183,30 @@ def logout():
     return redirect(url_for("auth.login"))
 
 
-RESET_REQUEST_COOLDOWN_SECONDS = 60
-
-
 @bp.route("/forgot-password", methods=["GET", "POST"])
 def forgot_password():
     if current_user.is_authenticated:
         return redirect(url_for("index"))
 
     form = ForgotPasswordForm()
+
+    if request.method == "POST" and is_rate_limited(
+        "forgot_password",
+        current_app.config["FORGOT_PASSWORD_MAX_PER_IP"],
+        current_app.config["FORGOT_PASSWORD_WINDOW_MINUTES"],
+    ):
+        flash("Too many requests from this network. Please try again later.", "error")
+        return render_template("auth/forgot_password.html", form=form)
+
     if form.validate_on_submit():
         user = User.query.filter_by(email=form.email.data.lower().strip()).first()
-        # Same message either way, so the response never reveals whether the
-        # account exists — but a real account additionally gets throttled so
-        # the outbox/inbox can't be flooded by repeated requests.
         if user:
-            cooldown_active = (
-                user.last_password_reset_request
-                and (datetime.utcnow() - user.last_password_reset_request).total_seconds() < RESET_REQUEST_COOLDOWN_SECONDS
-            )
-            if not cooldown_active:
-                user.last_password_reset_request = datetime.utcnow()
-                db.session.commit()
-                link, mode = _send_reset_email(user)
-                if mode == "logged":
-                    flash(f"(Dev mode — no SMTP configured) Reset link: {link}", "info")
-        flash("If that email is registered, a reset link has been sent.", "success")
+            link, mode = _send_reset_email(user)
+            flash("If that email is registered, a reset link has been sent.", "success")
+            if mode == "logged":
+                flash(f"(Dev mode — no SMTP configured) Reset link: {link}", "info")
+        else:
+            flash("If that email is registered, a reset link has been sent.", "success")
         return redirect(url_for("auth.login"))
     return render_template("auth/forgot_password.html", form=form)
 
@@ -219,18 +233,3 @@ def reset_password(token):
         flash("Password updated — you can now log in.", "success")
         return redirect(url_for("auth.login"))
     return render_template("auth/reset_password.html", form=form)
-
-
-@bp.route("/change-password", methods=["GET", "POST"])
-@login_required
-def change_password():
-    form = ChangePasswordForm()
-    if form.validate_on_submit():
-        if not current_user.check_password(form.current_password.data):
-            flash("Current password is incorrect.", "error")
-        else:
-            current_user.set_password(form.new_password.data)
-            db.session.commit()
-            flash("Password updated.", "success")
-            return redirect(url_for("index"))
-    return render_template("auth/change_password.html", form=form)

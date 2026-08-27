@@ -25,10 +25,11 @@ def dashboard():
         ).all()
         latest = attempts[0] if attempts else None
         completed_count = len([a for a in attempts if a.status != "in_progress"])
+        allowed_attempts = test.max_attempts + e.extra_attempts
         rows.append({
             "test": test, "attempt": latest, "eligibility": e,
             "completed_count": completed_count,
-            "attempts_left": max(test.max_attempts - completed_count, 0),
+            "attempts_left": max(allowed_attempts - completed_count, 0),
         })
     return render_template("student/dashboard.html", rows=rows)
 
@@ -87,8 +88,9 @@ def start_test(test_id):
     completed_count = Attempt.query.filter_by(test_id=test.id, student_id=current_user.id).filter(
         Attempt.status != "in_progress"
     ).count()
-    if completed_count >= test.max_attempts:
-        flash(f"You've used all {test.max_attempts} attempt(s) allowed for this test.", "info")
+    allowed_attempts = test.max_attempts + eligibility.extra_attempts
+    if completed_count >= allowed_attempts:
+        flash(f"You've used all {allowed_attempts} attempt(s) allowed for this test.", "info")
         return redirect(url_for("student.dashboard"))
 
     attempt = _get_or_create_attempt(test, eligibility)

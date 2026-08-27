@@ -1,3 +1,5 @@
+import re
+
 from flask_wtf import FlaskForm
 from flask_wtf.file import FileField, FileRequired, FileAllowed
 from wtforms import (
@@ -6,13 +8,36 @@ from wtforms import (
 )
 from wtforms.validators import DataRequired, Email, Length, Regexp, NumberRange, Optional, ValidationError
 
+PASSWORD_MIN_LENGTH = 8
+
+
+def validate_password_complexity(form, field):
+    """Require a mix of character classes, not just length, so a password
+    like 'aaaaaaaa' doesn't pass just because it's 8+ characters."""
+    password = field.data or ""
+    missing = []
+    if not re.search(r"[a-z]", password):
+        missing.append("a lowercase letter")
+    if not re.search(r"[A-Z]", password):
+        missing.append("an uppercase letter")
+    if not re.search(r"\d", password):
+        missing.append("a number")
+    if not re.search(r"[^A-Za-z0-9]", password):
+        missing.append("a special character")
+    if missing:
+        raise ValidationError("Password must also include " + ", ".join(missing) + ".")
+
 
 class RegisterForm(FlaskForm):
     name = StringField("Full Name", validators=[DataRequired(), Length(max=120)])
     email = StringField("Email", validators=[DataRequired(), Email(), Length(max=150)])
     phone = StringField("Mobile Number", validators=[DataRequired(), Regexp(r"^\d{10}$", message="Enter exactly 10 digits")])
     role = SelectField("Register as", choices=[("student", "Student"), ("admin", "Admin")], validators=[DataRequired()])
-    password = PasswordField("Password", validators=[DataRequired(), Length(min=6, message="Min 6 characters")])
+    password = PasswordField("Password", validators=[
+        DataRequired(),
+        Length(min=PASSWORD_MIN_LENGTH, message=f"Min {PASSWORD_MIN_LENGTH} characters"),
+        validate_password_complexity,
+    ])
 
 
 class LoginForm(FlaskForm):
@@ -26,21 +51,15 @@ class ForgotPasswordForm(FlaskForm):
 
 
 class ResetPasswordForm(FlaskForm):
-    password = PasswordField("New Password", validators=[DataRequired(), Length(min=6, message="Min 6 characters")])
+    password = PasswordField("New Password", validators=[
+        DataRequired(),
+        Length(min=PASSWORD_MIN_LENGTH, message=f"Min {PASSWORD_MIN_LENGTH} characters"),
+        validate_password_complexity,
+    ])
     confirm_password = PasswordField("Confirm New Password", validators=[DataRequired()])
 
     def validate_confirm_password(self, field):
         if field.data != self.password.data:
-            raise ValidationError("Passwords do not match.")
-
-
-class ChangePasswordForm(FlaskForm):
-    current_password = PasswordField("Current Password", validators=[DataRequired()])
-    new_password = PasswordField("New Password", validators=[DataRequired(), Length(min=6, message="Min 6 characters")])
-    confirm_password = PasswordField("Confirm New Password", validators=[DataRequired()])
-
-    def validate_confirm_password(self, field):
-        if field.data != self.new_password.data:
             raise ValidationError("Passwords do not match.")
 
 
@@ -84,6 +103,12 @@ class QuestionForm(FlaskForm):
 
 
 class QuestionImportForm(FlaskForm):
+    csv_file = FileField("CSV file", validators=[
+        FileRequired(), FileAllowed(["csv"], "CSV files only"),
+    ])
+
+
+class UserImportForm(FlaskForm):
     csv_file = FileField("CSV file", validators=[
         FileRequired(), FileAllowed(["csv"], "CSV files only"),
     ])

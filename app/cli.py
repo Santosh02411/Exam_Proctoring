@@ -14,7 +14,7 @@ def register_cli(app):
     @app.cli.command("seed-admin")
     @click.option("--name", default="Admin User")
     @click.option("--email", default="admin@example.com")
-    @click.option("--password", default="admin123")
+    @click.option("--password", default="Admin123!")
     @click.option("--phone", default="9999999999")
     def seed_admin(name, email, password, phone):
         """Create a default admin account if it doesn't exist yet."""

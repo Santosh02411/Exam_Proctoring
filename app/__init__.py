@@ -2,7 +2,6 @@ import os
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
-from sqlalchemy.exc import OperationalError
 
 db = SQLAlchemy()
 login_manager = LoginManager()
@@ -49,41 +48,8 @@ def create_app(config_object="config.Config"):
             return redirect(url_for("student.dashboard"))
         return redirect(url_for("auth.login"))
 
-    @app.route("/health")
-    def health():
-        """Liveness/readiness probe for load balancers and Docker's HEALTHCHECK.
-        Confirms the app can actually reach its database, not just that the
-        process is up — a DB outage should fail the check."""
-        from sqlalchemy import text
-
-        try:
-            db.session.execute(text("SELECT 1"))
-            return {"status": "ok"}, 200
-        except Exception as exc:
-            return {"status": "error", "detail": str(exc)}, 503
-
-    @app.after_request
-    def set_security_headers(response):
-        response.headers.setdefault("X-Content-Type-Options", "nosniff")
-        response.headers.setdefault("X-Frame-Options", "DENY")
-        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
-        # Proctoring pages need camera/microphone; leave those permissions alone
-        # elsewhere but explicitly deny the risky ones this app never needs.
-        response.headers.setdefault("Permissions-Policy", "geolocation=(), payment=()")
-        return response
-
     with app.app_context():
-        try:
-            db.create_all()
-        except OperationalError:
-            # Under multiple concurrent worker processes (e.g. Gunicorn with
-            # more than one worker), each one independently calls create_app()
-            # at boot, and two can race to create the schema at the same
-            # moment. SQLite doesn't handle concurrent DDL well, so the loser
-            # gets "table already exists" — harmless, since the schema is
-            # already there by the time it fails. Roll back and continue
-            # rather than crash the worker.
-            db.session.rollback()
+        db.create_all()
 
     from app.cli import register_cli
     register_cli(app)

@@ -1,22 +1,36 @@
 import csv
 import io
-import secrets
+import random
+import string
 import time
+from datetime import datetime
 
-from flask import Blueprint, render_template, redirect, url_for, flash, request, abort, current_app
+from flask import Blueprint, render_template, redirect, url_for, flash, request, abort, Response
 from flask_login import current_user
 
 from app import db
-from app.forms import TestForm, QuestionForm, QuestionImportForm
+from app.forms import TestForm, QuestionForm, QuestionImportForm, UserImportForm
 from app.models import Test, Question, User, TestEligibility, Attempt, ProctoringEvent, AdminActivityLog, gen_user_id
 from app.utils import admin_required
 from app.activity_log import log_activity
-from app.email_utils import send_email, generate_token
-from app.auth import PASSWORD_RESET_SALT
+from app.email_utils import send_email
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
 
 PER_PAGE = 15
+
+
+def _generate_temp_password():
+    """Random password for bulk-imported students who didn't get one in
+    the CSV, built to satisfy the same complexity policy as the register
+    form (lower + upper + digit + special) so it's usable as-is."""
+    return (
+        random.choice(string.ascii_lowercase)
+        + random.choice(string.ascii_uppercase)
+        + random.choice(string.digits)
+        + random.choice("!@#$%^&*")
+        + "".join(random.choices(string.ascii_letters + string.digits, k=8))
+    )
 
 
 def _apply_test_form(test, form):
@@ -327,12 +341,16 @@ def assign_students(test_id):
     if request.method == "POST":
         student_ids = request.form.getlist("student_ids")
         extra_time = request.form.get("extra_time_minutes", type=int, default=0) or 0
+        extra_attempts = request.form.get("extra_attempts", type=int, default=0) or 0
         notify = request.form.get("notify") == "on"
         added = 0
         for sid in student_ids:
             sid = int(sid)
             if not TestEligibility.query.filter_by(test_id=test.id, student_id=sid).first():
-                db.session.add(TestEligibility(test_id=test.id, student_id=sid, extra_time_minutes=extra_time))
+                db.session.add(TestEligibility(
+                    test_id=test.id, student_id=sid,
+                    extra_time_minutes=extra_time, extra_attempts=extra_attempts,
+                ))
                 added += 1
                 if notify:
                     student = db.session.get(User, sid)
@@ -381,6 +399,22 @@ def unassign_student(test_id, student_id):
     return redirect(url_for("admin.assign_students", test_id=test_id))
 
 
+@bp.route("/tests/<int:test_id>/eligibility/<int:student_id>/update", methods=["POST"])
+@admin_required
+def update_eligibility(test_id, student_id):
+    e = TestEligibility.query.filter_by(test_id=test_id, student_id=student_id).first_or_404()
+    e.extra_time_minutes = max(request.form.get("extra_time_minutes", type=int, default=0) or 0, 0)
+    e.extra_attempts = max(request.form.get("extra_attempts", type=int, default=0) or 0, 0)
+    db.session.commit()
+    log_activity(
+        "updated_eligibility",
+        f"Set extra time to {e.extra_time_minutes} min and extra attempts to {e.extra_attempts} "
+        f"for {e.student.name} on '{e.test.title}'",
+    )
+    flash(f"Updated accommodations for {e.student.name}.", "success")
+    return redirect(url_for("admin.assign_students", test_id=test_id))
+
+
 @bp.route("/tests/<int:test_id>/results")
 @admin_required
 def view_results(test_id):
@@ -390,39 +424,6 @@ def view_results(test_id):
         page=page, per_page=PER_PAGE, error_out=False
     )
     return render_template("admin/view_results.html", test=test, pagination=pagination, attempts=pagination.items)
-
-
-@bp.route("/tests/<int:test_id>/results/export.csv")
-@admin_required
-def export_results_csv(test_id):
-    test = Test.query.get_or_404(test_id)
-    attempts = Attempt.query.filter_by(test_id=test.id).order_by(Attempt.started_at.desc()).all()
-
-    buffer = io.StringIO()
-    writer = csv.writer(buffer)
-    writer.writerow([
-        "student_name", "student_email", "status", "score", "total_marks", "passed",
-        "violation_count", "started_at", "submitted_at", "termination_reason",
-    ])
-    total_marks = test.total_marks()
-    for a in attempts:
-        passed = (a.score or 0) >= test.passing_marks if a.status != "terminated" else False
-        writer.writerow([
-            a.student.name, a.student.email, a.status,
-            a.score if a.score is not None else "",
-            total_marks, "yes" if passed else "no",
-            a.violation_count,
-            a.started_at.strftime("%Y-%m-%d %H:%M:%S") if a.started_at else "",
-            a.submitted_at.strftime("%Y-%m-%d %H:%M:%S") if a.submitted_at else "",
-            a.termination_reason or "",
-        ])
-
-    log_activity("exported_results", f"Exported results CSV for '{test.title}' ({len(attempts)} attempts)")
-
-    response = current_app.response_class(buffer.getvalue(), mimetype="text/csv")
-    safe_code = "".join(c for c in test.test_code if c.isalnum() or c in "-_") or "test"
-    response.headers["Content-Disposition"] = f"attachment; filename={safe_code}_results.csv"
-    return response
 
 
 @bp.route("/attempts/<int:attempt_id>")
@@ -443,72 +444,182 @@ def activity_log():
     return render_template("admin/activity_log.html", pagination=pagination, entries=pagination.items)
 
 
-def _invite_student(user):
-    """Email a newly bulk-imported student a link to set their own password —
-    reuses the same signed-token mechanism as the self-service forgot-password
-    flow, so there's no separate "temporary password" to manage or leak."""
-    token = generate_token(user.email, PASSWORD_RESET_SALT)
-    link = url_for("auth.reset_password", token=token, _external=True)
-    mode = send_email(
-        user.email,
-        "You've been added to Exam Proctoring",
-        f"Hi {user.name},\n\nAn admin created an account for you on Exam Proctoring.\n"
-        f"Set your password to get started:\n{link}\n\nThis link expires in 1 hour.",
-    )
-    return link, mode
-
-
-@bp.route("/students/import", methods=["GET", "POST"])
+@bp.route("/users")
 @admin_required
-def import_students():
-    form = QuestionImportForm()
-    if request.method == "POST" and form.validate_on_submit():
+def manage_users():
+    page = request.args.get("page", 1, type=int)
+    search = request.args.get("q", "").strip()
+    role_filter = request.args.get("role", "")
+    status_filter = request.args.get("status", "")
+
+    query = User.query
+    if search:
+        like = f"%{search}%"
+        query = query.filter(
+            db.or_(User.name.ilike(like), User.email.ilike(like), User.user_id.ilike(like))
+        )
+    if role_filter in ("student", "admin"):
+        query = query.filter_by(role=role_filter)
+    if status_filter in ("active", "inactive"):
+        query = query.filter_by(status=status_filter)
+    query = query.order_by(User.created_at.desc())
+
+    pagination = query.paginate(page=page, per_page=PER_PAGE, error_out=False)
+
+    return render_template(
+        "admin/manage_users.html",
+        pagination=pagination, users=pagination.items,
+        search=search, role_filter=role_filter, status_filter=status_filter,
+        total_users=User.query.count(),
+        total_students=User.query.filter_by(role="student").count(),
+        total_active=User.query.filter_by(status="active").count(),
+        total_inactive=User.query.filter_by(status="inactive").count(),
+    )
+
+
+@bp.route("/users/<int:user_id>/toggle-status", methods=["POST"])
+@admin_required
+def toggle_user_status(user_id):
+    user = User.query.get_or_404(user_id)
+    if user.id == current_user.id:
+        flash("You can't deactivate your own account.", "error")
+        return redirect(url_for("admin.manage_users"))
+
+    user.status = "inactive" if user.status == "active" else "active"
+    db.session.commit()
+    log_activity(
+        "deactivated_user" if user.status == "inactive" else "activated_user",
+        f"Set {user.role} '{user.name}' ({user.email}) to {user.status}",
+    )
+    flash(f"{user.name}'s account is now {user.status}.", "success")
+    return redirect(url_for("admin.manage_users"))
+
+
+@bp.route("/users/<int:user_id>/delete", methods=["POST"])
+@admin_required
+def delete_user(user_id):
+    user = User.query.get_or_404(user_id)
+    if user.id == current_user.id:
+        flash("You can't delete your own account.", "error")
+        return redirect(url_for("admin.manage_users"))
+
+    has_attempts = Attempt.query.filter_by(student_id=user.id).first() is not None
+    has_created_tests = Test.query.filter_by(created_by=user.id).first() is not None
+    if has_attempts or has_created_tests:
+        flash(
+            f"Can't delete {user.name} — they have exam history or created content on record. "
+            "Deactivate the account instead to preserve it.",
+            "error",
+        )
+        return redirect(url_for("admin.manage_users"))
+
+    TestEligibility.query.filter_by(student_id=user.id).delete()
+    name, email = user.name, user.email
+    db.session.delete(user)
+    db.session.commit()
+    log_activity("deleted_user", f"Deleted user '{name}' ({email})")
+    flash(f"{name}'s account has been deleted.", "success")
+    return redirect(url_for("admin.manage_users"))
+
+
+@bp.route("/users/export")
+@admin_required
+def export_users():
+    role_filter = request.args.get("role", "")
+    status_filter = request.args.get("status", "")
+
+    query = User.query
+    if role_filter in ("student", "admin"):
+        query = query.filter_by(role=role_filter)
+    if status_filter in ("active", "inactive"):
+        query = query.filter_by(status=status_filter)
+    users = query.order_by(User.name).all()
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["user_id", "name", "email", "phone", "role", "status", "email_verified", "created_at"])
+    for u in users:
+        writer.writerow([
+            u.user_id, u.name, u.email, u.phone or "", u.role, u.status,
+            "yes" if u.email_verified else "no",
+            u.created_at.strftime("%Y-%m-%d %H:%M") if u.created_at else "",
+        ])
+
+    log_activity("exported_users", f"Exported user roster ({len(users)} user(s))")
+    response = Response(buf.getvalue(), mimetype="text/csv")
+    filename = f"user_roster_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.csv"
+    response.headers["Content-Disposition"] = f"attachment; filename={filename}"
+    return response
+
+
+@bp.route("/users/import", methods=["GET", "POST"])
+@admin_required
+def import_users():
+    form = UserImportForm()
+    recently_added = []
+
+    if form.validate_on_submit():
         file_storage = form.csv_file.data
         try:
             raw = file_storage.read().decode("utf-8-sig")
         except UnicodeDecodeError:
             flash("Could not read the file — please upload a UTF-8 encoded CSV.", "error")
-            return redirect(url_for("admin.import_students"))
+            return redirect(url_for("admin.import_users"))
 
         reader = csv.DictReader(io.StringIO(raw))
         required_cols = {"name", "email"}
         if not reader.fieldnames or not required_cols.issubset({c.strip().lower() for c in reader.fieldnames}):
-            flash("CSV must have columns: name, email, phone (phone is optional).", "error")
-            return redirect(url_for("admin.import_students"))
+            flash(
+                "CSV must have columns: name, email, phone (optional), password (optional — "
+                "a random password is generated and emailed to the student if left blank).",
+                "error",
+            )
+            return redirect(url_for("admin.import_users"))
 
-        added, skipped = 0, 0
-        seen_emails = set()
-        dev_links = []
+        added, skipped, generated_creds = 0, 0, []
         for row in reader:
             row = {k.strip().lower(): (v.strip() if v else v) for k, v in row.items()}
-            name, email = row.get("name"), row.get("email")
-            if not name or not email or "@" not in email:
+            name = row.get("name")
+            email = (row.get("email") or "").lower()
+            if not name or not email:
                 skipped += 1
                 continue
-            email = email.lower()
-            if email in seen_emails or User.query.filter_by(email=email).first():
+            if User.query.filter_by(email=email).first():
                 skipped += 1
                 continue
-            seen_emails.add(email)
+
+            phone = row.get("phone") or "0000000000"
+            password = row.get("password") or _generate_temp_password()
 
             user = User(
-                user_id=gen_user_id("student"), name=name, email=email,
-                phone=(row.get("phone") or "")[:15], role="student", status="active",
-                email_verified=True,  # admin-created accounts skip self-verification
+                user_id=gen_user_id("student"), name=name, email=email, phone=phone,
+                role="student", status="active", email_verified=True,
             )
-            user.set_password(secrets.token_urlsafe(24))  # unused — student sets their own via the invite link
+            user.set_password(password)
             db.session.add(user)
+            db.session.flush()
+            recently_added.append(user)
+            if not row.get("password"):
+                generated_creds.append((user, password))
             added += 1
-            link, mode = _invite_student(user)
-            if mode == "logged":
-                dev_links.append(f"{email}: {link}")
 
         db.session.commit()
-        log_activity("imported_students", f"Bulk-imported {added} student(s) ({skipped} skipped)")
-        flash(f"Imported {added} student(s).{f' Skipped {skipped} invalid/duplicate row(s).' if skipped else ''}", "success")
-        for line in dev_links[:10]:
-            flash(f"(Dev mode) {line}", "info")
-        return redirect(url_for("admin.import_students"))
 
-    students = User.query.filter_by(role="student").order_by(User.created_at.desc()).limit(50).all()
-    return render_template("admin/import_students.html", form=form, students=students)
+        for user, password in generated_creds:
+            send_email(
+                user.email,
+                "Your Exam Proctoring account",
+                f"Hi {user.name},\n\nAn account has been created for you.\n"
+                f"Email: {user.email}\nTemporary password: {password}\n\n"
+                f"Please log in and change your password after your first login.",
+            )
+
+        log_activity("imported_users", f"Bulk-imported {added} student(s) ({skipped} skipped)")
+        flash(
+            f"Imported {added} student(s)."
+            + (f" Skipped {skipped} row(s) (missing data or already registered)." if skipped else ""),
+            "success",
+        )
+        return render_template("admin/import_users.html", form=UserImportForm(), recently_added=recently_added)
+
+    return render_template("admin/import_users.html", form=form, recently_added=recently_added)

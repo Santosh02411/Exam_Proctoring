@@ -71,6 +71,8 @@ form.inline{display:inline}
 .badge.in_progress{background:rgba(245,158,11,0.12);color:var(--warning)}
 .badge.pass{background:rgba(16,185,129,0.12);color:var(--success)}
 .badge.fail{background:rgba(239,68,68,0.12);color:var(--danger)}
+.badge.active{background:rgba(16,185,129,0.12);color:var(--success)}
+.badge.inactive{background:rgba(239,68,68,0.12);color:var(--danger)}
 
 .kpi-row{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:18px}
 .kpi{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px 20px;min-width:140px}

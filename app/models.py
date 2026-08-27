@@ -32,8 +32,6 @@ class User(UserMixin, db.Model):
     # Login rate-limiting / brute-force protection
     failed_login_attempts = db.Column(db.Integer, nullable=False, default=0)
     locked_until = db.Column(db.DateTime, nullable=True)
-    # Basic abuse protection: throttles how often a password-reset email can be requested.
-    last_password_reset_request = db.Column(db.DateTime, nullable=True)
 
     tests_created = db.relationship("Test", backref="creator", lazy=True)
     attempts = db.relationship("Attempt", backref="student", lazy=True)
@@ -172,6 +170,9 @@ class TestEligibility(db.Model):
 
     # Accessibility accommodation: extra minutes added to the test duration for this student
     extra_time_minutes = db.Column(db.Integer, nullable=False, default=0)
+    # Admin override: extra attempts granted to this student beyond the test's
+    # normal max_attempts (e.g. after a proctoring issue voided a prior attempt).
+    extra_attempts = db.Column(db.Integer, nullable=False, default=0)
 
     __table_args__ = (db.UniqueConstraint("test_id", "student_id", name="uq_test_student"),)
 
@@ -261,6 +262,22 @@ class Snapshot(db.Model):
     attempt = db.relationship("Attempt", backref=db.backref("snapshots", cascade="all, delete-orphan", lazy=True))
 
 
+class IpRateLimit(db.Model):
+    """One row per throttled request from a given IP, used to enforce
+    per-IP rate limits on abuse-prone unauthenticated endpoints (account
+    registration, password-reset requests, verification-email resends).
+    A count of rows for (ip_address, action) within a trailing time window
+    is compared against a configured max to decide whether to allow the
+    request — see app.utils.is_rate_limited()."""
+
+    __tablename__ = "ip_rate_limits"
+
+    id = db.Column(db.Integer, primary_key=True)
+    ip_address = db.Column(db.String(45), nullable=False, index=True)  # IPv4 or IPv6
+    action = db.Column(db.String(50), nullable=False)  # register | forgot_password | resend_verification
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+
+
 class AdminActivityLog(db.Model):
     """Audit trail of admin actions (who created/edited/deleted/published what
     and when), so multiple admins sharing the system can see a history of changes."""
@@ -272,7 +289,8 @@ class AdminActivityLog(db.Model):
     action = db.Column(db.String(50), nullable=False)
     # created_test | edited_test | deleted_test | published_test | unpublished_test |
     # duplicated_test | added_question | deleted_question | assigned_students |
-    # unassigned_student | imported_questions
+    # unassigned_student | imported_questions | updated_eligibility |
+    # activated_user | deactivated_user | deleted_user | imported_users | exported_users
     description = db.Column(db.String(500), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
