@@ -42,15 +42,12 @@ number of production-readiness features the original never had.
 - View all attempts for a test (paginated), per-student score, full proctoring event log,
   **flagged snapshot images**, and **play back the recorded webcam/mic session**
 - Browse a system-wide **activity log** of who created/edited/deleted/published/assigned what
-- **Bulk-import students** from a CSV (mirroring bulk question import) and **export any
-  test's results to CSV**
 - "Manage Tests" clearly distinguishes **your tests** vs **all admins' tests**, with a toggle
 
 **Student**
 - Register/login as student — must verify email before logging in; login is rate-limited
   (5 failed attempts locks the account for 15 minutes) and requires a simple CAPTCHA
-- Forgot-password flow to reset a lost password via a signed, expiring link; can also
-  change their password directly while logged in without going through email at all
+- Forgot-password flow to reset a lost password via a signed, expiring link
 - **One-time face enrollment** (`My Tests → Enroll Face`): capture a reference photo;
   only a 128-value face descriptor is stored, never the photo itself
 - See assigned tests, attempt counts, and status (available / in progress / submitted / terminated)
@@ -91,10 +88,7 @@ exam_proctoring_python/
 │   ├── test_proctoring.py            # violations, termination, snapshots, recordings, identity
 │   ├── test_question_types.py         # single/multi/short grading, partial credit, admin validation
 │   ├── test_pagination.py              # assign-students search + pagination
-│   ├── test_time_limits.py              # per-question time limit persistence, CSV, rendering
-│   └── test_admin_extras.py              # change-password, reset cooldown, health check,
-│                                           # security headers, CSV export, bulk student import,
-│                                           # the multi-worker db.create_all() race fix
+│   └── test_time_limits.py              # per-question time limit persistence, CSV, rendering
 ├── app/
 │   ├── __init__.py            # app factory, blueprint registration
 │   ├── models.py                # User, Test, Question, TestEligibility, Attempt, Answer,
@@ -134,7 +128,7 @@ cp .env.example .env               # edit SECRET_KEY etc. if you like
 
 export FLASK_APP=run.py            # Windows (cmd): set FLASK_APP=run.py
 flask init-db                      # creates the SQLite schema under instance/
-flask seed-admin --email admin@example.com --password admin123
+flask seed-admin --email admin@example.com --password 'Admin123!'
 
 python run.py                      # http://localhost:5000
 ```
@@ -177,22 +171,6 @@ TLS termination. Set `DATABASE_URL` to Postgres/MySQL for anything beyond a sing
 deployment — SQLite is fine for development and light use but doesn't handle concurrent
 writes well. The `instance/` directory (SQLite file, recordings, snapshots, outbox log)
 should be a persistent volume — `docker-compose.yml` already mounts one.
-
-`GET /health` checks actual database connectivity (not just process liveness) and is
-wired into the `Dockerfile`'s `HEALTHCHECK`, so `docker ps` and orchestrators that respect
-container health both reflect real app state. Every response also carries basic security
-headers (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`,
-`Permissions-Policy`) set in `app/__init__.py`.
-
-**A real bug found and fixed during this build:** with more than one Gunicorn worker
-(the default is 3), each worker process independently calls `create_app()` at boot, and
-`db.create_all()` can race between them — SQLite doesn't handle concurrent DDL well, so
-whichever worker loses the race used to crash with `table users already exists` and die.
-`create_app()` now catches that specific `OperationalError` and rolls back rather than
-propagating it, since by the time it fires the schema is already there regardless of
-which worker created it. Verified with a targeted regression test (`test_admin_extras.py`)
-that's confirmed to fail without the fix, plus a manual stress test cold-booting 4 workers
-against an empty database 5 times in a row with zero crashes.
 
 ## Notes on the proctoring design
 
@@ -241,13 +219,23 @@ while assigning a test.
 
 Login requires a simple session-bound math CAPTCHA and is rate-limited: 5 failed attempts
 locks the account for 15 minutes (`User.failed_login_attempts` / `locked_until`), which
-resets on a successful login. Password-reset *requests* are separately throttled to one
-per 60 seconds per account (`User.last_password_reset_request`) so the reset endpoint
-can't be used to flood someone's inbox — the response message is identical whether or
-not the account exists either way, so neither the throttle nor a nonexistent email leaks
-which accounts are registered. Logged-in users can change their password directly at
-`/change-password` (current password required) without going through the email flow at
-all.
+resets on a successful login.
+
+Registration, `/forgot-password`, and `/resend-verification` are separately throttled
+**per IP address** (`IpRateLimit` model): 5 requests per hour for registration, 5 per 15
+minutes for the other two, by default. Every request counts against the window whether
+it succeeds or not, so scripted spam can't dodge the limit by submitting invalid data.
+Limits are tunable via `REGISTER_MAX_PER_IP` / `REGISTER_WINDOW_MINUTES`,
+`FORGOT_PASSWORD_MAX_PER_IP` / `FORGOT_PASSWORD_WINDOW_MINUTES`, and
+`RESEND_VERIFICATION_MAX_PER_IP` / `RESEND_VERIFICATION_WINDOW_MINUTES` env vars, and can
+be disabled entirely with `RATE_LIMIT_ENABLED=false` (used by the test suite, since the
+test client's fixed IP would otherwise throttle fixtures that register many accounts).
+If you're behind a reverse proxy, make sure it sets `X-Forwarded-For` correctly — see
+`app.utils.get_client_ip()`.
+
+Passwords (on registration and reset) must be at least `PASSWORD_MIN_LENGTH` characters
+(8 by default) and include a lowercase letter, an uppercase letter, a number, and a
+special character (`app.forms.validate_password_complexity`).
 
 ## Question types & grading
 
@@ -290,18 +278,6 @@ mid-exam doesn't reshuffle anything — grading always uses the actual selected 
 letter, so shuffled display order never affects scoring. `max_attempts` controls how many
 times a student may attempt the test; the dashboard shows attempts used/remaining and
 offers "Retake Test" once a previous attempt is graded.
-
-## Admin tooling: bulk student import & results export
-
-Mirroring the existing bulk question import, admins can bulk-create student accounts at
-`/admin/students/import` from a CSV of `name, email, phone`. Rather than generating a
-throwaway temporary password, each imported student gets an email with a signed,
-expiring link (the same mechanism as self-service password reset) to set their own
-password — so there's no shared secret to leak or communicate out-of-band. Duplicate
-rows (within the file or against existing accounts) and rows missing a name or a valid
-email are skipped and reported. Results for any test can be exported as CSV
-(`Export CSV` button on the results page) with per-student score, pass/fail, violation
-count, and timestamps — useful for feeding into a gradebook or LMS.
 
 ## Differences from the original PHP repo
 

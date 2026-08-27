@@ -30,3 +30,18 @@ class Config:
     MAIL_USERNAME = os.environ.get("MAIL_USERNAME")
     MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD")
     MAIL_SENDER = os.environ.get("MAIL_SENDER", "no-reply@exam-proctoring.local")
+
+    # Per-IP rate limiting on abuse-prone unauthenticated endpoints. Each
+    # request (valid or not) counts against the window; once the max is hit,
+    # further requests are rejected with a flash message until the window
+    # rolls forward. Disable only for local dev/testing — see IpRateLimit.
+    RATE_LIMIT_ENABLED = os.environ.get("RATE_LIMIT_ENABLED", "true").lower() == "true"
+    REGISTER_MAX_PER_IP = int(os.environ.get("REGISTER_MAX_PER_IP", 5))
+    REGISTER_WINDOW_MINUTES = int(os.environ.get("REGISTER_WINDOW_MINUTES", 60))
+    FORGOT_PASSWORD_MAX_PER_IP = int(os.environ.get("FORGOT_PASSWORD_MAX_PER_IP", 5))
+    FORGOT_PASSWORD_WINDOW_MINUTES = int(os.environ.get("FORGOT_PASSWORD_WINDOW_MINUTES", 15))
+    RESEND_VERIFICATION_MAX_PER_IP = int(os.environ.get("RESEND_VERIFICATION_MAX_PER_IP", 5))
+    RESEND_VERIFICATION_WINDOW_MINUTES = int(os.environ.get("RESEND_VERIFICATION_WINDOW_MINUTES", 15))
+
+    # Password complexity policy, enforced on registration and password reset.
+    PASSWORD_MIN_LENGTH = int(os.environ.get("PASSWORD_MIN_LENGTH", 8))
