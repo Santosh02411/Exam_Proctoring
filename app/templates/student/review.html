@@ -15,17 +15,32 @@
 {% for row in rows %}
 {% set q = row.question %}
 {% set a = row.answer %}
-{% set earned = q.score_for(a.selected_option, partial_credit_multi=test.partial_credit_multi) if a and a.selected_option else 0.0 %}
+{% set earned = (a.manual_score if q.needs_manual_grading and a and a.manual_score is not none else (q.score_for(a.selected_option, partial_credit_multi=test.partial_credit_multi) if a and a.selected_option and not q.needs_manual_grading else 0.0)) %}
 <div class="qcard">
   <div>
     <strong>Q{{ loop.index }}.</strong> {{ q.question_text }}
-    <span class="badge draft">{{ q.question_type|capitalize }}</span>
+    <span class="badge draft">{{ q.question_type|replace('_',' ')|capitalize }}</span>
   </div>
+  {% if q.media_type == 'image' and q.media_url %}
+  <div style="margin:8px 0"><img src="{{ q.media_url }}" alt="" style="max-width:300px;border-radius:8px"></div>
+  {% elif q.media_type == 'video' and q.media_url %}
+  <div style="margin:8px 0"><video src="{{ q.media_url }}" controls preload="metadata" style="max-width:300px;border-radius:8px"></video></div>
+  {% endif %}
 
-  {% if q.question_type == 'short' %}
+  {% if q.question_type in ('short', 'fill_blank') %}
     <div class="small" style="margin-top:8px">
       Your answer: <strong>{{ a.selected_option if a and a.selected_option else '(not answered)' }}</strong><br>
       Expected: <strong>{{ q.correct_answer }}</strong>
+    </div>
+  {% elif q.question_type == 'true_false' %}
+    <div class="small" style="margin-top:8px">
+      Your answer: <strong>{{ (a.selected_option|capitalize) if a and a.selected_option else '(not answered)' }}</strong><br>
+      Correct: <strong>{{ q.correct_answer|capitalize }}</strong>
+    </div>
+  {% elif q.needs_manual_grading %}
+    <div class="small" style="margin-top:8px">
+      Your answer:
+      <div style="white-space:pre-wrap;background:var(--bg2);border-radius:8px;padding:10px;margin-top:6px;{% if q.question_type == 'coding' %}font-family:monospace{% endif %}">{{ (a.selected_option if a else none) or '(not answered)' }}</div>
     </div>
   {% else %}
     {% set correct_set = q.correct_set() %}
@@ -43,7 +58,15 @@
   {% endif %}
 
   <div class="small" style="margin-top:8px">
-    {% if not a or not a.selected_option %}
+    {% if q.needs_manual_grading %}
+      {% if not a or not a.selected_option %}
+        <span class="badge fail">Not answered</span>
+      {% elif a.manual_score is none %}
+        <span class="badge draft">Pending review</span>
+      {% else %}
+        <span class="badge {{ 'pass' if earned == q.marks else ('draft' if earned > 0 else 'fail') }}">{{ 'Full marks' if earned == q.marks else 'Reviewed' }}</span> (+{{ earned }} of {{ q.marks }})
+      {% endif %}
+    {% elif not a or not a.selected_option %}
       <span class="badge fail">Not answered</span>
     {% elif earned == q.marks %}
       <span class="badge pass">Correct</span> (+{{ earned }})

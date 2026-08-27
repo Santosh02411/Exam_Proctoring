@@ -61,14 +61,33 @@
   </div>
 
   <form id="answersForm">
-    {% macro render_option_group(q) %}
-      {% if q.question_type == 'short' %}
+    {% macro render_media(q) %}
+      {% if q.media_type == 'image' and q.media_url %}
+      <div style="margin:10px 0"><img src="{{ q.media_url }}" alt="" style="max-width:100%;border-radius:8px"></div>
+      {% elif q.media_type == 'video' and q.media_url %}
+      <div style="margin:10px 0"><video src="{{ q.media_url }}" controls preload="metadata" style="max-width:100%;border-radius:8px"></video></div>
+      {% endif %}
+    {% endmacro %}
+
+    {% macro render_answer_input(q) %}
+      {% set saved = saved_answers.get(q.id|string, '') %}
+      {% if q.question_type in ('short', 'fill_blank') %}
       <div style="margin-top:10px">
-        <input type="text" name="q_{{ q.id }}" placeholder="Type your answer" style="max-width:400px"
-               value="{{ saved_answers.get(q.id|string, '') }}">
+        <input type="text" name="q_{{ q.id }}" placeholder="Type your answer" style="max-width:400px" value="{{ saved }}">
+      </div>
+      {% elif q.question_type in ('descriptive', 'coding') %}
+      <div style="margin-top:10px">
+        <textarea name="q_{{ q.id }}" rows="{{ 10 if q.question_type == 'coding' else 6 }}" style="width:100%;{% if q.question_type == 'coding' %}font-family:monospace{% endif %}"
+                  placeholder="{{ 'Write your answer here…' if q.question_type == 'descriptive' else 'Write your code here…' }}">{{ saved if saved else (q.starter_code or '') }}</textarea>
+        {% if q.question_type == 'coding' and q.code_language %}<div class="small muted">Language: {{ q.code_language }}</div>{% endif %}
+        <div class="small muted">This answer is reviewed and scored manually — it isn't auto-graded.</div>
+      </div>
+      {% elif q.question_type == 'true_false' %}
+      <div class="options" role="radiogroup">
+        <label class="opt"><input type="radio" name="q_{{ q.id }}" value="true" {{ 'checked' if saved == 'true' }}> <span>True</span></label>
+        <label class="opt"><input type="radio" name="q_{{ q.id }}" value="false" {{ 'checked' if saved == 'false' }}> <span>False</span></label>
       </div>
       {% else %}
-      {% set saved = saved_answers.get(q.id|string, '') %}
       {% set saved_set = saved.split(',') if saved else [] %}
       <div class="options" role="{{ 'group' if q.question_type == 'multi' else 'radiogroup' }}">
         {% set opts = {'a': q.option_a, 'b': q.option_b, 'c': q.option_c, 'd': q.option_d} %}
@@ -99,7 +118,8 @@
         {% if q.question_type == 'multi' %}<span class="small muted">(select all that apply)</span>{% endif %}
         {% if q.time_limit_seconds %}<span class="small q-timer" data-qtimer="{{ q.id }}"></span>{% endif %}
       </div>
-      {{ render_option_group(q) }}
+      {{ render_media(q) }}
+      {{ render_answer_input(q) }}
     </div>
     {% endfor %}
     {% endif %}
@@ -114,7 +134,8 @@
         {% if q.question_type == 'multi' %}<span class="small muted">(select all that apply)</span>{% endif %}
         {% if q.time_limit_seconds %}<span class="small q-timer" data-qtimer="{{ q.id }}"></span>{% endif %}
       </div>
-      {{ render_option_group(q) }}
+      {{ render_media(q) }}
+      {{ render_answer_input(q) }}
     </div>
     {% endfor %}
     {% endif %}

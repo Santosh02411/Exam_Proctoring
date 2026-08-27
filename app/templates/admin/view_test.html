@@ -54,13 +54,28 @@
   {% for q in test.questions %}
   <div class="qcard">
     <div>
-      <strong>Q{{ loop.index }}.</strong> {{ q.question_text }} <span class="badge draft">{{ q.question_type|capitalize }}</span>
+      <strong>Q{{ loop.index }}.</strong> {{ q.question_text }} <span class="badge draft">{{ q.question_type|replace('_',' ')|capitalize }}</span>
       <span class="badge role">{{ q.difficulty|default('medium')|capitalize }}</span>
       {% if q.section %}<span class="badge draft">{{ q.section.name }}</span>{% endif %}
       {% if q.category %}<span class="small muted">· {{ q.category }}</span>{% endif %}
     </div>
+    {% if q.media_type == 'image' and q.media_url %}
+    <div style="margin:8px 0"><img src="{{ q.media_url }}" alt="" style="max-width:300px;border-radius:8px"></div>
+    {% elif q.media_type == 'video' and q.media_url %}
+    <div style="margin:8px 0"><video src="{{ q.media_url }}" controls preload="metadata" style="max-width:300px;border-radius:8px"></video></div>
+    {% endif %}
     {% if q.question_type == 'short' %}
     <div class="small" style="margin-top:8px">Expected answer: <strong>"{{ q.correct_answer }}"</strong></div>
+    {% elif q.question_type == 'fill_blank' %}
+    <div class="small" style="margin-top:8px">Accepted answer(s): <strong>{{ q.correct_answer }}</strong></div>
+    {% elif q.question_type == 'true_false' %}
+    <div class="small" style="margin-top:8px">Correct answer: <strong>{{ q.correct_answer|capitalize }}</strong></div>
+    {% elif q.question_type in ('descriptive', 'coding') %}
+    <div class="small" style="margin-top:8px">
+      Manually graded — reviewed on the attempt's results page.
+      {% if q.question_type == 'coding' and q.code_language %}<br>Language: {{ q.code_language }}{% endif %}
+      {% if q.correct_answer %}<br>Model answer / notes: <span class="muted">{{ q.correct_answer }}</span>{% endif %}
+    </div>
     {% else %}
     {% set correct = q.correct_set() %}
     <div class="options" style="grid-template-columns:1fr 1fr">

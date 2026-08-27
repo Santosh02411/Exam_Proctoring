@@ -75,21 +75,51 @@
 
 <div class="card" style="margin-top:16px">
   <h2>Answers</h2>
+  {% set has_manual = attempt.answers|selectattr('question.needs_manual_grading')|list %}
+  {% if has_manual %}
+  <form method="post" action="{{ url_for('admin.grade_attempt', attempt_id=attempt.id) }}">
+  {% endif %}
   {% if attempt.answers %}
   {% for a in attempt.answers %}
   {% set q = a.question %}
-  {% set correct = a.selected_option and q.is_correct(a.selected_option) %}
+  {% set correct = a.selected_option and not q.needs_manual_grading and q.is_correct(a.selected_option) %}
   <div class="qcard">
-    <div><strong>{{ q.question_text }}</strong> <span class="badge draft">{{ q.question_type|capitalize }}</span></div>
+    <div><strong>{{ q.question_text }}</strong> <span class="badge draft">{{ q.question_type|replace('_',' ')|capitalize }}</span></div>
+    {% if q.media_type == 'image' and q.media_url %}
+    <div style="margin:8px 0"><img src="{{ q.media_url }}" alt="" style="max-width:260px;border-radius:8px"></div>
+    {% elif q.media_type == 'video' and q.media_url %}
+    <div style="margin:8px 0"><video src="{{ q.media_url }}" controls preload="metadata" style="max-width:260px;border-radius:8px"></video></div>
+    {% endif %}
     <div class="small" style="margin-top:6px">
-      {% if q.question_type == 'short' %}
+      {% if q.question_type in ('short', 'fill_blank') %}
         Answered: <strong>{{ a.selected_option if a.selected_option else 'Not answered' }}</strong>
         · Expected: <strong>{{ q.correct_answer }}</strong>
+      {% elif q.question_type == 'true_false' %}
+        Answered: <strong>{{ a.selected_option|capitalize if a.selected_option else 'Not answered' }}</strong>
+        · Correct: <strong>{{ q.correct_answer|capitalize }}</strong>
+      {% elif q.needs_manual_grading %}
+        <div style="white-space:pre-wrap;background:var(--bg2);border-radius:8px;padding:10px;margin:6px 0;{% if q.question_type == 'coding' %}font-family:monospace{% endif %}">{{ a.selected_option or '(not answered)' }}</div>
       {% else %}
         Selected: <strong>{{ a.selected_option|upper if a.selected_option else 'Not answered' }}</strong>
         · Correct: <strong>{{ q.correct_answer|upper }}</strong>
       {% endif %}
-      {% if not a.selected_option %}
+      {% if q.needs_manual_grading %}
+        {% if a.selected_option %}
+          <div style="margin-top:8px;display:flex;align-items:center;gap:8px">
+            <label class="small" for="score_{{ a.id }}">Score (out of {{ q.marks }})</label>
+            <input type="number" id="score_{{ a.id }}" name="score_{{ a.id }}" min="0" max="{{ q.marks }}" step="0.5"
+                   value="{{ a.manual_score if a.manual_score is not none else '' }}" style="max-width:100px">
+            {% if a.manual_score is not none %}
+              <span class="badge pass">Graded</span>
+              <span class="small muted">by {{ a.grader.name if a.grader else '—' }}{% if a.graded_at %} on {{ a.graded_at.strftime('%Y-%m-%d %H:%M') }}{% endif %}</span>
+            {% else %}
+              <span class="badge draft">Pending review</span>
+            {% endif %}
+          </div>
+        {% else %}
+          <span class="badge fail">Not answered</span>
+        {% endif %}
+      {% elif not a.selected_option %}
         <span class="badge fail">Not answered</span>
       {% elif correct %}
         <span class="badge pass">Correct</span>
@@ -101,6 +131,10 @@
   {% endfor %}
   {% else %}
   <div class="small">No answers submitted.</div>
+  {% endif %}
+  {% if has_manual %}
+    <button type="submit" class="btn">Save Grades</button>
+  </form>
   {% endif %}
 </div>
 {% endblock %}

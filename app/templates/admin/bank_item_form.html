@@ -8,7 +8,7 @@
 </div>
 
 <div class="card" style="max-width:640px">
-  <form method="post" novalidate id="qForm" onsubmit="return validateAndSubmit();">
+  <form method="post" novalidate id="qForm" enctype="multipart/form-data" onsubmit="return validateAndSubmit();">
     {{ form.hidden_tag() }}
     <div class="row">
       <div class="col field">
@@ -28,6 +28,7 @@
     <div class="field">
       <label for="{{ form.question_text.id }}">Question text</label>
       {{ form.question_text(placeholder="Write the question here...") }}
+      <div class="hint" id="blankHint" style="display:none">For fill-in-the-blank, mark the blank with three or more underscores, e.g. "The capital of France is ____."</div>
     </div>
 
     <div id="optionsSection">
@@ -79,10 +80,39 @@
       </div>
     </div>
 
+    <div class="field" id="trueFalseField" style="display:none">
+      <label>Correct answer</label>
+      <div class="row">
+        <label class="opt" style="flex:1"><input type="radio" name="tf_correct" value="true" {{ 'checked' if item and item.question_type == 'true_false' and item.correct_answer == 'true' }}> True</label>
+        <label class="opt" style="flex:1"><input type="radio" name="tf_correct" value="false" {{ 'checked' if item and item.question_type == 'true_false' and item.correct_answer == 'false' }}> False</label>
+      </div>
+    </div>
+
     <div class="field" id="shortAnswerField" style="display:none">
       <label for="{{ form.short_answer_text.id }}">Expected correct answer</label>
       {{ form.short_answer_text(placeholder="e.g. Paris") }}
       <div class="hint">Graded automatically, case-insensitive, trimmed whitespace.</div>
+    </div>
+
+    <div class="field" id="blankAnswerField" style="display:none">
+      <label for="{{ form.blank_answer.id }}">Accepted answer(s) for the blank</label>
+      {{ form.blank_answer(placeholder="Separate multiple with ';'") }}
+    </div>
+
+    <div class="field" id="modelAnswerField" style="display:none">
+      <label for="{{ form.model_answer.id }}">Model answer / grading notes (optional)</label>
+      {{ form.model_answer(placeholder="Shown only to the grader — never auto-compared or shown to students.") }}
+    </div>
+
+    <div id="codingFields" style="display:none">
+      <div class="field">
+        <label for="{{ form.code_language.id }}">Language (optional)</label>
+        {{ form.code_language(placeholder="e.g. python") }}
+      </div>
+      <div class="field">
+        <label for="{{ form.starter_code.id }}">Starter code (optional)</label>
+        {{ form.starter_code(style="font-family:monospace") }}
+      </div>
     </div>
 
     <div class="row">
@@ -94,6 +124,16 @@
         <label for="{{ form.time_limit_seconds.id }}">Time limit, seconds (optional)</label>
         {{ form.time_limit_seconds(placeholder="e.g. 60") }}
       </div>
+    </div>
+
+    <div class="field">
+      <label>Attach an image or video (optional)</label>
+      <div class="row">
+        <div class="col field">{{ form.media_file() }}</div>
+        <div class="col field">{{ form.media_type() }}</div>
+      </div>
+      {{ form.media_url(placeholder="…or paste an image/video URL instead of uploading") }}
+      {% if item and item.media_url %}<div class="hint">Currently has a {{ item.media_type }} attached — leave both blank to keep it.</div>{% endif %}
     </div>
 
     <div class="actions">
@@ -108,14 +148,24 @@ const typeSelect = document.getElementById('questionTypeSelect');
 const optionsSection = document.getElementById('optionsSection');
 const singleField = document.getElementById('singleCorrectField');
 const multiField = document.getElementById('multiCorrectField');
+const trueFalseField = document.getElementById('trueFalseField');
 const shortField = document.getElementById('shortAnswerField');
+const blankField = document.getElementById('blankAnswerField');
+const blankHint = document.getElementById('blankHint');
+const modelAnswerField = document.getElementById('modelAnswerField');
+const codingFields = document.getElementById('codingFields');
 
 function syncTypeUI(){
   const t = typeSelect.value;
-  optionsSection.style.display = (t === 'short') ? 'none' : 'block';
+  optionsSection.style.display = (t === 'single' || t === 'multi') ? 'block' : 'none';
   singleField.style.display = (t === 'single') ? 'block' : 'none';
   multiField.style.display = (t === 'multi') ? 'block' : 'none';
+  trueFalseField.style.display = (t === 'true_false') ? 'block' : 'none';
   shortField.style.display = (t === 'short') ? 'block' : 'none';
+  blankField.style.display = (t === 'fill_blank') ? 'block' : 'none';
+  blankHint.style.display = (t === 'fill_blank') ? 'block' : 'none';
+  modelAnswerField.style.display = (t === 'descriptive' || t === 'coding') ? 'block' : 'none';
+  codingFields.style.display = (t === 'coding') ? 'block' : 'none';
 }
 typeSelect.addEventListener('change', syncTypeUI);
 syncTypeUI();
@@ -136,10 +186,27 @@ function validateAndSubmit(){
       alert('Select at least one correct option.');
       return false;
     }
+  } else if (t === 'true_false') {
+    if (!document.querySelector('input[name="tf_correct"]:checked')) {
+      alert('Select True or False.');
+      return false;
+    }
   } else if (t === 'short') {
     const ans = document.getElementById('{{ form.short_answer_text.id }}');
     if (!ans.value.trim()) {
       alert('Enter the expected correct answer.');
+      ans.focus();
+      return false;
+    }
+  } else if (t === 'fill_blank') {
+    if (!/___/.test(q.value)) {
+      alert('Mark the blank in the question text with three or more underscores, e.g. "____".');
+      q.focus();
+      return false;
+    }
+    const ans = document.getElementById('{{ form.blank_answer.id }}');
+    if (!ans.value.trim()) {
+      alert('Enter at least one accepted answer for the blank.');
       ans.focus();
       return false;
     }

@@ -12,6 +12,9 @@
       <div style="font-size:42px;font-weight:800;margin:18px 0;color:{{ 'var(--success)' if passed else 'var(--danger)' }}">
         {{ attempt.score }} / {{ total_marks }}
       </div>
+      {% if pending_grading %}
+      <div class="badge draft" style="font-size:13px;padding:6px 12px">Some answers are still being reviewed — this score may change</div>
+      {% endif %}
       <div class="badge {{ 'pass' if passed else 'fail' }}" style="font-size:14px;padding:8px 16px">
         {{ 'PASSED' if passed else 'NOT PASSED' }}
       </div>

@@ -17,7 +17,7 @@
 
 <div class="wrap" style="grid-template-columns:1fr 340px;display:grid">
   <div class="card">
-    <form method="post" novalidate id="qForm" onsubmit="return validateAndSubmit();">
+    <form method="post" novalidate id="qForm" enctype="multipart/form-data" onsubmit="return validateAndSubmit();">
       {{ form.hidden_tag() }}
       <div class="field">
         <label for="{{ form.question_type.id }}">Question type</label>
@@ -26,6 +26,7 @@
       <div class="field">
         <label for="{{ form.question_text.id }}">Question text</label>
         {{ form.question_text(placeholder="Write the question here...") }}
+        <div class="hint" id="blankHint" style="display:none">For fill-in-the-blank, mark the blank with three or more underscores, e.g. "The capital of France is ____."</div>
       </div>
 
       <div id="optionsSection">
@@ -71,10 +72,42 @@
         </div>
       </div>
 
+      <div class="field" id="trueFalseField" style="display:none">
+        <label>Correct answer</label>
+        <div class="row">
+          <label class="opt" style="flex:1"><input type="radio" name="tf_correct" value="true"> True</label>
+          <label class="opt" style="flex:1"><input type="radio" name="tf_correct" value="false"> False</label>
+        </div>
+      </div>
+
       <div class="field" id="shortAnswerField" style="display:none">
         <label for="{{ form.short_answer_text.id }}">Expected correct answer</label>
         {{ form.short_answer_text(placeholder="e.g. Paris") }}
         <div class="hint">Graded automatically, case-insensitive, trimmed whitespace. Exact wording matters otherwise.</div>
+      </div>
+
+      <div class="field" id="blankAnswerField" style="display:none">
+        <label for="{{ form.blank_answer.id }}">Accepted answer(s) for the blank</label>
+        {{ form.blank_answer(placeholder="e.g. Paris  — or  colour;color for multiple accepted spellings") }}
+        <div class="hint">Separate multiple acceptable answers with ';'. Graded case-insensitive, trimmed whitespace.</div>
+      </div>
+
+      <div class="field" id="modelAnswerField" style="display:none">
+        <label for="{{ form.model_answer.id }}">Model answer / grading notes (optional)</label>
+        {{ form.model_answer(placeholder="Shown only to the grader — never auto-compared or shown to students.") }}
+      </div>
+
+      <div id="codingFields" style="display:none">
+        <div class="row">
+          <div class="col field">
+            <label for="{{ form.code_language.id }}">Language (optional)</label>
+            {{ form.code_language(placeholder="e.g. python") }}
+          </div>
+        </div>
+        <div class="field">
+          <label for="{{ form.starter_code.id }}">Starter code (optional)</label>
+          {{ form.starter_code(placeholder="def solve():\n    pass", style="font-family:monospace") }}
+        </div>
       </div>
 
       <div class="row">
@@ -112,6 +145,20 @@
       </div>
       {% endif %}
 
+      <div class="field">
+        <label>Attach an image or video (optional)</label>
+        <div class="row">
+          <div class="col field">
+            {{ form.media_file() }}
+          </div>
+          <div class="col field">
+            {{ form.media_type() }}
+          </div>
+        </div>
+        {{ form.media_url(placeholder="…or paste an image/video URL instead of uploading") }}
+        <div class="hint">Works with any question type — e.g. an MCQ built around a diagram. Upload wins if both are given.</div>
+      </div>
+
       <div class="actions">
         <button type="submit" class="btn">Add Question</button>
         <a class="btn ghost" href="{{ url_for('admin.view_test', test_id=test.id) }}">Done</a>
@@ -128,13 +175,18 @@
         <li class="small" style="margin-bottom:10px">
           {{ q.question_text[:70] }}{% if q.question_text|length > 70 %}…{% endif %}
           <br>
-          <span class="badge draft">{{ q.question_type|capitalize }}</span>
+          <span class="badge draft">{{ q.question_type|replace('_',' ')|capitalize }}</span>
           <span class="badge role">{{ q.difficulty|default('medium')|capitalize }}</span>
+          {% if q.media_type %}<span class="badge draft">{{ q.media_type|capitalize }}</span>{% endif %}
           {% if q.section %}<span class="badge draft">{{ q.section.name }}</span>{% endif %}
           {% if q.category %}<span class="muted">· {{ q.category }}</span>{% endif %}
           <span class="muted">
             {% if q.question_type == 'short' %}
               Answer: "{{ q.correct_answer }}"
+            {% elif q.question_type == 'fill_blank' %}
+              Accepted: "{{ q.correct_answer }}"
+            {% elif q.question_type in ('descriptive', 'coding') %}
+              Manually graded
             {% else %}
               Correct: {{ q.correct_answer|upper }}
             {% endif %}
@@ -159,9 +211,10 @@
     <div class="card">
       <h4 style="margin:0 0 8px 0">Tips</h4>
       <p class="small" style="margin:0">
-        • Single choice: exactly one correct option.<br>
+        • Single/true-false: exactly one correct option.<br>
         • Multiple choice: students must pick <em>all</em> correct options and no incorrect ones for credit.<br>
-        • Short answer: auto-graded by exact text match (case-insensitive).<br>
+        • Short/fill-in-the-blank: auto-graded by exact text match (case-insensitive).<br>
+        • Descriptive/coding: not auto-graded — review and score them from the attempt's results page.<br>
         • Marks default to 1 — adjust for weighted questions.
       </p>
     </div>
@@ -169,10 +222,13 @@
       <h4 style="margin:0 0 8px 0">Bulk import (CSV)</h4>
       <p class="small">
         Columns: <code>question_text, question_type, option_a, option_b, option_c, option_d, correct_answer, marks, time_limit_seconds, category, difficulty</code>.
-        <code>question_type</code> is <code>single</code> (default) / <code>multi</code> / <code>short</code>.
-        For <code>multi</code>, join correct letters with <code>+</code>, e.g. <code>a+c</code>. Options aren't
-        needed for <code>short</code> rows. <code>marks</code>, <code>time_limit_seconds</code>, <code>category</code>
-        and <code>difficulty</code> (<code>easy</code>/<code>medium</code>/<code>hard</code>) are all optional.
+        <code>question_type</code> is <code>single</code> (default) / <code>multi</code> / <code>short</code> / <code>true_false</code> / <code>fill_blank</code>.
+        For <code>multi</code>, join correct letters with <code>+</code>, e.g. <code>a+c</code>. For <code>true_false</code>,
+        <code>correct_answer</code> is <code>true</code>/<code>false</code>. For <code>fill_blank</code>, join accepted
+        answers with <code>;</code>. Options aren't needed for <code>short</code>/<code>fill_blank</code> rows.
+        <code>marks</code>, <code>time_limit_seconds</code>, <code>category</code> and <code>difficulty</code>
+        (<code>easy</code>/<code>medium</code>/<code>hard</code>) are all optional. Descriptive/coding questions
+        (manually graded) and media attachments aren't supported via CSV — add those individually.
       </p>
       <form method="post" action="{{ url_for('admin.import_questions', test_id=test.id) }}" enctype="multipart/form-data">
         {{ import_form.hidden_tag() }}
@@ -188,14 +244,24 @@ const typeSelect = document.getElementById('questionTypeSelect');
 const optionsSection = document.getElementById('optionsSection');
 const singleField = document.getElementById('singleCorrectField');
 const multiField = document.getElementById('multiCorrectField');
+const trueFalseField = document.getElementById('trueFalseField');
 const shortField = document.getElementById('shortAnswerField');
+const blankField = document.getElementById('blankAnswerField');
+const blankHint = document.getElementById('blankHint');
+const modelAnswerField = document.getElementById('modelAnswerField');
+const codingFields = document.getElementById('codingFields');
 
 function syncTypeUI(){
   const t = typeSelect.value;
-  optionsSection.style.display = (t === 'short') ? 'none' : 'block';
+  optionsSection.style.display = (t === 'single' || t === 'multi') ? 'block' : 'none';
   singleField.style.display = (t === 'single') ? 'block' : 'none';
   multiField.style.display = (t === 'multi') ? 'block' : 'none';
+  trueFalseField.style.display = (t === 'true_false') ? 'block' : 'none';
   shortField.style.display = (t === 'short') ? 'block' : 'none';
+  blankField.style.display = (t === 'fill_blank') ? 'block' : 'none';
+  blankHint.style.display = (t === 'fill_blank') ? 'block' : 'none';
+  modelAnswerField.style.display = (t === 'descriptive' || t === 'coding') ? 'block' : 'none';
+  codingFields.style.display = (t === 'coding') ? 'block' : 'none';
 }
 typeSelect.addEventListener('change', syncTypeUI);
 syncTypeUI();
@@ -216,10 +282,27 @@ function validateAndSubmit(){
       alert('Select at least one correct option.');
       return false;
     }
+  } else if (t === 'true_false') {
+    if (!document.querySelector('input[name="tf_correct"]:checked')) {
+      alert('Select True or False.');
+      return false;
+    }
   } else if (t === 'short') {
     const ans = document.getElementById('{{ form.short_answer_text.id }}');
     if (!ans.value.trim()) {
       alert('Enter the expected correct answer.');
+      ans.focus();
+      return false;
+    }
+  } else if (t === 'fill_blank') {
+    if (!/___/.test(q.value)) {
+      alert('Mark the blank in the question text with three or more underscores, e.g. "____".');
+      q.focus();
+      return false;
+    }
+    const ans = document.getElementById('{{ form.blank_answer.id }}');
+    if (!ans.value.trim()) {
+      alert('Enter at least one accepted answer for the blank.');
       ans.focus();
       return false;
     }

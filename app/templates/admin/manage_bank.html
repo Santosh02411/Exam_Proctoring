@@ -45,7 +45,7 @@
       {% for item in items %}
       <tr>
         <td>{{ item.question_text[:80] }}{% if item.question_text|length > 80 %}…{% endif %}</td>
-        <td><span class="badge draft">{{ item.question_type|capitalize }}</span></td>
+        <td><span class="badge draft">{{ item.question_type|replace('_',' ')|capitalize }}</span></td>
         <td class="small">{{ item.category or '—' }}</td>
         <td class="small">{{ item.marks }}</td>
         <td class="small">{{ usage_counts.get(item.id, 0) }} test(s)</td>
