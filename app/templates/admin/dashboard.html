@@ -6,7 +6,7 @@
 
 <div class="kpi-row" style="margin-top:20px">
   <div class="kpi"><div class="num">{{ tests|length }}</div><div class="label">Your Tests</div></div>
-  <div class="kpi"><div class="num">{{ total_students }}</div><div class="label">Students</div></div>
+  <a class="kpi" style="text-decoration:none;color:inherit" href="{{ url_for('admin.manage_users') }}"><div class="num">{{ total_students }}</div><div class="label">Students</div></a>
   <div class="kpi"><div class="num">{{ total_attempts }}</div><div class="label">Attempts</div></div>
 </div>
 

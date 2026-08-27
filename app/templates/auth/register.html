@@ -35,6 +35,7 @@
       <div class="field">
         <label for="{{ form.password.id }}">Create Password</label>
         {{ form.password(placeholder="Create Password") }}
+        <div class="hint">At least 8 characters, with a lowercase letter, an uppercase letter, a number, and a special character.</div>
         {% for e in form.password.errors %}<div class="errors">{{ e }}</div>{% endfor %}
       </div>
       <button type="submit" class="btn" style="width:100%">Register</button>

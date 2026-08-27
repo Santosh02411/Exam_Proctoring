@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% from "_pagination.html" import render_pagination %}
+{% block title %}Manage Users{% endblock %}
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+  <div>
+    <a class="small" href="{{ url_for('admin.dashboard') }}">&larr; Dashboard</a>
+    <h1 style="margin-top:8px">Manage Users</h1>
+    <div class="small">View, search, and manage every account on the platform.</div>
+  </div>
+  <div class="actions">
+    <a class="btn ghost small" href="{{ url_for('admin.export_users', role=role_filter, status=status_filter) }}">Export CSV</a>
+    <a class="btn small" href="{{ url_for('admin.import_users') }}">Import Students</a>
+  </div>
+</div>
+
+<div class="kpi-row">
+  <div class="kpi"><div class="num">{{ total_users }}</div><div class="label">Total Users</div></div>
+  <div class="kpi"><div class="num">{{ total_students }}</div><div class="label">Students</div></div>
+  <div class="kpi"><div class="num">{{ total_active }}</div><div class="label">Active</div></div>
+  <div class="kpi"><div class="num">{{ total_inactive }}</div><div class="label">Inactive</div></div>
+</div>
+
+<div class="card">
+  <form method="get" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px">
+    <div class="field" style="margin-bottom:0;flex:1;min-width:220px">
+      <label for="q">Search</label>
+      <input type="text" id="q" name="q" value="{{ search }}" placeholder="Search by name, email, or user ID…">
+    </div>
+    <div class="field" style="margin-bottom:0">
+      <label for="role">Role</label>
+      <select id="role" name="role">
+        <option value="" {{ 'selected' if not role_filter }}>All roles</option>
+        <option value="student" {{ 'selected' if role_filter == 'student' }}>Student</option>
+        <option value="admin" {{ 'selected' if role_filter == 'admin' }}>Admin</option>
+      </select>
+    </div>
+    <div class="field" style="margin-bottom:0">
+      <label for="status">Status</label>
+      <select id="status" name="status">
+        <option value="" {{ 'selected' if not status_filter }}>All statuses</option>
+        <option value="active" {{ 'selected' if status_filter == 'active' }}>Active</option>
+        <option value="inactive" {{ 'selected' if status_filter == 'inactive' }}>Inactive</option>
+      </select>
+    </div>
+    <button type="submit" class="btn small">Filter</button>
+    {% if search or role_filter or status_filter %}
+      <a class="btn ghost small" href="{{ url_for('admin.manage_users') }}">Clear</a>
+    {% endif %}
+  </form>
+
+  {% if users %}
+  <table class="table">
+    <thead>
+      <tr><th>#</th><th>Name</th><th>Email</th><th>User ID</th><th>Role</th><th>Status</th><th>Verified</th><th>Joined</th><th>Actions</th></tr>
+    </thead>
+    <tbody>
+      {% for u in users %}
+      <tr>
+        <td>{{ loop.index + (pagination.page - 1) * pagination.per_page }}</td>
+        <td style="font-weight:700">{{ u.name }}{% if u.id == current_user.id %} <span class="small muted">(you)</span>{% endif %}</td>
+        <td class="small">{{ u.email }}</td>
+        <td class="small">{{ u.user_id }}</td>
+        <td><span class="badge role">{{ u.role }}</span></td>
+        <td><span class="badge {{ u.status }}">{{ u.status|capitalize }}</span></td>
+        <td class="small">{{ 'Yes' if u.email_verified else 'No' }}</td>
+        <td class="small">{{ u.created_at.strftime('%Y-%m-%d') if u.created_at else '—' }}</td>
+        <td>
+          <div class="actions">
+            {% if u.id != current_user.id %}
+            <form class="inline" method="post" action="{{ url_for('admin.toggle_user_status', user_id=u.id) }}"
+                  onsubmit="return confirm('{{ 'Deactivate' if u.status == 'active' else 'Reactivate' }} {{ u.name }}\'s account?');">
+              <button type="submit" class="btn ghost small">{{ 'Deactivate' if u.status == 'active' else 'Reactivate' }}</button>
+            </form>
+            <form class="inline" method="post" action="{{ url_for('admin.delete_user', user_id=u.id) }}"
+                  onsubmit="return confirm('Permanently delete {{ u.name }}\'s account? This cannot be undone.');">
+              <button type="submit" class="btn danger ghost small">Delete</button>
+            </form>
+            {% else %}
+            <span class="small muted">—</span>
+            {% endif %}
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {{ render_pagination(pagination, 'admin.manage_users', {'q': search, 'role': role_filter, 'status': status_filter}) }}
+  {% else %}
+  <div class="small">No users match your search/filters.</div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -38,7 +38,7 @@
             <span class="badge {{ attempt.status if attempt else 'draft' }}">{{ attempt.status|capitalize if attempt else 'Done' }}</span>
           {% endif %}
         </td>
-        <td class="small">{{ row.completed_count }} / {{ test.max_attempts }} used</td>
+        <td class="small">{{ row.completed_count }} / {{ test.max_attempts }}{% if row.eligibility.extra_attempts %}<span class="badge draft" style="margin-left:4px">+{{ row.eligibility.extra_attempts }} extra</span>{% endif %} used</td>
         <td class="small">
           {% if attempt and attempt.score is not none %}
             {{ attempt.score }} / {{ test.total_marks() }}

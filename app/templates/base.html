@@ -18,14 +18,13 @@
           <a href="{{ url_for('admin.dashboard') }}">Dashboard</a>
           <a href="{{ url_for('admin.manage_tests') }}">Manage Tests</a>
           <a href="{{ url_for('admin.create_test') }}">+ New Test</a>
+          <a href="{{ url_for('admin.manage_users') }}">Manage Users</a>
           <a href="{{ url_for('admin.activity_log') }}">Activity Log</a>
-          <a href="{{ url_for('admin.import_students') }}">Import Students</a>
         {% else %}
           <a href="{{ url_for('student.dashboard') }}">My Tests</a>
           <a href="{{ url_for('student.enroll_face') }}">Enroll Face</a>
         {% endif %}
         <span class="nav-user">{{ current_user.name }} <span class="badge role">{{ current_user.role }}</span></span>
-        <a href="{{ url_for('auth.change_password') }}">Change Password</a>
         <a href="{{ url_for('auth.logout') }}" class="btn ghost small">Logout</a>
       </div>
     </div>

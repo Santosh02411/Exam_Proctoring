@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Import Students{% endblock %}
+{% block content %}
+<div style="margin-bottom:16px">
+  <a class="small" href="{{ url_for('admin.manage_users') }}">&larr; Manage Users</a>
+  <h1 style="margin-top:8px">Import Students</h1>
+  <div class="lead">Bulk-create student accounts from a CSV file.</div>
+</div>
+
+<div class="wrap" style="grid-template-columns:1fr 1fr;display:grid;gap:20px">
+  <div class="card">
+    <h2>Upload CSV</h2>
+    <form method="post" enctype="multipart/form-data">
+      {{ form.hidden_tag() }}
+      <div class="field">
+        <label for="csv_file">CSV file</label>
+        {{ form.csv_file() }}
+        {% for e in form.csv_file.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+      </div>
+      <button type="submit" class="btn">Import</button>
+    </form>
+    <div class="hint" style="margin-top:14px">
+      Required columns: <code>name</code>, <code>email</code>.<br>
+      Optional columns: <code>phone</code>, <code>password</code>.<br>
+      Rows with a missing name/email, or an email that's already registered, are skipped.
+      Imported accounts are created active and pre-verified — no email verification step needed.
+      If a row leaves <code>password</code> blank, a random password is generated and emailed
+      to the student automatically.
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Recently added</h2>
+    {% if recently_added %}
+    <table class="table">
+      <thead><tr><th>Name</th><th>Email</th><th>User ID</th></tr></thead>
+      <tbody>
+        {% for u in recently_added %}
+        <tr>
+          <td style="font-weight:700">{{ u.name }}</td>
+          <td class="small">{{ u.email }}</td>
+          <td class="small">{{ u.user_id }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="small muted">Newly imported students from your last upload will appear here.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -27,11 +27,17 @@
         {% endfor %}
       </div>
       {{ render_pagination(pagination, 'admin.assign_students', {'test_id': test.id, 'q': search}) }}
-      <div class="field" style="margin-top:14px">
-        <label for="extra_time_minutes">Extra time (minutes) — accessibility accommodation</label>
-        <input type="number" id="extra_time_minutes" name="extra_time_minutes" min="0" value="0" style="max-width:140px">
-        <div class="hint">Applied to everyone selected above; adjust per-student later if needed.</div>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:14px">
+        <div class="field" style="margin-bottom:0">
+          <label for="extra_time_minutes">Extra time (minutes)</label>
+          <input type="number" id="extra_time_minutes" name="extra_time_minutes" min="0" value="0" style="max-width:140px">
+        </div>
+        <div class="field" style="margin-bottom:0">
+          <label for="extra_attempts">Extra attempts</label>
+          <input type="number" id="extra_attempts" name="extra_attempts" min="0" value="0" style="max-width:140px">
+        </div>
       </div>
+      <div class="hint">Applied to everyone selected above; adjust per-student below once assigned.</div>
       <label class="opt" style="display:flex;align-items:center;gap:8px;margin-top:10px">
         <input type="checkbox" name="notify" checked> <span>Email selected students that this test was assigned</span>
       </label>
@@ -48,12 +54,29 @@
     <h2>Currently assigned ({{ assigned|length }})</h2>
     {% if assigned %}
     {% for eligibility in assigned.values()|sort(attribute='student.name') %}
-      <div class="opt" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px">
-        <span>{{ eligibility.student.name }} <span class="muted small">({{ eligibility.student.email }})</span>
-          {% if eligibility.extra_time_minutes %}<span class="badge draft">+{{ eligibility.extra_time_minutes }} min</span>{% endif %}
-        </span>
-        <form method="post" action="{{ url_for('admin.unassign_student', test_id=test.id, student_id=eligibility.student_id) }}">
-          <button type="submit" class="btn danger ghost small">Remove</button>
+      <div class="opt" style="margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+          <span>{{ eligibility.student.name }} <span class="muted small">({{ eligibility.student.email }})</span>
+            {% if eligibility.extra_time_minutes %}<span class="badge draft">+{{ eligibility.extra_time_minutes }} min</span>{% endif %}
+            {% if eligibility.extra_attempts %}<span class="badge draft">+{{ eligibility.extra_attempts }} attempt(s)</span>{% endif %}
+          </span>
+          <form method="post" action="{{ url_for('admin.unassign_student', test_id=test.id, student_id=eligibility.student_id) }}">
+            <button type="submit" class="btn danger ghost small">Remove</button>
+          </form>
+        </div>
+        <form method="post" action="{{ url_for('admin.update_eligibility', test_id=test.id, student_id=eligibility.student_id) }}"
+              style="display:flex;align-items:flex-end;gap:8px;margin-top:8px;flex-wrap:wrap">
+          <div class="field" style="margin-bottom:0">
+            <label class="small" for="extra_time_{{ eligibility.student_id }}">Extra time (min)</label>
+            <input type="number" id="extra_time_{{ eligibility.student_id }}" name="extra_time_minutes" min="0"
+                   value="{{ eligibility.extra_time_minutes }}" style="max-width:110px">
+          </div>
+          <div class="field" style="margin-bottom:0">
+            <label class="small" for="extra_attempts_{{ eligibility.student_id }}">Extra attempts</label>
+            <input type="number" id="extra_attempts_{{ eligibility.student_id }}" name="extra_attempts" min="0"
+                   value="{{ eligibility.extra_attempts }}" style="max-width:110px">
+          </div>
+          <button type="submit" class="btn ghost small">Save</button>
         </form>
       </div>
     {% endfor %}
