@@ -135,7 +135,6 @@ class QuestionBankItem(db.Model):
     # Free-text topic/category tag for filtering (e.g. "Python Basics", "HR Policy").
     category = db.Column(db.String(100), nullable=True, index=True)
     difficulty = db.Column(db.String(10), nullable=True, default="medium")  # easy | medium | hard
-    difficulty = db.Column(db.String(10), nullable=True, default="medium")  # easy | medium | hard
 
     question_type = db.Column(db.String(10), nullable=False, default="single")
     option_a = db.Column(db.String(500), nullable=True)
@@ -146,6 +145,14 @@ class QuestionBankItem(db.Model):
     marks = db.Column(db.Integer, nullable=False, default=1)
     time_limit_seconds = db.Column(db.Integer, nullable=True)
     question_text = db.Column(db.Text, nullable=False)
+    # Optional media attached to the question (works with any question_type,
+    # e.g. an MCQ built around a diagram). media_url is either an uploaded
+    # file's static path or an admin-supplied external URL.
+    media_type = db.Column(db.String(10), nullable=True)  # image | video | None
+    media_url = db.Column(db.String(500), nullable=True)
+    # coding-type only: language is free text (display/hint only, no execution)
+    starter_code = db.Column(db.Text, nullable=True)
+    code_language = db.Column(db.String(30), nullable=True)
 
     creator = db.relationship("User")
     copies = db.relationship("Question", backref="bank_item", lazy=True)
@@ -178,10 +185,17 @@ class Question(db.Model):
     difficulty = db.Column(db.String(10), nullable=True, default="medium")  # easy | medium | hard
     question_text = db.Column(db.Text, nullable=False)
 
-    # single  -> one correct option (a-d); correct_answer = "b"
-    # multi   -> one or more correct options; correct_answer = "a,c" (sorted, comma-joined)
-    # short   -> free-text answer; options unused; correct_answer = the expected text,
-    #            graded case-insensitively with whitespace trimmed
+    # single      -> one correct option (a-d); correct_answer = "b"
+    # multi       -> one or more correct options; correct_answer = "a,c" (sorted, comma-joined)
+    # true_false  -> correct_answer = "true" or "false"; options unused
+    # short       -> free-text answer; options unused; correct_answer = the expected text,
+    #                graded case-insensitively with whitespace trimmed
+    # fill_blank  -> question_text contains a blank (e.g. "____"); correct_answer is one or
+    #                more acceptable answers separated by ";" (e.g. "colour;color")
+    # descriptive -> free-text essay answer; NOT auto-graded. correct_answer optionally holds
+    #                a model answer / rubric shown only to the grader, never compared.
+    # coding      -> free-text code answer; NOT auto-graded (no sandboxed execution — a human
+    #                reviews it). correct_answer optionally holds reference notes for the grader.
     question_type = db.Column(db.String(10), nullable=False, default="single")
 
     option_a = db.Column(db.String(500), nullable=True)
@@ -195,6 +209,11 @@ class Question(db.Model):
     # question's clock runs out, its inputs lock, but the rest of the exam
     # continues normally on the overall exam timer. NULL means no per-question limit.
     time_limit_seconds = db.Column(db.Integer, nullable=True)
+    # Optional media attached to the question — see QuestionBankItem for the same fields.
+    media_type = db.Column(db.String(10), nullable=True)  # image | video | None
+    media_url = db.Column(db.String(500), nullable=True)
+    starter_code = db.Column(db.Text, nullable=True)
+    code_language = db.Column(db.String(30), nullable=True)
 
     def options(self):
         return {"a": self.option_a, "b": self.option_b, "c": self.option_c, "d": self.option_d}
@@ -203,26 +222,45 @@ class Question(db.Model):
         """Correct option letters as a set, for single/multi questions."""
         return {c.strip().lower() for c in self.correct_answer.split(",") if c.strip()}
 
+    @property
+    def needs_manual_grading(self):
+        """Descriptive (essay) and coding answers aren't string-matched —
+        a human reviews them and enters marks via the grading route."""
+        return self.question_type in ("descriptive", "coding")
+
+    def accepted_blank_answers(self):
+        """fill_blank only: one or more acceptable answers, separated by ';'
+        in correct_answer (e.g. 'colour;color')."""
+        return {a.strip().lower() for a in self.correct_answer.split(";") if a.strip()}
+
     def is_correct(self, submitted):
         """Grade a submitted answer string against this question's correct
         answer. For single/multi, submitted is a comma-joined set of option
-        letters (order doesn't matter). For short answer, it's free text,
-        matched case-insensitively with surrounding whitespace trimmed."""
+        letters (order doesn't matter). For short/true_false, it's matched
+        case-insensitively with surrounding whitespace trimmed. For
+        fill_blank, it's matched against any of the accepted alternatives.
+        descriptive/coding are never auto-graded — always False here."""
         if not submitted:
             return False
-        if self.question_type == "short":
+        if self.needs_manual_grading:
+            return False
+        if self.question_type in ("short", "true_false"):
             return submitted.strip().lower() == self.correct_answer.strip().lower()
+        if self.question_type == "fill_blank":
+            return submitted.strip().lower() in self.accepted_blank_answers()
         submitted_set = {c.strip().lower() for c in submitted.split(",") if c.strip()}
         return submitted_set == self.correct_set()
 
     def score_for(self, submitted, partial_credit_multi=False):
-        """Marks earned for a submitted answer (float). Single/short questions
-        are all-or-nothing. Multi-select is all-or-nothing too unless
-        partial_credit_multi is set, in which case it awards proportional
-        credit: (correct options picked - incorrect options picked) / total
-        correct options, floored at 0 marks — so guessing extra wrong options
-        can only reduce credit toward zero, never below it."""
-        if not submitted:
+        """Marks earned for a submitted answer (float). Single/short/
+        true_false/fill_blank questions are all-or-nothing. Multi-select is
+        all-or-nothing too unless partial_credit_multi is set, in which case
+        it awards proportional credit: (correct options picked - incorrect
+        options picked) / total correct options, floored at 0 marks — so
+        guessing extra wrong options can only reduce credit toward zero,
+        never below it. descriptive/coding always return 0 here — their
+        marks come from Answer.manual_score once a grader enters one."""
+        if not submitted or self.needs_manual_grading:
             return 0.0
 
         if self.question_type != "multi" or not partial_credit_multi:
@@ -297,13 +335,49 @@ class Answer(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     attempt_id = db.Column(db.Integer, db.ForeignKey("attempts.id"), nullable=False)
     question_id = db.Column(db.Integer, db.ForeignKey("questions.id"), nullable=False)
-    # single -> "b" ; multi -> "a,c" (sorted, comma-joined) ; short -> free text.
-    # NULL/empty if unanswered.
+    # single/true_false -> "b"/"true" ; multi -> "a,c" (sorted, comma-joined) ;
+    # short/fill_blank/descriptive/coding -> free text. NULL/empty if unanswered.
     selected_option = db.Column(db.String(500), nullable=True)
 
+    # Manual grading, for descriptive/coding answers only (see
+    # Question.needs_manual_grading). NULL manual_score means "not graded
+    # yet" — it contributes 0 to Attempt.score until a grader enters one via
+    # the grading route, which is safe to call repeatedly/idempotently.
+    manual_score = db.Column(db.Float, nullable=True)
+    graded_at = db.Column(db.DateTime, nullable=True)
+    graded_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+
     question = db.relationship("Question")
+    grader = db.relationship("User")
 
     __table_args__ = (db.UniqueConstraint("attempt_id", "question_id", name="uq_attempt_question"),)
+
+
+def recompute_attempt_score(attempt):
+    """Single source of truth for an attempt's score. Auto-graded questions
+    score themselves via Question.score_for (with negative marking applied
+    on a wrong answer); descriptive/coding questions instead contribute
+    their Answer.manual_score once a grader has entered one (0 until then).
+    Safe to call repeatedly/idempotently — e.g. once at submission and again
+    each time an admin grades or re-grades a manual answer, since it always
+    recomputes the full total from scratch rather than adding on top."""
+    test = attempt.test
+    answers = Answer.query.filter_by(attempt_id=attempt.id).all()
+    score = 0.0
+    for answer in answers:
+        question = answer.question
+        if not answer.selected_option:
+            continue
+        if question.needs_manual_grading:
+            if answer.manual_score is not None:
+                score += answer.manual_score
+            continue
+        earned = question.score_for(answer.selected_option, partial_credit_multi=test.partial_credit_multi)
+        if earned > 0:
+            score += earned
+        elif test.negative_marks_per_wrong:
+            score -= test.negative_marks_per_wrong
+    return round(score, 2)
 
 
 class ProctoringEvent(db.Model):

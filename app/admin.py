@@ -1,20 +1,23 @@
 import csv
 import io
+import os
 import random
 import string
 import time
+import uuid
 from datetime import datetime
 
-from flask import Blueprint, render_template, redirect, url_for, flash, request, abort, Response
+from flask import Blueprint, render_template, redirect, url_for, flash, request, abort, Response, current_app
 from flask_login import current_user
+from werkzeug.utils import secure_filename
 
 from app import db
 from app.forms import (
     TestForm, QuestionForm, QuestionImportForm, UserImportForm, QuestionBankForm, SectionForm,
 )
 from app.models import (
-    Test, Question, User, TestEligibility, Attempt, ProctoringEvent, AdminActivityLog,
-    QuestionBankItem, Section, gen_user_id,
+    Test, Question, User, TestEligibility, Attempt, Answer, ProctoringEvent, AdminActivityLog,
+    QuestionBankItem, Section, gen_user_id, recompute_attempt_score,
 )
 from app.utils import admin_required, roles_required
 from app.activity_log import log_activity
@@ -29,6 +32,40 @@ PER_PAGE = 15
 # opens up to the proctor role, whose whole job is that review queue.
 content_access = roles_required("admin", "examiner")
 review_access = roles_required("admin", "examiner", "proctor")
+
+_IMAGE_EXTS = {"png", "jpg", "jpeg", "gif", "webp"}
+_VIDEO_EXTS = {"mp4", "webm", "ogg"}
+
+
+def _save_question_media(form, existing=None):
+    """Resolve the media_type/media_url for a question from the submitted
+    QuestionForm: an uploaded file wins if present, then an external URL,
+    then (on edit) whatever media the existing Question/QuestionBankItem
+    already had — so editing a question without touching the media fields
+    doesn't silently wipe its attached image/video. Returns
+    (media_type, media_url), both possibly None. Uploaded files are saved
+    under app/static/uploads/questions/ with a random filename (avoids
+    collisions and doesn't trust the original name for anything but its
+    extension)."""
+    file_storage = form.media_file.data
+    if file_storage and file_storage.filename:
+        ext = file_storage.filename.rsplit(".", 1)[-1].lower()
+        media_type = "image" if ext in _IMAGE_EXTS else "video" if ext in _VIDEO_EXTS else None
+        if not media_type:
+            return None, None
+        upload_dir = os.path.join(current_app.root_path, "static", "uploads", "questions")
+        os.makedirs(upload_dir, exist_ok=True)
+        filename = f"{uuid.uuid4().hex}.{ext}"
+        file_storage.save(os.path.join(upload_dir, secure_filename(filename)))
+        return media_type, f"/static/uploads/questions/{filename}"
+
+    url = (form.media_url.data or "").strip()
+    media_type = form.media_type.data or None
+    if url and media_type:
+        return media_type, url
+    if existing is not None:
+        return existing.media_type, existing.media_url
+    return None, None
 
 
 def _generate_temp_password():
@@ -185,12 +222,13 @@ def duplicate_test(test_id):
     return redirect(url_for("admin.manage_tests"))
 
 
-def _parse_question_fields(form):
+def _parse_question_fields(form, existing=None):
     """Validate and extract the fields common to both a test Question and a
     QuestionBankItem from a submitted QuestionForm/QuestionBankForm,
     handling the per-type rules WTForms field validators alone can't
-    express: single/multi need options + a correct pick, short needs
-    neither options nor a letter — just the expected text. Returns
+    express. `existing` (an already-persisted Question/QuestionBankItem) is
+    passed when editing, so media fields fall back to what's already there
+    if the edit didn't touch them. Returns
     (fields_dict_or_none, error_message_or_none)."""
     qtype = form.question_type.data
     text = form.question_text.data
@@ -198,6 +236,12 @@ def _parse_question_fields(form):
     time_limit = form.time_limit_seconds.data or None
     category = (form.category.data or "").strip() or None
     difficulty = form.difficulty.data or "medium"
+    media_type, media_url = _save_question_media(form, existing=existing)
+    common = {
+        "question_text": text, "marks": marks, "time_limit_seconds": time_limit,
+        "category": category, "difficulty": difficulty,
+        "media_type": media_type, "media_url": media_url,
+    }
 
     if qtype in ("single", "multi"):
         options = [form.option_a.data, form.option_b.data, form.option_c.data, form.option_d.data]
@@ -218,11 +262,48 @@ def _parse_question_fields(form):
             correct_answer = ",".join(picked)
 
         return {
-            "question_text": text, "question_type": qtype,
+            **common, "question_type": qtype,
             "option_a": form.option_a.data, "option_b": form.option_b.data,
             "option_c": form.option_c.data, "option_d": form.option_d.data,
-            "correct_answer": correct_answer, "marks": marks, "time_limit_seconds": time_limit,
-            "category": category, "difficulty": difficulty,
+            "correct_answer": correct_answer,
+        }, None
+
+    if qtype == "true_false":
+        picked = request.form.get("tf_correct", "").strip().lower()
+        if picked not in {"true", "false"}:
+            return None, "Select True or False."
+        return {
+            **common, "question_type": "true_false",
+            "option_a": None, "option_b": None, "option_c": None, "option_d": None,
+            "correct_answer": picked,
+        }, None
+
+    if qtype == "fill_blank":
+        if "___" not in text:
+            return None, "Fill-in-the-blank questions need a blank in the question text — use three or more underscores, e.g. 'The capital of France is ____.'"
+        answer_text = (form.blank_answer.data or "").strip()
+        if not answer_text:
+            return None, "Enter at least one accepted answer for the blank (separate alternatives with ';')."
+        return {
+            **common, "question_type": "fill_blank",
+            "option_a": None, "option_b": None, "option_c": None, "option_d": None,
+            "correct_answer": answer_text,
+        }, None
+
+    if qtype == "descriptive":
+        return {
+            **common, "question_type": "descriptive",
+            "option_a": None, "option_b": None, "option_c": None, "option_d": None,
+            "correct_answer": (form.model_answer.data or "").strip(),
+        }, None
+
+    if qtype == "coding":
+        return {
+            **common, "question_type": "coding",
+            "option_a": None, "option_b": None, "option_c": None, "option_d": None,
+            "correct_answer": (form.model_answer.data or "").strip(),
+            "starter_code": form.starter_code.data or None,
+            "code_language": (form.code_language.data or "").strip() or None,
         }, None
 
     # short answer
@@ -230,10 +311,9 @@ def _parse_question_fields(form):
     if not answer_text:
         return None, "Enter the expected correct answer for a short-answer question."
     return {
-        "question_text": text, "question_type": "short",
+        **common, "question_type": "short",
         "option_a": None, "option_b": None, "option_c": None, "option_d": None,
-        "correct_answer": answer_text, "marks": marks, "time_limit_seconds": time_limit,
-        "category": category, "difficulty": difficulty,
+        "correct_answer": answer_text,
     }, None
 
 
@@ -290,9 +370,12 @@ def import_questions(test_id):
     if not reader.fieldnames or not required_cols.issubset({c.strip().lower() for c in reader.fieldnames}):
         flash(
             "CSV must have columns: question_text, correct_answer, marks (optional), question_type "
-            "(optional: single/multi/short, defaults to single), option_a..option_d "
+            "(optional: single/multi/short/true_false/fill_blank, defaults to single), option_a..option_d "
             "(required for single/multi), category (optional), difficulty (optional: easy/medium/hard). "
-            "For multi, correct_answer is letters joined with '+' or ';', e.g. 'a+c'.",
+            "For multi, correct_answer is letters joined with '+' or ';', e.g. 'a+c'. For true_false, "
+            "correct_answer is 'true' or 'false'. For fill_blank, correct_answer is one or more accepted "
+            "answers separated by ';'. descriptive/coding questions (manually graded) aren't supported via "
+            "CSV import — add those individually.",
             "error",
         )
         return redirect(url_for("admin.add_question", test_id=test.id))
@@ -301,7 +384,7 @@ def import_questions(test_id):
     for i, row in enumerate(reader, start=2):
         row = {k.strip().lower(): (v.strip() if v else v) for k, v in row.items()}
         qtype = (row.get("question_type") or "single").strip().lower()
-        if qtype not in {"single", "multi", "short"}:
+        if qtype not in {"single", "multi", "short", "true_false", "fill_blank"}:
             skipped += 1
             continue
         if not row.get("question_text") or not row.get("correct_answer"):
@@ -323,6 +406,27 @@ def import_questions(test_id):
         if qtype == "short":
             q = Question(
                 test_id=test.id, question_text=row["question_text"], question_type="short",
+                option_a=None, option_b=None, option_c=None, option_d=None,
+                correct_answer=row["correct_answer"].strip(), marks=marks, time_limit_seconds=time_limit,
+                category=category, difficulty=difficulty,
+            )
+        elif qtype == "true_false":
+            tf = row["correct_answer"].strip().lower()
+            if tf not in {"true", "false"}:
+                skipped += 1
+                continue
+            q = Question(
+                test_id=test.id, question_text=row["question_text"], question_type="true_false",
+                option_a=None, option_b=None, option_c=None, option_d=None,
+                correct_answer=tf, marks=marks, time_limit_seconds=time_limit,
+                category=category, difficulty=difficulty,
+            )
+        elif qtype == "fill_blank":
+            if "___" not in row["question_text"]:
+                skipped += 1
+                continue
+            q = Question(
+                test_id=test.id, question_text=row["question_text"], question_type="fill_blank",
                 option_a=None, option_b=None, option_c=None, option_d=None,
                 correct_answer=row["correct_answer"].strip(), marks=marks, time_limit_seconds=time_limit,
                 category=category, difficulty=difficulty,
@@ -376,6 +480,8 @@ def save_question_to_bank(test_id, question_id):
         question_text=q.question_text, question_type=q.question_type,
         option_a=q.option_a, option_b=q.option_b, option_c=q.option_c, option_d=q.option_d,
         correct_answer=q.correct_answer, marks=q.marks, time_limit_seconds=q.time_limit_seconds,
+        media_type=q.media_type, media_url=q.media_url,
+        starter_code=q.starter_code, code_language=q.code_language,
     )
     db.session.add(item)
     db.session.commit()
@@ -398,6 +504,8 @@ def pick_from_bank(test_id):
                 question_text=item.question_text, question_type=item.question_type,
                 option_a=item.option_a, option_b=item.option_b, option_c=item.option_c, option_d=item.option_d,
                 correct_answer=item.correct_answer, marks=item.marks, time_limit_seconds=item.time_limit_seconds,
+                media_type=item.media_type, media_url=item.media_url,
+                starter_code=item.starter_code, code_language=item.code_language,
             ))
             added += 1
         db.session.commit()
@@ -602,6 +710,45 @@ def view_attempt(attempt_id):
     return render_template("admin/view_attempt.html", attempt=attempt, events=events)
 
 
+@bp.route("/attempts/<int:attempt_id>/grade", methods=["POST"])
+@content_access
+def grade_attempt(attempt_id):
+    """Manually score descriptive/coding answers on one attempt (see
+    Question.needs_manual_grading) — everything else is already scored at
+    submission time. Recomputes the attempt's total from scratch afterward,
+    so this is safe to call again later to fix a grade."""
+    attempt = Attempt.query.get_or_404(attempt_id)
+    answers = Answer.query.filter_by(attempt_id=attempt.id).join(Question).filter(
+        Question.question_type.in_(("descriptive", "coding"))
+    ).all()
+
+    graded_count = 0
+    for answer in answers:
+        field = f"score_{answer.id}"
+        if field not in request.form:
+            continue
+        raw = request.form.get(field, "").strip()
+        if raw == "":
+            continue
+        try:
+            value = float(raw)
+        except ValueError:
+            flash(f"Invalid score for one of the answers — must be a number.", "error")
+            continue
+        value = max(0.0, min(value, float(answer.question.marks)))
+        answer.manual_score = value
+        answer.graded_at = datetime.utcnow()
+        answer.graded_by_id = current_user.id
+        graded_count += 1
+
+    db.session.flush()
+    attempt.score = recompute_attempt_score(attempt)
+    db.session.commit()
+    log_activity("graded_attempt", f"Graded {graded_count} manual answer(s) on attempt #{attempt.id}")
+    flash("Grades saved.", "success")
+    return redirect(url_for("admin.view_attempt", attempt_id=attempt.id))
+
+
 @bp.route("/review-queue")
 @review_access
 def proctor_queue():
@@ -683,8 +830,13 @@ def edit_bank_item(item_id):
     if request.method == "GET":
         if item.question_type == "short":
             form.short_answer_text.data = item.correct_answer
+        elif item.question_type == "fill_blank":
+            form.blank_answer.data = item.correct_answer
+        elif item.question_type in ("descriptive", "coding"):
+            form.model_answer.data = item.correct_answer
+        form.media_type.data = item.media_type or ""
     if form.validate_on_submit():
-        fields, error = _parse_question_fields(form)
+        fields, error = _parse_question_fields(form, existing=item)
         if error:
             flash(error, "error")
         else:

@@ -6,7 +6,7 @@ from flask import Blueprint, render_template, redirect, url_for, flash, request,
 from flask_login import current_user
 
 from app import db
-from app.models import Test, TestEligibility, Attempt, Answer, Question, Section
+from app.models import Test, TestEligibility, Attempt, Answer, Question, Section, recompute_attempt_score
 from app.utils import student_required
 from app.randomize import build_attempt_order, ordered_questions, get_option_order
 
@@ -152,12 +152,17 @@ def autosave_answers(attempt_id):
 
 def _extract_submitted_answer(question, form):
     """Read a submitted answer for one question from the POSTed form, in the
-    representation Question.is_correct() expects to compare against."""
+    representation Question.is_correct() expects to compare against.
+    true_false submits like single (form.get, lowercased) — the value is
+    "true"/"false" rather than a letter, but the handling is identical.
+    short/fill_blank/descriptive/coding are free text — kept at original
+    case/whitespace (trimmed) since case matters for code and for some
+    fill-in-the-blank answers, and lowercasing an essay would be odd."""
     field = f"q_{question.id}"
     if question.question_type == "multi":
         picks = sorted({v.strip().lower() for v in form.getlist(field) if v.strip()})
         return ",".join(picks) if picks else None
-    if question.question_type == "short":
+    if question.question_type in ("short", "fill_blank", "descriptive", "coding"):
         text = (form.get(field) or "").strip()
         return text or None
     selected = form.get(field)
@@ -173,22 +178,13 @@ def submit_answers(attempt_id):
     if attempt.status != "in_progress":
         return jsonify({"ok": True, "already_submitted": True, "redirect": url_for("student.dashboard")})
 
-    test = attempt.test
     questions = {q.id: q for q in Question.query.filter_by(test_id=attempt.test_id).all()}
-    score = 0.0
     for q_id, question in questions.items():
         selected = _extract_submitted_answer(question, request.form)
-        answer = Answer(attempt_id=attempt.id, question_id=q_id, selected_option=selected)
-        db.session.add(answer)
-        if not selected:
-            continue
-        earned = question.score_for(selected, partial_credit_multi=test.partial_credit_multi)
-        if earned > 0:
-            score += earned
-        elif test.negative_marks_per_wrong:
-            score -= test.negative_marks_per_wrong
+        db.session.add(Answer(attempt_id=attempt.id, question_id=q_id, selected_option=selected))
+    db.session.flush()
 
-    attempt.score = round(score, 2)
+    attempt.score = recompute_attempt_score(attempt)
     attempt.submitted_at = datetime.utcnow()
     attempt.status = "submitted"
     attempt.autosaved_answers = None
@@ -206,7 +202,14 @@ def result(attempt_id):
     test = attempt.test
     total_marks = test.total_marks()
     passed = (attempt.score or 0) >= test.passing_marks if attempt.status != "terminated" else False
-    return render_template("student/result.html", attempt=attempt, test=test, total_marks=total_marks, passed=passed)
+    pending_grading = any(
+        a.question.needs_manual_grading and a.selected_option and a.manual_score is None
+        for a in attempt.answers
+    )
+    return render_template(
+        "student/result.html", attempt=attempt, test=test, total_marks=total_marks,
+        passed=passed, pending_grading=pending_grading,
+    )
 
 
 @bp.route("/attempts/<int:attempt_id>/review")

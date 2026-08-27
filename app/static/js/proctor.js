@@ -246,7 +246,7 @@
     // FormData on submit, which would silently drop an answer the student had
     // already picked before time ran out. readOnly + blocking further clicks
     // keeps the existing value intact while preventing further changes.
-    card.querySelectorAll('input[type="text"]').forEach((el) => { el.readOnly = true; });
+    card.querySelectorAll('input[type="text"], textarea').forEach((el) => { el.readOnly = true; });
     card.querySelectorAll('input[type="radio"], input[type="checkbox"]').forEach((el) => {
       el.addEventListener('click', (e) => { e.preventDefault(); }, true);
     });

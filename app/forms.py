@@ -101,7 +101,11 @@ class QuestionForm(FlaskForm):
         "Question type",
         choices=[("single", "Single choice (one correct answer)"),
                   ("multi", "Multiple choice (2+ correct answers)"),
-                  ("short", "Short answer (free text)")],
+                  ("true_false", "True / False"),
+                  ("short", "Short answer (free text)"),
+                  ("fill_blank", "Fill in the blank"),
+                  ("descriptive", "Descriptive (essay — manually graded)"),
+                  ("coding", "Coding (manually graded)")],
         default="single",
     )
     question_text = TextAreaField("Question text", validators=[DataRequired()])
@@ -110,6 +114,15 @@ class QuestionForm(FlaskForm):
     option_c = StringField("Option C", validators=[Optional(), Length(max=500)])
     option_d = StringField("Option D", validators=[Optional(), Length(max=500)])
     short_answer_text = StringField("Correct answer (short text)", validators=[Optional(), Length(max=500)])
+    blank_answer = StringField(
+        "Accepted answer(s) for the blank", validators=[Optional(), Length(max=500)]
+    )
+    model_answer = TextAreaField(
+        "Model answer / grading notes (optional — for the grader only, never auto-compared)",
+        validators=[Optional()],
+    )
+    starter_code = TextAreaField("Starter code (optional)", validators=[Optional()])
+    code_language = StringField("Language (optional, e.g. python)", validators=[Optional(), Length(max=30)])
     marks = IntegerField("Marks", validators=[DataRequired(), NumberRange(min=1)])
     time_limit_seconds = IntegerField(
         "Time limit for this question, in seconds (optional)", validators=[Optional(), NumberRange(min=5)]
@@ -117,6 +130,18 @@ class QuestionForm(FlaskForm):
     category = StringField("Category / topic (optional)", validators=[Optional(), Length(max=100)])
     difficulty = SelectField(
         "Difficulty", choices=[("easy", "Easy"), ("medium", "Medium"), ("hard", "Hard")], default="medium",
+    )
+    media_type = SelectField(
+        "Attach media (optional)",
+        choices=[("", "None"), ("image", "Image"), ("video", "Video")], default="",
+        validators=[Optional()],
+    )
+    media_url = StringField("Media URL (optional — used if no file is uploaded)", validators=[Optional(), Length(max=500)])
+    media_file = FileField(
+        "Upload image/video (optional)",
+        validators=[Optional(), FileAllowed(
+            ["png", "jpg", "jpeg", "gif", "webp", "mp4", "webm", "ogg"], "Unsupported file type"
+        )],
     )
 
 
