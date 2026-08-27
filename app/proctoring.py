@@ -5,12 +5,13 @@ from datetime import datetime
 
 import cv2
 import numpy as np
-from flask import Blueprint, request, jsonify, current_app, send_file, abort
+from flask import Blueprint, request, jsonify, current_app, send_file, abort, url_for
 from flask_login import current_user
 
 from app import db
 from app.models import Attempt, ProctoringEvent, Recording, Snapshot
 from app.utils import student_required, admin_required
+from app.email_utils import send_email
 
 bp = Blueprint("proctoring", __name__, url_prefix="/api/proctor")
 
@@ -34,6 +35,37 @@ def _get_owned_attempt(attempt_id):
     return attempt
 
 
+def _notify_termination(attempt):
+    """Email both the student and the test's owning admin the moment an
+    attempt is auto-terminated for proctoring violations — previously the
+    only automated notification in the app was the assignment email, so a
+    terminated student had no way to find out short of trying to log back
+    in, and the admin had no prompt to go review it."""
+    test = attempt.test
+    student = attempt.student
+    admin = test.creator
+
+    send_email(
+        student.email,
+        f"Your attempt on '{test.title}' was terminated",
+        f"Hi {student.name},\n\nYour attempt on '{test.title}' was automatically ended during "
+        f"the exam after {attempt.violation_count} proctoring violation(s) were flagged.\n\n"
+        f"Reason: {attempt.termination_reason}\n\n"
+        f"If you believe this was a mistake, contact your test administrator.",
+    )
+
+    if admin and admin.email:
+        send_email(
+            admin.email,
+            f"Attempt terminated — {student.name} on '{test.title}'",
+            f"{student.name} ({student.email})'s attempt on '{test.title}' was automatically "
+            f"terminated for proctoring violations.\n\n"
+            f"Violations flagged: {attempt.violation_count}\nReason: {attempt.termination_reason}\n\n"
+            f"Review the events, snapshots, and recording here:\n"
+            f"{url_for('admin.view_attempt', attempt_id=attempt.id, _external=True)}",
+        )
+
+
 def _record_violation(attempt, event_type, severity, details=""):
     event = ProctoringEvent(attempt_id=attempt.id, event_type=event_type, severity=severity, details=details)
     db.session.add(event)
@@ -49,6 +81,8 @@ def _record_violation(attempt, event_type, severity, details=""):
             terminated = True
 
     db.session.commit()
+    if terminated:
+        _notify_termination(attempt)
     return terminated
 
 

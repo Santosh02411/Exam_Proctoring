@@ -9,8 +9,11 @@ from flask import Blueprint, render_template, redirect, url_for, flash, request,
 from flask_login import current_user
 
 from app import db
-from app.forms import TestForm, QuestionForm, QuestionImportForm, UserImportForm
-from app.models import Test, Question, User, TestEligibility, Attempt, ProctoringEvent, AdminActivityLog, gen_user_id
+from app.forms import TestForm, QuestionForm, QuestionImportForm, UserImportForm, QuestionBankForm
+from app.models import (
+    Test, Question, User, TestEligibility, Attempt, ProctoringEvent, AdminActivityLog,
+    QuestionBankItem, gen_user_id,
+)
 from app.utils import admin_required
 from app.activity_log import log_activity
 from app.email_utils import send_email
@@ -169,13 +172,13 @@ def duplicate_test(test_id):
     return redirect(url_for("admin.manage_tests"))
 
 
-def _build_question_from_form(test, form):
-    """Validate and construct a Question from QuestionForm data, handling the
-    per-type rules that WTForms field validators alone can't express:
-    single/multi need options + at least one correct pick, short answer needs
+def _parse_question_fields(form):
+    """Validate and extract the fields common to both a test Question and a
+    QuestionBankItem from a submitted QuestionForm/QuestionBankForm,
+    handling the per-type rules WTForms field validators alone can't
+    express: single/multi need options + a correct pick, short needs
     neither options nor a letter — just the expected text. Returns
-    (question_or_none, error_message_or_none).
-    """
+    (fields_dict_or_none, error_message_or_none)."""
     qtype = form.question_type.data
     text = form.question_text.data
     marks = form.marks.data
@@ -199,22 +202,29 @@ def _build_question_from_form(test, form):
                 return None, "At least one option must be marked incorrect."
             correct_answer = ",".join(picked)
 
-        return Question(
-            test_id=test.id, question_text=text, question_type=qtype,
-            option_a=form.option_a.data, option_b=form.option_b.data,
-            option_c=form.option_c.data, option_d=form.option_d.data,
-            correct_answer=correct_answer, marks=marks, time_limit_seconds=time_limit,
-        ), None
+        return {
+            "question_text": text, "question_type": qtype,
+            "option_a": form.option_a.data, "option_b": form.option_b.data,
+            "option_c": form.option_c.data, "option_d": form.option_d.data,
+            "correct_answer": correct_answer, "marks": marks, "time_limit_seconds": time_limit,
+        }, None
 
     # short answer
     answer_text = (form.short_answer_text.data or "").strip()
     if not answer_text:
         return None, "Enter the expected correct answer for a short-answer question."
-    return Question(
-        test_id=test.id, question_text=text, question_type="short",
-        option_a=None, option_b=None, option_c=None, option_d=None,
-        correct_answer=answer_text, marks=marks, time_limit_seconds=time_limit,
-    ), None
+    return {
+        "question_text": text, "question_type": "short",
+        "option_a": None, "option_b": None, "option_c": None, "option_d": None,
+        "correct_answer": answer_text, "marks": marks, "time_limit_seconds": time_limit,
+    }, None
+
+
+def _build_question_from_form(test, form):
+    fields, error = _parse_question_fields(form)
+    if error:
+        return None, error
+    return Question(test_id=test.id, **fields), None
 
 
 @bp.route("/tests/<int:test_id>/questions/add", methods=["GET", "POST"])
@@ -325,6 +335,68 @@ def delete_question(test_id, question_id):
     log_activity("deleted_question", f"Removed a question from test #{test_id}")
     flash("Question removed.", "success")
     return redirect(url_for("admin.add_question", test_id=test_id))
+
+
+@bp.route("/tests/<int:test_id>/questions/<int:question_id>/save-to-bank", methods=["POST"])
+@admin_required
+def save_question_to_bank(test_id, question_id):
+    q = Question.query.filter_by(id=question_id, test_id=test_id).first_or_404()
+    category = (request.form.get("category") or "").strip() or None
+    item = QuestionBankItem(
+        created_by=current_user.id, category=category,
+        question_text=q.question_text, question_type=q.question_type,
+        option_a=q.option_a, option_b=q.option_b, option_c=q.option_c, option_d=q.option_d,
+        correct_answer=q.correct_answer, marks=q.marks, time_limit_seconds=q.time_limit_seconds,
+    )
+    db.session.add(item)
+    db.session.commit()
+    log_activity("saved_question_to_bank", f"Saved a question from '{q.test.title}' to the question bank")
+    flash("Saved to the question bank.", "success")
+    return redirect(url_for("admin.add_question", test_id=test_id))
+
+
+@bp.route("/tests/<int:test_id>/questions/from-bank", methods=["GET", "POST"])
+@admin_required
+def pick_from_bank(test_id):
+    test = Test.query.get_or_404(test_id)
+
+    if request.method == "POST":
+        item_ids = [int(i) for i in request.form.getlist("item_ids")]
+        added = 0
+        for item in QuestionBankItem.query.filter(QuestionBankItem.id.in_(item_ids)).all():
+            db.session.add(Question(
+                test_id=test.id, bank_item_id=item.id,
+                question_text=item.question_text, question_type=item.question_type,
+                option_a=item.option_a, option_b=item.option_b, option_c=item.option_c, option_d=item.option_d,
+                correct_answer=item.correct_answer, marks=item.marks, time_limit_seconds=item.time_limit_seconds,
+            ))
+            added += 1
+        db.session.commit()
+        log_activity("added_questions_from_bank", f"Added {added} question(s) from the bank to '{test.title}'")
+        flash(f"Added {added} question(s) from the bank.", "success")
+        return redirect(url_for("admin.add_question", test_id=test.id))
+
+    search = request.args.get("q", "").strip()
+    category = request.args.get("category", "").strip()
+    page = request.args.get("page", 1, type=int)
+
+    query = QuestionBankItem.query
+    if search:
+        query = query.filter(QuestionBankItem.question_text.ilike(f"%{search}%"))
+    if category:
+        query = query.filter_by(category=category)
+    query = query.order_by(QuestionBankItem.created_at.desc())
+
+    pagination = query.paginate(page=page, per_page=PER_PAGE, error_out=False)
+    categories = [c[0] for c in db.session.query(QuestionBankItem.category).filter(
+        QuestionBankItem.category.isnot(None)
+    ).distinct().order_by(QuestionBankItem.category).all()]
+    already_added = {q.bank_item_id for q in test.questions if q.bank_item_id}
+
+    return render_template(
+        "admin/pick_from_bank.html", test=test, pagination=pagination, items=pagination.items,
+        search=search, category=category, categories=categories, already_added=already_added,
+    )
 
 
 @bp.route("/tests/<int:test_id>/view")
@@ -442,6 +514,92 @@ def activity_log():
         page=page, per_page=30, error_out=False
     )
     return render_template("admin/activity_log.html", pagination=pagination, entries=pagination.items)
+
+
+@bp.route("/bank")
+@admin_required
+def manage_bank():
+    page = request.args.get("page", 1, type=int)
+    search = request.args.get("q", "").strip()
+    category = request.args.get("category", "").strip()
+
+    query = QuestionBankItem.query
+    if search:
+        query = query.filter(QuestionBankItem.question_text.ilike(f"%{search}%"))
+    if category:
+        query = query.filter_by(category=category)
+    query = query.order_by(QuestionBankItem.created_at.desc())
+
+    pagination = query.paginate(page=page, per_page=PER_PAGE, error_out=False)
+    categories = [c[0] for c in db.session.query(QuestionBankItem.category).filter(
+        QuestionBankItem.category.isnot(None)
+    ).distinct().order_by(QuestionBankItem.category).all()]
+    usage_counts = {
+        item.id: Question.query.filter_by(bank_item_id=item.id).count() for item in pagination.items
+    }
+
+    return render_template(
+        "admin/manage_bank.html", pagination=pagination, items=pagination.items,
+        search=search, category=category, categories=categories, usage_counts=usage_counts,
+        total_items=QuestionBankItem.query.count(),
+    )
+
+
+@bp.route("/bank/add", methods=["GET", "POST"])
+@admin_required
+def add_bank_item():
+    form = QuestionBankForm()
+    if form.validate_on_submit():
+        fields, error = _parse_question_fields(form)
+        if error:
+            flash(error, "error")
+        else:
+            item = QuestionBankItem(
+                created_by=current_user.id, category=(form.category.data or "").strip() or None, **fields
+            )
+            db.session.add(item)
+            db.session.commit()
+            log_activity("added_bank_item", f"Added a {item.question_type} question to the question bank")
+            flash("Added to the question bank.", "success")
+            return redirect(url_for("admin.manage_bank"))
+    return render_template("admin/bank_item_form.html", form=form, item=None)
+
+
+@bp.route("/bank/<int:item_id>/edit", methods=["GET", "POST"])
+@admin_required
+def edit_bank_item(item_id):
+    item = QuestionBankItem.query.get_or_404(item_id)
+    form = QuestionBankForm(obj=item)
+    if request.method == "GET":
+        if item.question_type == "short":
+            form.short_answer_text.data = item.correct_answer
+    if form.validate_on_submit():
+        fields, error = _parse_question_fields(form)
+        if error:
+            flash(error, "error")
+        else:
+            for key, value in fields.items():
+                setattr(item, key, value)
+            item.category = (form.category.data or "").strip() or None
+            db.session.commit()
+            log_activity("edited_bank_item", f"Edited a question bank item (#{item.id})")
+            flash("Question bank item updated.", "success")
+            return redirect(url_for("admin.manage_bank"))
+    return render_template("admin/bank_item_form.html", form=form, item=item)
+
+
+@bp.route("/bank/<int:item_id>/delete", methods=["POST"])
+@admin_required
+def delete_bank_item(item_id):
+    item = QuestionBankItem.query.get_or_404(item_id)
+    # Copies already made from this item stay in their tests — only the
+    # provenance link is cleared, not the questions themselves.
+    Question.query.filter_by(bank_item_id=item.id).update({"bank_item_id": None})
+    db.session.delete(item)
+    db.session.commit()
+    log_activity("deleted_bank_item", f"Deleted a question bank item (#{item_id})")
+    flash("Removed from the question bank.", "success")
+    return redirect(url_for("admin.manage_bank"))
 
 
 @bp.route("/users")

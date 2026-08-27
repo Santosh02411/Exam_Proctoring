@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if item else 'Add' }} Bank Question{% endblock %}
+{% block content %}
+<div style="margin-bottom:16px">
+  <a class="small" href="{{ url_for('admin.manage_bank') }}">&larr; Question Bank</a>
+  <h1 style="margin-top:8px">{{ 'Edit' if item else 'Add' }} Question</h1>
+  <div class="lead">{{ 'Editing an existing bank question — changes don\'t affect copies already added to tests.' if item else 'Add a reusable question to the bank.' }}</div>
+</div>
+
+<div class="card" style="max-width:640px">
+  <form method="post" novalidate id="qForm" onsubmit="return validateAndSubmit();">
+    {{ form.hidden_tag() }}
+    <div class="field">
+      <label for="{{ form.category.id }}">Category / topic (optional)</label>
+      {{ form.category(placeholder="e.g. Python Basics") }}
+      {% for e in form.category.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+    </div>
+    <div class="field">
+      <label for="{{ form.question_type.id }}">Question type</label>
+      {{ form.question_type(id="questionTypeSelect") }}
+    </div>
+    <div class="field">
+      <label for="{{ form.question_text.id }}">Question text</label>
+      {{ form.question_text(placeholder="Write the question here...") }}
+    </div>
+
+    <div id="optionsSection">
+      <div class="row">
+        <div class="col field">
+          <label for="{{ form.option_a.id }}">Option A</label>
+          {{ form.option_a() }}
+        </div>
+        <div class="col field">
+          <label for="{{ form.option_b.id }}">Option B</label>
+          {{ form.option_b() }}
+        </div>
+      </div>
+      <div class="row">
+        <div class="col field">
+          <label for="{{ form.option_c.id }}">Option C</label>
+          {{ form.option_c() }}
+        </div>
+        <div class="col field">
+          <label for="{{ form.option_d.id }}">Option D</label>
+          {{ form.option_d() }}
+        </div>
+      </div>
+
+      <div class="field" id="singleCorrectField">
+        <label>Correct answer (choose one)</label>
+        <div class="row">
+          {% for letter in ['a', 'b', 'c', 'd'] %}
+          <label class="opt" style="flex:1">
+            <input type="radio" name="correct_radio" value="{{ letter }}"
+                   {{ 'checked' if item and item.question_type == 'single' and item.correct_answer == letter }}>
+            {{ letter|upper }}
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="field" id="multiCorrectField" style="display:none">
+        <label>Correct answer(s) — choose 1 to 3</label>
+        <div class="row">
+          {% for letter in ['a', 'b', 'c', 'd'] %}
+          <label class="opt" style="flex:1">
+            <input type="checkbox" name="correct_options" value="{{ letter }}"
+                   {{ 'checked' if item and item.question_type == 'multi' and letter in item.correct_set() }}>
+            {{ letter|upper }}
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <div class="field" id="shortAnswerField" style="display:none">
+      <label for="{{ form.short_answer_text.id }}">Expected correct answer</label>
+      {{ form.short_answer_text(placeholder="e.g. Paris") }}
+      <div class="hint">Graded automatically, case-insensitive, trimmed whitespace.</div>
+    </div>
+
+    <div class="row">
+      <div class="col field">
+        <label for="{{ form.marks.id }}">Marks</label>
+        {{ form.marks() }}
+      </div>
+      <div class="col field">
+        <label for="{{ form.time_limit_seconds.id }}">Time limit, seconds (optional)</label>
+        {{ form.time_limit_seconds(placeholder="e.g. 60") }}
+      </div>
+    </div>
+
+    <div class="actions">
+      <button type="submit" class="btn">{{ 'Save Changes' if item else 'Add to Bank' }}</button>
+      <a class="btn ghost" href="{{ url_for('admin.manage_bank') }}">Cancel</a>
+    </div>
+  </form>
+</div>
+
+<script>
+const typeSelect = document.getElementById('questionTypeSelect');
+const optionsSection = document.getElementById('optionsSection');
+const singleField = document.getElementById('singleCorrectField');
+const multiField = document.getElementById('multiCorrectField');
+const shortField = document.getElementById('shortAnswerField');
+
+function syncTypeUI(){
+  const t = typeSelect.value;
+  optionsSection.style.display = (t === 'short') ? 'none' : 'block';
+  singleField.style.display = (t === 'single') ? 'block' : 'none';
+  multiField.style.display = (t === 'multi') ? 'block' : 'none';
+  shortField.style.display = (t === 'short') ? 'block' : 'none';
+}
+typeSelect.addEventListener('change', syncTypeUI);
+syncTypeUI();
+
+function validateAndSubmit(){
+  const q = document.getElementById('{{ form.question_text.id }}');
+  if (!q.value.trim()){ alert('Please enter the question text.'); q.focus(); return false; }
+
+  const t = typeSelect.value;
+  if (t === 'single') {
+    if (!document.querySelector('input[name="correct_radio"]:checked')) {
+      alert('Select the correct option.');
+      return false;
+    }
+  } else if (t === 'multi') {
+    const checked = document.querySelectorAll('input[name="correct_options"]:checked');
+    if (checked.length === 0) {
+      alert('Select at least one correct option.');
+      return false;
+    }
+  } else if (t === 'short') {
+    const ans = document.getElementById('{{ form.short_answer_text.id }}');
+    if (!ans.value.trim()) {
+      alert('Enter the expected correct answer.');
+      ans.focus();
+      return false;
+    }
+  }
+  return true;
+}
+</script>
+{% endblock %}

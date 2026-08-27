@@ -102,6 +102,10 @@ class QuestionForm(FlaskForm):
     )
 
 
+class QuestionBankForm(QuestionForm):
+    category = StringField("Category / topic (optional)", validators=[Optional(), Length(max=100)])
+
+
 class QuestionImportForm(FlaskForm):
     csv_file = FileField("CSV file", validators=[
         FileRequired(), FileAllowed(["csv"], "CSV files only"),

@@ -91,11 +91,51 @@ class Test(db.Model):
         return True
 
 
+class QuestionBankItem(db.Model):
+    """A reusable question template, independent of any test. Admins pull
+    items from here into a specific test's question list (a copy, so each
+    test's Question stays independently editable/gradable), instead of
+    retyping the same question every time it's needed across tests."""
+
+    __tablename__ = "question_bank"
+
+    id = db.Column(db.Integer, primary_key=True)
+    created_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    # Free-text topic/category tag for filtering (e.g. "Python Basics", "HR Policy").
+    category = db.Column(db.String(100), nullable=True, index=True)
+
+    question_type = db.Column(db.String(10), nullable=False, default="single")
+    option_a = db.Column(db.String(500), nullable=True)
+    option_b = db.Column(db.String(500), nullable=True)
+    option_c = db.Column(db.String(500), nullable=True)
+    option_d = db.Column(db.String(500), nullable=True)
+    correct_answer = db.Column(db.String(500), nullable=False)
+    marks = db.Column(db.Integer, nullable=False, default=1)
+    time_limit_seconds = db.Column(db.Integer, nullable=True)
+    question_text = db.Column(db.Text, nullable=False)
+
+    creator = db.relationship("User")
+    copies = db.relationship("Question", backref="bank_item", lazy=True)
+
+    def options(self):
+        return {"a": self.option_a, "b": self.option_b, "c": self.option_c, "d": self.option_d}
+
+    def correct_set(self):
+        return {c.strip().lower() for c in self.correct_answer.split(",") if c.strip()}
+
+
 class Question(db.Model):
     __tablename__ = "questions"
 
     id = db.Column(db.Integer, primary_key=True)
     test_id = db.Column(db.Integer, db.ForeignKey("tests.id"), nullable=False)
+    # Set when this question was copied in from the shared question bank, so
+    # the bank item's "used in N test(s)" count can be computed and an admin
+    # can trace where a question came from. The copy is independent afterward
+    # — editing/deleting it here never touches the bank item or other tests
+    # that copied the same item.
+    bank_item_id = db.Column(db.Integer, db.ForeignKey("question_bank.id"), nullable=True)
     question_text = db.Column(db.Text, nullable=False)
 
     # single  -> one correct option (a-d); correct_answer = "b"
@@ -290,7 +330,9 @@ class AdminActivityLog(db.Model):
     # created_test | edited_test | deleted_test | published_test | unpublished_test |
     # duplicated_test | added_question | deleted_question | assigned_students |
     # unassigned_student | imported_questions | updated_eligibility |
-    # activated_user | deactivated_user | deleted_user | imported_users | exported_users
+    # activated_user | deactivated_user | deleted_user | imported_users | exported_users |
+    # added_bank_item | edited_bank_item | deleted_bank_item | added_questions_from_bank |
+    # saved_question_to_bank
     description = db.Column(db.String(500), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 

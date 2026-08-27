@@ -8,6 +8,7 @@
     <div class="lead">Test: <strong>{{ test.title }}</strong> ({{ test.test_code }}) — {{ test.questions|length }} / {{ test.total_questions }} questions added</div>
   </div>
   <div class="actions">
+    <a class="btn ghost" href="{{ url_for('admin.pick_from_bank', test_id=test.id) }}">+ Add from Bank</a>
     <a class="btn ghost" href="{{ url_for('admin.view_test', test_id=test.id) }}">View Test</a>
     <a class="btn" href="{{ url_for('admin.edit_test', test_id=test.id) }}">Edit Test</a>
   </div>
@@ -116,6 +117,11 @@
                 onsubmit="return confirm('Remove this question?');">
             <button type="submit" class="btn danger ghost small" style="margin-left:6px">Remove</button>
           </form>
+          {% if not q.bank_item_id %}
+          <form class="inline" method="post" action="{{ url_for('admin.save_question_to_bank', test_id=test.id, question_id=q.id) }}">
+            <button type="submit" class="btn ghost small" style="margin-left:6px">Save to bank</button>
+          </form>
+          {% endif %}
         </li>
         {% endfor %}
       </ol>

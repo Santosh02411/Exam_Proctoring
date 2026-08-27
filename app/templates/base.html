@@ -6,9 +6,21 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <script>
+    // Applied before first paint (and before the stylesheet above finishes
+    // loading, since this is inline) so switching themes never flashes the
+    // wrong one. Falls back to the OS-level preference on a first visit.
+    (function () {
+      var saved = null;
+      try { saved = localStorage.getItem('theme'); } catch (e) {}
+      var theme = saved || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      document.documentElement.setAttribute('data-theme', theme);
+    })();
+  </script>
   {% block head %}{% endblock %}
 </head>
 <body>
+  <a class="skip-link" href="#mainContent">Skip to main content</a>
   {% if current_user.is_authenticated %}
   <nav class="topnav">
     <div class="topnav-inner">
@@ -18,23 +30,31 @@
           <a href="{{ url_for('admin.dashboard') }}">Dashboard</a>
           <a href="{{ url_for('admin.manage_tests') }}">Manage Tests</a>
           <a href="{{ url_for('admin.create_test') }}">+ New Test</a>
+          <a href="{{ url_for('admin.manage_bank') }}">Question Bank</a>
           <a href="{{ url_for('admin.manage_users') }}">Manage Users</a>
           <a href="{{ url_for('admin.activity_log') }}">Activity Log</a>
         {% else %}
           <a href="{{ url_for('student.dashboard') }}">My Tests</a>
           <a href="{{ url_for('student.enroll_face') }}">Enroll Face</a>
         {% endif %}
+        <button type="button" class="theme-toggle" id="themeToggle" aria-pressed="false" aria-label="Switch to dark mode">
+          <span id="themeToggleIcon" aria-hidden="true">🌙</span><span id="themeToggleLabel">Dark</span>
+        </button>
         <span class="nav-user">{{ current_user.name }} <span class="badge role">{{ current_user.role }}</span></span>
         <a href="{{ url_for('auth.logout') }}" class="btn ghost small">Logout</a>
       </div>
     </div>
   </nav>
+  {% else %}
+  <button type="button" class="theme-toggle theme-toggle-floating" id="themeToggle" aria-pressed="false" aria-label="Switch to dark mode">
+    <span id="themeToggleIcon" aria-hidden="true">🌙</span><span id="themeToggleLabel">Dark</span>
+  </button>
   {% endif %}
 
-  <main class="page">
+  <main class="page" id="mainContent">
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
-        <div class="flash-wrap">
+        <div class="flash-wrap" role="status" aria-live="polite">
           {% for category, message in messages %}
             <div class="flash flash-{{ category }}">{{ message }}</div>
           {% endfor %}
@@ -44,5 +64,30 @@
 
     {% block content %}{% endblock %}
   </main>
+
+  <script>
+    (function () {
+      var btn = document.getElementById('themeToggle');
+      var icon = document.getElementById('themeToggleIcon');
+      var label = document.getElementById('themeToggleLabel');
+      if (!btn) return;
+
+      function sync() {
+        var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        btn.setAttribute('aria-pressed', String(isDark));
+        btn.setAttribute('aria-label', isDark ? 'Switch to light mode' : 'Switch to dark mode');
+        icon.textContent = isDark ? '☀️' : '🌙';
+        label.textContent = isDark ? 'Light' : 'Dark';
+      }
+      sync();
+
+      btn.addEventListener('click', function () {
+        var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', next);
+        try { localStorage.setItem('theme', next); } catch (e) {}
+        sync();
+      });
+    })();
+  </script>
 </body>
 </html>

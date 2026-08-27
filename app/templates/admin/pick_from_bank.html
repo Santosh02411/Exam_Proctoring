@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% from "_pagination.html" import render_pagination %}
+{% block title %}Add from Bank — {{ test.title }}{% endblock %}
+{% block content %}
+<div style="margin-bottom:16px">
+  <a class="small" href="{{ url_for('admin.add_question', test_id=test.id) }}">&larr; {{ test.title }}</a>
+  <h1 style="margin-top:8px">Add Questions from the Bank</h1>
+  <div class="small">Pick any number of questions to copy into this test. Already-added ones are marked below.</div>
+</div>
+
+<div class="card">
+  <form method="get" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px">
+    <div class="field" style="margin-bottom:0;flex:1;min-width:220px">
+      <label for="q">Search</label>
+      <input type="text" id="q" name="q" value="{{ search }}" placeholder="Search question text…">
+    </div>
+    <div class="field" style="margin-bottom:0">
+      <label for="category">Category</label>
+      <select id="category" name="category">
+        <option value="">All categories</option>
+        {% for c in categories %}
+          <option value="{{ c }}" {{ 'selected' if category == c }}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="btn small">Filter</button>
+  </form>
+
+  {% if items %}
+  <form method="post">
+    <table class="table">
+      <thead>
+        <tr><th></th><th>Question</th><th>Type</th><th>Category</th><th>Marks</th></tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+        <tr>
+          <td>
+            {% if item.id in already_added %}
+              <span class="badge published">Added</span>
+            {% else %}
+              <input type="checkbox" name="item_ids" value="{{ item.id }}" aria-label="Select this question">
+            {% endif %}
+          </td>
+          <td>{{ item.question_text[:80] }}{% if item.question_text|length > 80 %}…{% endif %}</td>
+          <td><span class="badge draft">{{ item.question_type|capitalize }}</span></td>
+          <td class="small">{{ item.category or '—' }}</td>
+          <td class="small">{{ item.marks }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="actions" style="margin-top:14px">
+      <button type="submit" class="btn">Add Selected to Test</button>
+    </div>
+  </form>
+  {{ render_pagination(pagination, 'admin.pick_from_bank', {'test_id': test.id, 'q': search, 'category': category}) }}
+  {% else %}
+  <div class="small">
+    No questions in the bank{% if search or category %} matching your filters{% endif %}.
+    <a href="{{ url_for('admin.add_bank_item') }}">Add one to the bank</a> first.
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

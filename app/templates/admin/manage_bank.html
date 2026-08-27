@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% from "_pagination.html" import render_pagination %}
+{% block title %}Question Bank{% endblock %}
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+  <div>
+    <a class="small" href="{{ url_for('admin.dashboard') }}">&larr; Dashboard</a>
+    <h1 style="margin-top:8px">Question Bank</h1>
+    <div class="small">Reusable questions you can pull into any test instead of retyping them.</div>
+  </div>
+  <a class="btn" href="{{ url_for('admin.add_bank_item') }}">+ Add Question</a>
+</div>
+
+<div class="kpi-row">
+  <div class="kpi"><div class="num">{{ total_items }}</div><div class="label">Bank Questions</div></div>
+</div>
+
+<div class="card">
+  <form method="get" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px">
+    <div class="field" style="margin-bottom:0;flex:1;min-width:220px">
+      <label for="q">Search</label>
+      <input type="text" id="q" name="q" value="{{ search }}" placeholder="Search question text…">
+    </div>
+    <div class="field" style="margin-bottom:0">
+      <label for="category">Category</label>
+      <select id="category" name="category">
+        <option value="">All categories</option>
+        {% for c in categories %}
+          <option value="{{ c }}" {{ 'selected' if category == c }}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="btn small">Filter</button>
+    {% if search or category %}
+      <a class="btn ghost small" href="{{ url_for('admin.manage_bank') }}">Clear</a>
+    {% endif %}
+  </form>
+
+  {% if items %}
+  <table class="table">
+    <thead>
+      <tr><th>Question</th><th>Type</th><th>Category</th><th>Marks</th><th>Used in</th><th>Actions</th></tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+      <tr>
+        <td>{{ item.question_text[:80] }}{% if item.question_text|length > 80 %}…{% endif %}</td>
+        <td><span class="badge draft">{{ item.question_type|capitalize }}</span></td>
+        <td class="small">{{ item.category or '—' }}</td>
+        <td class="small">{{ item.marks }}</td>
+        <td class="small">{{ usage_counts.get(item.id, 0) }} test(s)</td>
+        <td>
+          <div class="actions">
+            <a class="btn ghost small" href="{{ url_for('admin.edit_bank_item', item_id=item.id) }}">Edit</a>
+            <form class="inline" method="post" action="{{ url_for('admin.delete_bank_item', item_id=item.id) }}"
+                  onsubmit="return confirm('Remove this question from the bank? Copies already added to tests are unaffected.');">
+              <button type="submit" class="btn danger ghost small">Delete</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {{ render_pagination(pagination, 'admin.manage_bank', {'q': search, 'category': category}) }}
+  {% else %}
+  <div class="small">No questions in the bank yet. Add one, or use "Save to bank" from any test's question list.</div>
+  {% endif %}
+</div>
+{% endblock %}
