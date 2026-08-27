@@ -199,6 +199,11 @@ compared to the enrolled one via `faceapi.euclideanDistance()` — a distance ab
 `FACE_MATCH_THRESHOLD` (default `0.6`, matching face-api.js's own recommendation) logs an
 `identity_mismatch` event.
 
+This verifies "the person at the camera is the same one who enrolled," not "this person is
+who they claim to be" — there's no check against a government-issued ID, so it can't catch
+someone who has someone else enroll on their behalf in the first place. See
+[Known limitations](#known-limitations-by-design) below.
+
 ## Session recording
 
 `MediaRecorder` records the webcam+mic stream in 30-second `.webm` chunks throughout the
@@ -278,6 +283,28 @@ mid-exam doesn't reshuffle anything — grading always uses the actual selected 
 letter, so shuffled display order never affects scoring. `max_attempts` controls how many
 times a student may attempt the test; the dashboard shows attempts used/remaining and
 offers "Retake Test" once a previous attempt is graded.
+
+## Known limitations (by design)
+
+A few gaps are intentional scope boundaries for this rewrite, not oversights:
+
+- **Identity verification is same-person consistency, not government-ID verification.**
+  Enrollment is self-service (see [Identity verification](#identity-verification)) — it
+  proves the person at the camera during the exam matches whoever sat down and enrolled,
+  not that either of them is the person the account claims to be. Binding an account to a
+  real-world identity would mean integrating a third-party ID-verification/KYC provider
+  (document capture + liveness + data-privacy handling for government ID images), which is
+  a distinct product decision with its own vendor, cost, and compliance surface — out of
+  scope here.
+- **No CI/CD pipeline.** The `pytest` suite (`tests/`) is real and runs locally, but
+  nothing wires it into GitHub Actions (or similar) to run automatically on push/PR. Wiring
+  that up is genuinely just a workflow YAML file away — happy to add one if useful — but it
+  wasn't assumed as part of the app itself.
+- **No terms-of-service or privacy-policy page**, despite this app recording webcam/mic
+  and storing biometric (face descriptor) data — content that normally needs sign-off from
+  whoever's legally accountable for the deployment (what's collected, how long it's kept,
+  who can access recordings, consent language, applicable regs like GDPR/COPPA depending on
+  the student population), not something to template out generically.
 
 ## Differences from the original PHP repo
 
