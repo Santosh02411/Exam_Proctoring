@@ -5,12 +5,12 @@ from tests.conftest import register_and_verify, login
 
 @pytest.fixture()
 def admin_with_many_students(client, app):
-    register_and_verify(client, app, "Admin", "adminp@test.com", "9000000060", "admin", "adminpass")
+    register_and_verify(client, app, "Admin", "adminp@test.com", "9000000060", "admin", "Adminpass1!")
     for i in range(25):
         register_and_verify(
-            client, app, f"Student {i:02d}", f"student{i:02d}@test.com", f"90000001{i:02d}", "student", "studpass"
+            client, app, f"Student {i:02d}", f"student{i:02d}@test.com", f"90000001{i:02d}", "student", "Studpass1!"
         )
-    login(client, "adminp@test.com", "adminpass")
+    login(client, "adminp@test.com", "Adminpass1!")
     client.post(
         "/admin/tests/create",
         data=dict(test_code="PAGE1", title="Pagination Test", description="d", duration_minutes=20,

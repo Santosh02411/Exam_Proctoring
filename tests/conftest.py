@@ -22,6 +22,19 @@ class TestConfig:
     MAIL_SENDER = "no-reply@test.local"
     MAX_CONTENT_LENGTH = 25 * 1024 * 1024
 
+    # Disabled by default so fixtures that register/verify many accounts in a
+    # single test (which all share the test client's fixed IP) aren't
+    # throttled. Rate-limiting tests turn this back on for just that test.
+    RATE_LIMIT_ENABLED = False
+    REGISTER_MAX_PER_IP = 5
+    REGISTER_WINDOW_MINUTES = 60
+    FORGOT_PASSWORD_MAX_PER_IP = 5
+    FORGOT_PASSWORD_WINDOW_MINUTES = 15
+    RESEND_VERIFICATION_MAX_PER_IP = 5
+    RESEND_VERIFICATION_WINDOW_MINUTES = 15
+
+    PASSWORD_MIN_LENGTH = 8
+
     _base = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "instance")
     SNAPSHOT_UPLOAD_DIR = os.path.join(_base, "snapshots")
     RECORDINGS_DIR = os.path.join(_base, "recordings")

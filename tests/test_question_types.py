@@ -7,8 +7,8 @@ from tests.conftest import register_and_verify, login, add_single_question, add_
 
 @pytest.fixture()
 def admin_and_student_qt(client, app):
-    register_and_verify(client, app, "Admin", "adminqt@test.com", "9000000040", "admin", "adminpass")
-    register_and_verify(client, app, "Student", "studentqt@test.com", "9000000041", "student", "studpass")
+    register_and_verify(client, app, "Admin", "adminqt@test.com", "9000000040", "admin", "Adminpass1!")
+    register_and_verify(client, app, "Student", "studentqt@test.com", "9000000041", "student", "Studpass1!")
     return {"admin_email": "adminqt@test.com", "student_email": "studentqt@test.com"}
 
 
@@ -32,7 +32,7 @@ def _enroll_face(client):
 
 
 def test_multi_select_question_rejects_all_four_correct(client, app, admin_and_student_qt):
-    login(client, "adminqt@test.com", "adminpass")
+    login(client, "adminqt@test.com", "Adminpass1!")
     _create_test(client)
     with app.app_context():
         from app.models import Test
@@ -43,7 +43,7 @@ def test_multi_select_question_rejects_all_four_correct(client, app, admin_and_s
 
 
 def test_multi_select_requires_at_least_one_correct(client, app, admin_and_student_qt):
-    login(client, "adminqt@test.com", "adminpass")
+    login(client, "adminqt@test.com", "Adminpass1!")
     _create_test(client)
     with app.app_context():
         from app.models import Test
@@ -54,7 +54,7 @@ def test_multi_select_requires_at_least_one_correct(client, app, admin_and_stude
 
 
 def test_single_choice_requires_all_options(client, app, admin_and_student_qt):
-    login(client, "adminqt@test.com", "adminpass")
+    login(client, "adminqt@test.com", "Adminpass1!")
     _create_test(client)
     with app.app_context():
         from app.models import Test
@@ -70,7 +70,7 @@ def test_single_choice_requires_all_options(client, app, admin_and_student_qt):
 
 
 def test_short_answer_requires_expected_text(client, app, admin_and_student_qt):
-    login(client, "adminqt@test.com", "adminpass")
+    login(client, "adminqt@test.com", "Adminpass1!")
     _create_test(client)
     with app.app_context():
         from app.models import Test
@@ -85,7 +85,7 @@ def test_short_answer_requires_expected_text(client, app, admin_and_student_qt):
 
 
 def test_mixed_question_types_full_exam_flow(client, app, admin_and_student_qt):
-    login(client, "adminqt@test.com", "adminpass")
+    login(client, "adminqt@test.com", "Adminpass1!")
     _create_test(client, negative_marks_per_wrong=0, total_questions=3)
     with app.app_context():
         from app.models import Test, User
@@ -106,7 +106,7 @@ def test_mixed_question_types_full_exam_flow(client, app, admin_and_student_qt):
     client.post(f"/admin/tests/{test.id}/assign", data={"student_ids": [str(student.id)]})
     client.get("/logout")
 
-    login(client, "studentqt@test.com", "studpass")
+    login(client, "studentqt@test.com", "Studpass1!")
     _enroll_face(client)
 
     r = client.get(f"/student/tests/{test.id}/start")
@@ -147,7 +147,7 @@ def test_mixed_question_types_full_exam_flow(client, app, admin_and_student_qt):
 
 
 def test_multi_select_partial_selection_scores_zero(client, app, admin_and_student_qt):
-    login(client, "adminqt@test.com", "adminpass")
+    login(client, "adminqt@test.com", "Adminpass1!")
     _create_test(client, negative_marks_per_wrong=0, total_questions=1)
     with app.app_context():
         from app.models import Test, User
@@ -158,7 +158,7 @@ def test_multi_select_partial_selection_scores_zero(client, app, admin_and_stude
     client.post(f"/admin/tests/{test.id}/assign", data={"student_ids": [str(student.id)]})
     client.get("/logout")
 
-    login(client, "studentqt@test.com", "studpass")
+    login(client, "studentqt@test.com", "Studpass1!")
     _enroll_face(client)
     client.get(f"/student/tests/{test.id}/start")
 
@@ -178,7 +178,7 @@ def test_multi_select_partial_selection_scores_zero(client, app, admin_and_stude
 
 
 def test_multi_select_partial_credit_when_enabled(client, app, admin_and_student_qt):
-    login(client, "adminqt@test.com", "adminpass")
+    login(client, "adminqt@test.com", "Adminpass1!")
     _create_test(client, negative_marks_per_wrong=0, total_questions=1, partial_credit_multi="y")
     with app.app_context():
         from app.models import Test, User
@@ -190,7 +190,7 @@ def test_multi_select_partial_credit_when_enabled(client, app, admin_and_student
     client.post(f"/admin/tests/{test.id}/assign", data={"student_ids": [str(student.id)]})
     client.get("/logout")
 
-    login(client, "studentqt@test.com", "studpass")
+    login(client, "studentqt@test.com", "Studpass1!")
     _enroll_face(client)
     client.get(f"/student/tests/{test.id}/start")
 
@@ -216,7 +216,7 @@ def test_multi_select_partial_credit_when_enabled(client, app, admin_and_student
 
 
 def test_partial_credit_setting_does_not_affect_single_choice(client, app, admin_and_student_qt):
-    login(client, "adminqt@test.com", "adminpass")
+    login(client, "adminqt@test.com", "Adminpass1!")
     _create_test(client, negative_marks_per_wrong=0, total_questions=1, partial_credit_multi="y")
     with app.app_context():
         from app.models import Test, User
@@ -227,7 +227,7 @@ def test_partial_credit_setting_does_not_affect_single_choice(client, app, admin
     client.post(f"/admin/tests/{test.id}/assign", data={"student_ids": [str(student.id)]})
     client.get("/logout")
 
-    login(client, "studentqt@test.com", "studpass")
+    login(client, "studentqt@test.com", "Studpass1!")
     _enroll_face(client)
     client.get(f"/student/tests/{test.id}/start")
 
@@ -246,7 +246,7 @@ def test_partial_credit_setting_does_not_affect_single_choice(client, app, admin
 
 
 def test_short_answer_case_insensitive_grading(client, app, admin_and_student_qt):
-    login(client, "adminqt@test.com", "adminpass")
+    login(client, "adminqt@test.com", "Adminpass1!")
     _create_test(client, negative_marks_per_wrong=0, total_questions=1)
     with app.app_context():
         from app.models import Test, User
@@ -257,7 +257,7 @@ def test_short_answer_case_insensitive_grading(client, app, admin_and_student_qt
     client.post(f"/admin/tests/{test.id}/assign", data={"student_ids": [str(student.id)]})
     client.get("/logout")
 
-    login(client, "studentqt@test.com", "studpass")
+    login(client, "studentqt@test.com", "Studpass1!")
     _enroll_face(client)
     client.get(f"/student/tests/{test.id}/start")
 

@@ -7,8 +7,8 @@ from tests.conftest import register_and_verify, login, add_single_question, add_
 
 @pytest.fixture()
 def admin_and_student(client, app):
-    register_and_verify(client, app, "Admin", "admin@test.com", "9000000010", "admin", "adminpass")
-    register_and_verify(client, app, "Student", "student@test.com", "9000000011", "student", "studpass")
+    register_and_verify(client, app, "Admin", "admin@test.com", "9000000010", "admin", "Adminpass1!")
+    register_and_verify(client, app, "Student", "student@test.com", "9000000011", "student", "Studpass1!")
     return {"admin_email": "admin@test.com", "student_email": "student@test.com"}
 
 
@@ -32,7 +32,7 @@ def _enroll_face(client):
 
 
 def test_admin_can_create_test_and_add_questions(client, app, admin_and_student):
-    login(client, "admin@test.com", "adminpass")
+    login(client, "admin@test.com", "Adminpass1!")
     r = _create_test(client)
     assert r.status_code == 200
 
@@ -51,7 +51,7 @@ def test_admin_can_create_test_and_add_questions(client, app, admin_and_student)
 
 
 def test_student_cannot_start_without_face_enrollment(client, app, admin_and_student):
-    login(client, "admin@test.com", "adminpass")
+    login(client, "admin@test.com", "Adminpass1!")
     _create_test(client)
     with app.app_context():
         from app.models import Test, User
@@ -60,13 +60,13 @@ def test_student_cannot_start_without_face_enrollment(client, app, admin_and_stu
     client.post(f"/admin/tests/{test.id}/assign", data={"student_ids": [str(student.id)]})
     client.get("/logout")
 
-    login(client, "student@test.com", "studpass")
+    login(client, "student@test.com", "Studpass1!")
     r = client.get(f"/student/tests/{test.id}/start", follow_redirects=True)
     assert b"Enroll your face" in r.data
 
 
 def test_full_exam_flow_end_to_end(client, app, admin_and_student):
-    login(client, "admin@test.com", "adminpass")
+    login(client, "admin@test.com", "Adminpass1!")
     _create_test(client, negative_marks_per_wrong=0.5, max_attempts=1)
 
     with app.app_context():
@@ -79,7 +79,7 @@ def test_full_exam_flow_end_to_end(client, app, admin_and_student):
     client.post(f"/admin/tests/{test.id}/assign", data={"student_ids": [str(student.id)]})
     client.get("/logout")
 
-    login(client, "student@test.com", "studpass")
+    login(client, "student@test.com", "Studpass1!")
     _enroll_face(client)
 
     r = client.get(f"/student/tests/{test.id}/start")
@@ -109,7 +109,7 @@ def test_full_exam_flow_end_to_end(client, app, admin_and_student):
 
 
 def test_retake_limit_enforced(client, app, admin_and_student):
-    login(client, "admin@test.com", "adminpass")
+    login(client, "admin@test.com", "Adminpass1!")
     _create_test(client, max_attempts=2, total_questions=1)
 
     with app.app_context():
@@ -121,7 +121,7 @@ def test_retake_limit_enforced(client, app, admin_and_student):
     client.post(f"/admin/tests/{test.id}/assign", data={"student_ids": [str(student.id)]})
     client.get("/logout")
 
-    login(client, "student@test.com", "studpass")
+    login(client, "student@test.com", "Studpass1!")
     _enroll_face(client)
 
     for i in range(2):
@@ -138,7 +138,7 @@ def test_retake_limit_enforced(client, app, admin_and_student):
 
 
 def test_extra_time_accommodation_applied(client, app, admin_and_student):
-    login(client, "admin@test.com", "adminpass")
+    login(client, "admin@test.com", "Adminpass1!")
     _create_test(client, duration_minutes=10, total_questions=1)
 
     with app.app_context():
@@ -150,7 +150,7 @@ def test_extra_time_accommodation_applied(client, app, admin_and_student):
     client.post(f"/admin/tests/{test.id}/assign", data={"student_ids": [str(student.id)], "extra_time_minutes": "5"})
     client.get("/logout")
 
-    login(client, "student@test.com", "studpass")
+    login(client, "student@test.com", "Studpass1!")
     _enroll_face(client)
     r = client.get(f"/student/tests/{test.id}/start")
     assert b"durationSeconds: 900" in r.data  # (10 + 5) * 60
@@ -159,7 +159,7 @@ def test_extra_time_accommodation_applied(client, app, admin_and_student):
 def test_csv_question_import(client, app, admin_and_student):
     import io
 
-    login(client, "admin@test.com", "adminpass")
+    login(client, "admin@test.com", "Adminpass1!")
     _create_test(client, total_questions=2)
     with app.app_context():
         from app.models import Test
@@ -186,7 +186,7 @@ def test_csv_question_import(client, app, admin_and_student):
 
 
 def test_activity_log_records_admin_actions(client, app, admin_and_student):
-    login(client, "admin@test.com", "adminpass")
+    login(client, "admin@test.com", "Adminpass1!")
     _create_test(client)
 
     r = client.get("/admin/activity-log")

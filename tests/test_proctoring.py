@@ -7,10 +7,10 @@ from tests.conftest import register_and_verify, login, add_single_question
 
 @pytest.fixture()
 def attempt_setup(client, app):
-    register_and_verify(client, app, "Admin", "admin2@test.com", "9000000020", "admin", "adminpass")
-    register_and_verify(client, app, "Student", "student2@test.com", "9000000021", "student", "studpass")
+    register_and_verify(client, app, "Admin", "admin2@test.com", "9000000020", "admin", "Adminpass1!")
+    register_and_verify(client, app, "Student", "student2@test.com", "9000000021", "student", "Studpass1!")
 
-    login(client, "admin2@test.com", "adminpass")
+    login(client, "admin2@test.com", "Adminpass1!")
     client.post(
         "/admin/tests/create",
         data=dict(test_code="P1", title="Proctor Test", description="d", duration_minutes=20,
@@ -25,7 +25,7 @@ def attempt_setup(client, app):
     client.post(f"/admin/tests/{test.id}/assign", data={"student_ids": [str(student.id)]})
     client.get("/logout")
 
-    login(client, "student2@test.com", "studpass")
+    login(client, "student2@test.com", "Studpass1!")
     descriptor = [0.01 * i for i in range(128)]
     client.post("/api/proctor/enroll-face", data=json.dumps({"descriptor": descriptor}),
                 content_type="application/json")
@@ -140,7 +140,7 @@ def test_recording_chunk_upload_and_admin_playback(client, app, attempt_setup):
     recording_id = r.get_json()["recording_id"]
 
     client.get("/logout")
-    login(client, attempt_setup["admin_email"], "adminpass")
+    login(client, attempt_setup["admin_email"], "Adminpass1!")
     r = client.get(f"/api/proctor/recordings/{recording_id}/file")
     assert r.status_code == 200
     assert r.data == b"FAKEWEBMDATA"
@@ -148,8 +148,8 @@ def test_recording_chunk_upload_and_admin_playback(client, app, attempt_setup):
 
 def test_student_cannot_access_other_students_recording(client, app, attempt_setup):
     client.get("/logout")
-    register_and_verify(client, app, "Other", "other2@test.com", "9000000022", "student", "studpass")
-    login(client, "other2@test.com", "studpass")
+    register_and_verify(client, app, "Other", "other2@test.com", "9000000022", "student", "Studpass1!")
+    login(client, "other2@test.com", "Studpass1!")
 
     r = client.get("/api/proctor/recordings/1/file")
     assert r.status_code in (403, 404)

@@ -8,8 +8,8 @@ from tests.conftest import register_and_verify, login, add_single_question
 
 @pytest.fixture()
 def admin_and_student_tl(client, app):
-    register_and_verify(client, app, "Admin", "admintl@test.com", "9000000050", "admin", "adminpass")
-    register_and_verify(client, app, "Student", "studenttl@test.com", "9000000051", "student", "studpass")
+    register_and_verify(client, app, "Admin", "admintl@test.com", "9000000050", "admin", "Adminpass1!")
+    register_and_verify(client, app, "Student", "studenttl@test.com", "9000000051", "student", "Studpass1!")
     return {"admin_email": "admintl@test.com", "student_email": "studenttl@test.com"}
 
 
@@ -33,7 +33,7 @@ def _enroll_face(client):
 
 
 def test_question_time_limit_persisted_via_admin_form(client, app, admin_and_student_tl):
-    login(client, "admintl@test.com", "adminpass")
+    login(client, "admintl@test.com", "Adminpass1!")
     _create_test(client)
     with app.app_context():
         from app.models import Test
@@ -51,7 +51,7 @@ def test_question_time_limit_persisted_via_admin_form(client, app, admin_and_stu
 
 
 def test_question_time_limit_rejects_too_small_value(client, app, admin_and_student_tl):
-    login(client, "admintl@test.com", "adminpass")
+    login(client, "admintl@test.com", "Adminpass1!")
     _create_test(client)
     with app.app_context():
         from app.models import Test
@@ -65,7 +65,7 @@ def test_question_time_limit_rejects_too_small_value(client, app, admin_and_stud
 
 
 def test_time_limit_rendered_on_take_test_page(client, app, admin_and_student_tl):
-    login(client, "admintl@test.com", "adminpass")
+    login(client, "admintl@test.com", "Adminpass1!")
     _create_test(client, total_questions=1)
     with app.app_context():
         from app.models import Test, User
@@ -76,7 +76,7 @@ def test_time_limit_rendered_on_take_test_page(client, app, admin_and_student_tl
     client.post(f"/admin/tests/{test.id}/assign", data={"student_ids": [str(student.id)]})
     client.get("/logout")
 
-    login(client, "studenttl@test.com", "studpass")
+    login(client, "studenttl@test.com", "Studpass1!")
     _enroll_face(client)
     r = client.get(f"/student/tests/{test.id}/start")
     assert r.status_code == 200
@@ -85,7 +85,7 @@ def test_time_limit_rendered_on_take_test_page(client, app, admin_and_student_tl
 
 
 def test_csv_import_supports_time_limit_column(client, app, admin_and_student_tl):
-    login(client, "admintl@test.com", "adminpass")
+    login(client, "admintl@test.com", "Adminpass1!")
     _create_test(client, total_questions=1)
     with app.app_context():
         from app.models import Test
@@ -111,7 +111,7 @@ def test_csv_import_supports_time_limit_column(client, app, admin_and_student_tl
 
 
 def test_untimed_question_has_no_time_limit_attribute(client, app, admin_and_student_tl):
-    login(client, "admintl@test.com", "adminpass")
+    login(client, "admintl@test.com", "Adminpass1!")
     _create_test(client, total_questions=1)
     with app.app_context():
         from app.models import Test, User
@@ -122,7 +122,7 @@ def test_untimed_question_has_no_time_limit_attribute(client, app, admin_and_stu
     client.post(f"/admin/tests/{test.id}/assign", data={"student_ids": [str(student.id)]})
     client.get("/logout")
 
-    login(client, "studenttl@test.com", "studpass")
+    login(client, "studenttl@test.com", "Studpass1!")
     _enroll_face(client)
     r = client.get(f"/student/tests/{test.id}/start")
     assert b"data-time-limit" not in r.data
