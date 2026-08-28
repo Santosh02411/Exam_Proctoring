@@ -699,7 +699,55 @@ def view_results(test_id):
     pagination = Attempt.query.filter_by(test_id=test.id).order_by(Attempt.started_at.desc()).paginate(
         page=page, per_page=PER_PAGE, error_out=False
     )
-    return render_template("admin/view_results.html", test=test, pagination=pagination, attempts=pagination.items)
+
+    all_attempts = Attempt.query.filter_by(test_id=test.id).all()
+    scored = [a for a in all_attempts if a.score is not None and a.status != "terminated"]
+    submitted_count = len([a for a in all_attempts if a.status != "in_progress"])
+    passed_count = len([a for a in scored if a.score >= test.passing_marks])
+    stats = {
+        "total_attempts": len(all_attempts),
+        "submitted_count": submitted_count,
+        "avg_score": round(sum(a.score for a in scored) / len(scored), 2) if scored else None,
+        "pass_rate": round(100 * passed_count / len(scored), 1) if scored else None,
+        "avg_violations": round(sum(a.violation_count for a in all_attempts) / len(all_attempts), 1) if all_attempts else None,
+        "pending_grading_count": len({
+            a.id for a in all_attempts for ans in a.answers
+            if ans.question.needs_manual_grading and ans.selected_option and ans.manual_score is None
+        }),
+    }
+    return render_template(
+        "admin/view_results.html", test=test, pagination=pagination, attempts=pagination.items, stats=stats
+    )
+
+
+@bp.route("/tests/<int:test_id>/results/export")
+@review_access
+def export_results(test_id):
+    test = Test.query.get_or_404(test_id)
+    attempts = Attempt.query.filter_by(test_id=test.id).order_by(Attempt.started_at.desc()).all()
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow([
+        "student_name", "student_email", "status", "score", "total_marks", "result",
+        "violation_count", "started_at", "submitted_at",
+    ])
+    for a in attempts:
+        result = ""
+        if a.score is not None and a.status != "terminated":
+            result = "pass" if a.score >= test.passing_marks else "fail"
+        writer.writerow([
+            a.student.name, a.student.email, a.status, a.score if a.score is not None else "",
+            test.total_marks(), result, a.violation_count,
+            a.started_at.strftime("%Y-%m-%d %H:%M") if a.started_at else "",
+            a.submitted_at.strftime("%Y-%m-%d %H:%M") if a.submitted_at else "",
+        ])
+
+    log_activity("exported_results", f"Exported results for '{test.title}' ({len(attempts)} attempt(s))")
+    response = Response(buf.getvalue(), mimetype="text/csv")
+    filename = f"results_{test.test_code}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.csv"
+    response.headers["Content-Disposition"] = f"attachment; filename={filename}"
+    return response
 
 
 @bp.route("/attempts/<int:attempt_id>")
