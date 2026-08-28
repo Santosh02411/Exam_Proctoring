@@ -2,10 +2,24 @@
 {% from "_pagination.html" import render_pagination %}
 {% block title %}Results — {{ test.title }}{% endblock %}
 {% block content %}
-<div style="margin-bottom:16px">
-  <a class="small" href="{{ url_for('admin.view_test', test_id=test.id) }}">&larr; Back to test</a>
-  <h1 style="margin-top:8px">Results — {{ test.title }}</h1>
-  <div class="lead">Passing marks: {{ test.passing_marks }} / {{ test.total_marks() }}</div>
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+  <div>
+    <a class="small" href="{{ url_for('admin.view_test', test_id=test.id) }}">&larr; Back to test</a>
+    <h1 style="margin-top:8px">Results — {{ test.title }}</h1>
+    <div class="lead">Passing marks: {{ test.passing_marks }} / {{ test.total_marks() }}</div>
+  </div>
+  <a class="btn ghost" href="{{ url_for('admin.export_results', test_id=test.id) }}">Export CSV</a>
+</div>
+
+<div class="kpi-row">
+  <div class="kpi"><div class="num">{{ stats.total_attempts }}</div><div class="label">Total Attempts</div></div>
+  <div class="kpi"><div class="num">{{ stats.submitted_count }}</div><div class="label">Submitted</div></div>
+  <div class="kpi"><div class="num">{{ stats.avg_score if stats.avg_score is not none else '—' }}</div><div class="label">Average Score</div></div>
+  <div class="kpi"><div class="num">{{ (stats.pass_rate ~ '%') if stats.pass_rate is not none else '—' }}</div><div class="label">Pass Rate</div></div>
+  <div class="kpi"><div class="num">{{ stats.avg_violations if stats.avg_violations is not none else '—' }}</div><div class="label">Avg. Violations</div></div>
+  {% if stats.pending_grading_count %}
+  <div class="kpi"><div class="num">{{ stats.pending_grading_count }}</div><div class="label">Pending Grading</div></div>
+  {% endif %}
 </div>
 
 <div class="card">
@@ -20,7 +34,9 @@
         <td>
           {% if a.score is not none %}
             {{ a.score }} / {{ test.total_marks() }}
-            {% if a.score >= test.passing_marks %}<span class="badge pass">Pass</span>{% else %}<span class="badge fail">Fail</span>{% endif %}
+            {% if a.status != 'terminated' %}
+              {% if a.score >= test.passing_marks %}<span class="badge pass">Pass</span>{% else %}<span class="badge fail">Fail</span>{% endif %}
+            {% endif %}
           {% else %}—{% endif %}
         </td>
         <td>{{ a.violation_count }}</td>
