@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Organizations{% endblock %}
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+  <div>
+    <h1>Organizations</h1>
+    <div class="lead">Every institution/tenant on this platform, with a quick usage summary for each.</div>
+  </div>
+  <a class="btn" href="{{ url_for('organizations.create_organization') }}">+ New Organization</a>
+</div>
+
+<div class="kpi-row">
+  <div class="kpi"><div class="kpi-value">{{ summaries|length }}</div><div class="kpi-label">Organizations</div></div>
+  <div class="kpi"><div class="kpi-value">{{ summaries|sum(attribute='total_users') }}</div><div class="kpi-label">Total Users</div></div>
+  <div class="kpi"><div class="kpi-value">{{ summaries|sum(attribute='total_tests') }}</div><div class="kpi-label">Total Tests</div></div>
+</div>
+
+<div class="card">
+  {% if summaries %}
+  <table class="table">
+    <thead>
+      <tr><th>Organization</th><th>Status</th><th>Users</th><th>Tests</th><th>Attempts</th><th>Pass Rate</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for s in summaries %}
+      <tr>
+        <td>{{ s.org.name }}</td>
+        <td>
+          {% if s.org.status == 'active' %}<span class="badge pass">Active</span>{% else %}<span class="badge fail">Inactive</span>{% endif %}
+        </td>
+        <td class="small">
+          {{ s.total_users }} total
+          {% if s.role_counts %}
+            <br><span class="muted">{% for role, count in s.role_counts.items() %}{{ role }}: {{ count }}{{ ', ' if not loop.last }}{% endfor %}</span>
+          {% endif %}
+        </td>
+        <td class="small">{{ s.total_tests }} ({{ s.published_tests }} published)</td>
+        <td class="small">{{ s.total_attempts }}</td>
+        <td class="small">{{ s.pass_rate ~ '%' if s.pass_rate is not none else '—' }}</td>
+        <td><a class="btn ghost small" href="{{ url_for('organizations.view_organization', org_id=s.org.id) }}">View</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="small">No organizations yet.</div>
+  {% endif %}
+</div>
+{% endblock %}

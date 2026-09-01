@@ -1,51 +1,171 @@
 {% extends "base.html" %}
-{% block title %}Enroll Your Face{% endblock %}
+{% block title %}Identity Verification{% endblock %}
 {% block head %}
 <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 {% endblock %}
 {% block content %}
-<div class="center-page" style="max-width:560px">
+<div class="center-page" style="max-width:640px">
   <div class="card">
-    <h1 style="margin-top:0">Enroll your face</h1>
+    <h1 style="margin-top:0">Identity verification</h1>
     <p class="small">
-      This one-time step lets us verify it's really you at the start of — and periodically during —
-      any proctored test. Look straight at the camera in good lighting, then capture a reference photo.
-      Nothing but a numeric face signature is stored; the photo itself is never uploaded or saved.
+      This one-time flow confirms it's really you before any proctored test: upload a government or
+      college ID, then match it against a live look at the camera (with a quick liveness check so a
+      printed photo can't be used in your place). Only a numeric face signature is stored afterward —
+      the live capture photo itself is never uploaded or saved.
     </p>
 
-    <div style="display:flex;justify-content:center;margin:18px 0">
-      <video id="enrollVideo" autoplay muted playsinline style="width:280px;height:210px;background:#000;border-radius:12px;object-fit:cover"></video>
+    {% if current_user.face_descriptor %}
+    <div class="opt" style="border-color:var(--success);margin-bottom:16px">
+      <strong>✓ Verified</strong>
+      <p class="small" style="margin:6px 0 0 0">
+        Your identity is verified and you're all set to take proctored tests. Re-upload below only if
+        you need to update your ID or redo verification.
+      </p>
+    </div>
+    {% endif %}
+
+    <div id="step1">
+      <h3>Step 1 · Upload your ID</h3>
+      <div class="field">
+        <label for="docType">ID type</label>
+        <select id="docType">
+          <option value="government_id">Government-issued ID</option>
+          <option value="college_id">College/University ID</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="idFile">Photo of your ID</label>
+        <input type="file" id="idFile" accept="image/png,image/jpeg,image/webp">
+      </div>
+      <div id="uploadMsg" class="small" style="min-height:18px"></div>
+      <button id="uploadBtn" class="btn" type="button">Upload &amp; Extract</button>
     </div>
 
-    <div class="small" style="text-align:center;margin-bottom:14px">
-      Camera: <span id="camStatus">Starting…</span> · Model: <span id="modelStatus">Loading…</span>
+    <div id="step2" style="display:none;margin-top:22px">
+      <h3>Step 2 · Review what we read from your ID</h3>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
+        <img id="idPreview" alt="Your uploaded ID" style="width:220px;border-radius:10px;border:1px solid var(--border)">
+        <table class="table" style="flex:1;min-width:220px">
+          <tbody>
+            <tr><td class="small muted">Name</td><td id="ocrName" class="small">—</td></tr>
+            <tr><td class="small muted">ID Number</td><td id="ocrIdNumber" class="small">—</td></tr>
+            <tr><td class="small muted">Date of Birth</td><td id="ocrDob" class="small">—</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="small muted" style="margin-top:8px">
+        This is automated text extraction (OCR) shown for your own sanity check — it may miss fields on
+        some ID layouts. It doesn't need to be perfect for the next step to work.
+      </p>
+      <button id="continueBtn" class="btn" type="button" style="margin-top:8px">Looks right — Continue</button>
     </div>
 
-    <div id="captureMsg" class="small" style="text-align:center;min-height:18px"></div>
+    <div id="step3" style="display:none;margin-top:22px">
+      <h3>Step 3 · Look at the camera</h3>
+      <div style="display:flex;justify-content:center;margin:14px 0">
+        <video id="liveVideo" autoplay muted playsinline style="width:280px;height:210px;background:#000;border-radius:12px;object-fit:cover"></video>
+      </div>
+      <div class="small" style="text-align:center;margin-bottom:10px">
+        Camera: <span id="camStatus">Starting…</span> · Model: <span id="modelStatus">Loading…</span>
+      </div>
+      <div id="livenessPrompt" class="small" style="text-align:center;font-weight:700;min-height:20px"></div>
+      <div id="livenessMsg" class="small" style="text-align:center;min-height:18px"></div>
+      <div style="display:flex;justify-content:center;margin-top:10px">
+        <button id="verifyBtn" class="btn" type="button" disabled>Blink Naturally &amp; Verify</button>
+      </div>
+    </div>
 
-    <div style="display:flex;justify-content:center;gap:10px;margin-top:10px">
-      <button id="captureBtn" class="btn" type="button" disabled>Capture Reference Photo</button>
+    <div id="resultBox" class="opt" style="display:none;margin-top:18px"></div>
+
+    <div style="margin-top:18px">
       <a class="btn ghost" href="{{ url_for('student.dashboard') }}">Back to My Tests</a>
     </div>
   </div>
 </div>
 
 <script>
-(async function () {
-  const video = document.getElementById('enrollVideo');
+(function () {
+  const uploadBtn = document.getElementById('uploadBtn');
+  const uploadMsg = document.getElementById('uploadMsg');
+  const idFile = document.getElementById('idFile');
+  const docType = document.getElementById('docType');
+
+  const step1 = document.getElementById('step1');
+  const step2 = document.getElementById('step2');
+  const step3 = document.getElementById('step3');
+  const idPreview = document.getElementById('idPreview');
+  const ocrName = document.getElementById('ocrName');
+  const ocrIdNumber = document.getElementById('ocrIdNumber');
+  const ocrDob = document.getElementById('ocrDob');
+  const continueBtn = document.getElementById('continueBtn');
+
+  const video = document.getElementById('liveVideo');
   const camStatus = document.getElementById('camStatus');
   const modelStatus = document.getElementById('modelStatus');
-  const captureBtn = document.getElementById('captureBtn');
-  const captureMsg = document.getElementById('captureMsg');
+  const livenessPrompt = document.getElementById('livenessPrompt');
+  const livenessMsg = document.getElementById('livenessMsg');
+  const verifyBtn = document.getElementById('verifyBtn');
+  const resultBox = document.getElementById('resultBox');
 
+  const uploadUrl = "{{ url_for('proctoring.upload_id_document') }}";
+  const confirmUrl = "{{ url_for('proctoring.confirm_id_match') }}";
+  const modelsBase = "{{ url_for('static', filename='models') }}";
+
+  let docId = null;
+  let idImageEl = null;
   let stream = null;
+  let modelsReady = false;
+
+  // ---------- Step 1: upload ----------
+  uploadBtn.addEventListener('click', async () => {
+    if (!idFile.files.length) {
+      uploadMsg.textContent = 'Choose a photo of your ID first.';
+      return;
+    }
+    uploadBtn.disabled = true;
+    uploadMsg.textContent = 'Uploading and reading your ID…';
+
+    const formData = new FormData();
+    formData.append('id_image', idFile.files[0]);
+    formData.append('doc_type', docType.value);
+
+    try {
+      const res = await fetch(uploadUrl, { method: 'POST', body: formData });
+      const data = await res.json();
+      if (!data.ok) {
+        uploadMsg.textContent = data.error || 'Upload failed — please try again.';
+        uploadBtn.disabled = false;
+        return;
+      }
+      docId = data.doc_id;
+      idPreview.src = data.image_url;
+      ocrName.textContent = data.ocr.name || '—';
+      ocrIdNumber.textContent = data.ocr.id_number || '—';
+      ocrDob.textContent = data.ocr.dob || '—';
+
+      step1.style.display = 'none';
+      step2.style.display = '';
+    } catch (e) {
+      console.error(e);
+      uploadMsg.textContent = 'Upload failed — please check your connection and try again.';
+      uploadBtn.disabled = false;
+    }
+  });
+
+  // ---------- Step 2 -> 3 ----------
+  continueBtn.addEventListener('click', () => {
+    step2.style.display = 'none';
+    step3.style.display = '';
+    initCamera();
+    initModels();
+  });
 
   async function initCamera() {
     try {
       stream = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240 }, audio: false });
       video.srcObject = stream;
       camStatus.textContent = 'Ready';
-      maybeEnable();
+      maybeEnableVerify();
     } catch (e) {
       camStatus.textContent = 'Permission denied.';
     }
@@ -53,62 +173,147 @@
 
   async function initModels() {
     try {
-      const base = "{{ url_for('static', filename='models') }}";
-      await faceapi.nets.tinyFaceDetector.loadFromUri(base);
-      await faceapi.nets.faceLandmark68Net.loadFromUri(base);
-      await faceapi.nets.faceRecognitionNet.loadFromUri(base);
+      await faceapi.nets.tinyFaceDetector.loadFromUri(modelsBase);
+      await faceapi.nets.faceLandmark68Net.loadFromUri(modelsBase);
+      await faceapi.nets.faceRecognitionNet.loadFromUri(modelsBase);
       modelStatus.textContent = 'Ready';
-      maybeEnable();
+      modelsReady = true;
+      maybeEnableVerify();
     } catch (e) {
       modelStatus.textContent = 'Failed to load.';
       console.error(e);
     }
   }
 
-  function maybeEnable() {
-    if (stream && faceapi.nets.tinyFaceDetector.isLoaded && faceapi.nets.faceRecognitionNet.isLoaded) {
-      captureBtn.disabled = false;
-    }
+  function maybeEnableVerify() {
+    if (stream && modelsReady) verifyBtn.disabled = false;
   }
 
-  captureBtn.addEventListener('click', async () => {
-    captureBtn.disabled = true;
-    captureMsg.textContent = 'Analyzing…';
-    try {
+  // ---------- Liveness: blink detection via eye-aspect-ratio ----------
+  // Standard EAR formula over face-api.js's 6-point eye landmarks (same
+  // convention as dlib's 68-point model). This is a basic liveness signal —
+  // it catches a static printed/on-screen photo (which never blinks), not a
+  // sophisticated video replay or deepfake — and is reported to admins as
+  // such (see liveness_check_failed's weight vs. identity_mismatch's).
+  const EAR_BLINK_THRESHOLD = 0.22;
+
+  function eyeAspectRatio(eye) {
+    const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+    const vertical1 = dist(eye[1], eye[5]);
+    const vertical2 = dist(eye[2], eye[4]);
+    const horizontal = dist(eye[0], eye[3]);
+    return horizontal ? (vertical1 + vertical2) / (2 * horizontal) : 0;
+  }
+
+  async function runLivenessCheck(durationMs) {
+    let blinkCount = 0;
+    let eyesWereClosed = false;
+    let lastOpenDescriptor = null;
+    const deadline = Date.now() + durationMs;
+
+    while (Date.now() < deadline) {
       const result = await faceapi
         .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
         .withFaceLandmarks()
         .withFaceDescriptor();
 
-      if (!result) {
-        captureMsg.textContent = 'No face detected — make sure your face is clearly visible and try again.';
-        captureBtn.disabled = false;
+      if (result) {
+        const ear = (eyeAspectRatio(result.landmarks.getLeftEye()) + eyeAspectRatio(result.landmarks.getRightEye())) / 2;
+        if (ear < EAR_BLINK_THRESHOLD) {
+          eyesWereClosed = true;
+        } else {
+          if (eyesWereClosed) blinkCount += 1;
+          eyesWereClosed = false;
+          lastOpenDescriptor = result.descriptor;
+        }
+        livenessPrompt.textContent = `Blink naturally… (${blinkCount} blink${blinkCount === 1 ? '' : 's'} detected)`;
+      } else {
+        livenessPrompt.textContent = 'No face detected — make sure your face is clearly visible.';
+      }
+      await new Promise((r) => setTimeout(r, 150));
+    }
+
+    return { live: blinkCount >= 1, blinkCount, descriptor: lastOpenDescriptor };
+  }
+
+  verifyBtn.addEventListener('click', async () => {
+    verifyBtn.disabled = true;
+    livenessMsg.textContent = '';
+    resultBox.style.display = 'none';
+
+    try {
+      // Load the just-uploaded ID photo into an <img> and pull a descriptor
+      // from it the same way we pull one from the live webcam frame below.
+      if (!idImageEl) {
+        idImageEl = await faceapi.bufferToImage(await (await fetch(idPreview.src)).blob());
+      }
+      const idResult = await faceapi
+        .detectSingleFace(idImageEl, new faceapi.TinyFaceDetectorOptions())
+        .withFaceLandmarks()
+        .withFaceDescriptor();
+
+      if (!idResult) {
+        resultBox.style.display = '';
+        resultBox.style.borderColor = 'var(--danger)';
+        resultBox.innerHTML = '<strong>No face found in your ID photo.</strong><p class="small" style="margin:6px 0 0 0">Try a clearer, well-lit photo of your ID with the photo area fully visible.</p>';
+        verifyBtn.disabled = false;
         return;
       }
 
-      const descriptor = Array.from(result.descriptor);
-      const res = await fetch("{{ url_for('proctoring.enroll_face') }}", {
+      const liveness = await runLivenessCheck(7000);
+      if (!liveness.descriptor) {
+        resultBox.style.display = '';
+        resultBox.style.borderColor = 'var(--danger)';
+        resultBox.innerHTML = '<strong>No face detected during the check.</strong><p class="small" style="margin:6px 0 0 0">Make sure your face is well-lit and centered, then try again.</p>';
+        verifyBtn.disabled = false;
+        return;
+      }
+
+      livenessPrompt.textContent = '';
+      livenessMsg.textContent = 'Matching against your ID…';
+
+      const res = await fetch(confirmUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ descriptor })
+        body: JSON.stringify({
+          doc_id: docId,
+          id_descriptor: Array.from(idResult.descriptor),
+          live_descriptor: Array.from(liveness.descriptor),
+          liveness_passed: liveness.live,
+          blink_count: liveness.blinkCount,
+        }),
       });
       const data = await res.json();
-      if (data.ok) {
-        captureMsg.textContent = 'Enrolled! Redirecting…';
-        setTimeout(() => { window.location.href = "{{ url_for('student.dashboard') }}"; }, 1200);
+      livenessMsg.textContent = '';
+      resultBox.style.display = '';
+
+      if (data.ok && data.enrolled) {
+        resultBox.style.borderColor = 'var(--success)';
+        resultBox.innerHTML = '<strong>✓ Verified and enrolled!</strong><p class="small" style="margin:6px 0 0 0">Your ID photo matched your live capture and liveness was confirmed. Redirecting…</p>';
+        if (stream) stream.getTracks().forEach((t) => t.stop());
+        setTimeout(() => { window.location.href = "{{ url_for('student.dashboard') }}"; }, 1800);
+      } else if (data.ok && !data.liveness_passed) {
+        resultBox.style.borderColor = 'var(--warning)';
+        resultBox.innerHTML = '<strong>Liveness check not confirmed.</strong><p class="small" style="margin:6px 0 0 0">We didn\'t detect a natural blink — please try again in good lighting, looking directly at the camera.</p>';
+        verifyBtn.disabled = false;
+      } else if (data.ok && !data.face_match_passed) {
+        resultBox.style.borderColor = 'var(--danger)';
+        resultBox.innerHTML = `<strong>Face didn't match your ID photo.</strong><p class="small" style="margin:6px 0 0 0">Make sure you're the person on the ID, remove glasses/hats if you're not wearing them in the photo, and try again.</p>`;
+        verifyBtn.disabled = false;
       } else {
-        captureMsg.textContent = 'Something went wrong — please try again.';
-        captureBtn.disabled = false;
+        resultBox.style.borderColor = 'var(--danger)';
+        resultBox.innerHTML = '<strong>Something went wrong.</strong><p class="small" style="margin:6px 0 0 0">Please try again.</p>';
+        verifyBtn.disabled = false;
       }
     } catch (e) {
       console.error(e);
-      captureMsg.textContent = 'Something went wrong — please try again.';
-      captureBtn.disabled = false;
+      livenessMsg.textContent = '';
+      resultBox.style.display = '';
+      resultBox.style.borderColor = 'var(--danger)';
+      resultBox.innerHTML = '<strong>Something went wrong.</strong><p class="small" style="margin:6px 0 0 0">Please check your connection and try again.</p>';
+      verifyBtn.disabled = false;
     }
   });
-
-  initCamera();
-  initModels();
 })();
 </script>
 {% endblock %}

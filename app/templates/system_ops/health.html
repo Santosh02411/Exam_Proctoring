@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}System Health{% endblock %}
+{% block content %}
+<h1>System Monitoring &amp; Operations</h1>
+{% include "system_ops/_nav.html" with context %}
+
+<div class="kpi-row">
+  <div class="kpi">
+    <div class="kpi-value">
+      {% if uptime_seconds %}{{ (uptime_seconds // 3600)|int }}h {{ ((uptime_seconds % 3600) // 60)|int }}m{% else %}—{% endif %}
+    </div>
+    <div class="kpi-label">Uptime</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-value">
+      {% if db_ok %}<span class="badge pass">Connected</span>{% else %}<span class="badge fail">Down</span>{% endif %}
+    </div>
+    <div class="kpi-label">Database</div>
+  </div>
+  <div class="kpi"><div class="kpi-value">{{ process_memory }}</div><div class="kpi-label">Process Memory</div></div>
+  <div class="kpi"><div class="kpi-value">{{ disk_pct_used ~ '%' if disk_pct_used is not none else '—' }}</div><div class="kpi-label">Disk Used</div></div>
+</div>
+
+{% if not db_ok %}
+<div class="card" style="margin-bottom:16px;border-color:var(--danger, #c0392b)">
+  <h2>Database Error</h2>
+  <div class="small">{{ db_error }}</div>
+</div>
+{% endif %}
+
+<div class="card" style="margin-bottom:16px">
+  <h2>Disk</h2>
+  <div class="small">{{ used_disk }} used of {{ total_disk }} total ({{ free_disk }} free)</div>
+</div>
+
+<div class="card" style="margin-bottom:16px">
+  <h2>Platform Counts</h2>
+  <div class="kpi-row">
+    <div class="kpi"><div class="kpi-value">{{ counts.organizations }}</div><div class="kpi-label">Organizations</div></div>
+    <div class="kpi"><div class="kpi-value">{{ counts.users }}</div><div class="kpi-label">Users</div></div>
+    <div class="kpi"><div class="kpi-value">{{ counts.tests }}</div><div class="kpi-label">Tests</div></div>
+    <div class="kpi"><div class="kpi-value">{{ counts.attempts }}</div><div class="kpi-label">Attempts</div></div>
+    <div class="kpi"><div class="kpi-value">{{ counts.in_progress_attempts }}</div><div class="kpi-label">In Progress Now</div></div>
+    <div class="kpi"><div class="kpi-value">{{ counts.active_sessions }}</div><div class="kpi-label">Active Sessions</div></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Errors (last 24h, unresolved)</h2>
+  <div class="lead">
+    {{ recent_errors }} unresolved error(s) in the last 24 hours.
+    <a href="{{ url_for('system_ops.error_log') }}">View error log &rarr;</a>
+  </div>
+</div>
+
+<div class="card" style="margin-top:16px">
+  <h2>Alerts</h2>
+  <div class="lead">
+    {{ open_alerts }} unresolved alert(s).
+    <a href="{{ url_for('system_ops.alerts') }}">View alerts &rarr;</a>
+  </div>
+</div>
+{% endblock %}

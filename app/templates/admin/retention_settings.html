@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Retention Settings{% endblock %}
+{% block content %}
+<div style="margin-bottom:16px">
+  <h1>Data Retention — {{ org.name }}</h1>
+  <div class="lead">
+    Override how long your organization's data is kept before automatic cleanup. Leave a field blank to
+    use the platform default instead. A platform-wide "Run Retention Cleanup" sweep applies these
+    automatically; see your platform administrator for the schedule.
+  </div>
+  <a class="btn ghost small" href="{{ url_for('admin.download_org_backup') }}" style="margin-top:8px;display:inline-block">Download Data Export</a>
+</div>
+
+<div class="card" style="margin-bottom:16px">
+  <h2>Current Effective Settings</h2>
+  <table class="table">
+    <thead><tr><th>Category</th><th>Days</th><th>Source</th></tr></thead>
+    <tbody>
+      {% for category, (days, source) in effective.items() %}
+      {% if category != 'error_log_retention_days' %}
+      <tr>
+        <td>{{ labels[category] }}</td>
+        <td class="small">{{ days }}</td>
+        <td>
+          {% if source == 'org' %}<span class="badge pass">Your override</span>
+          {% elif source == 'platform' %}<span class="badge draft">Platform default</span>
+          {% else %}<span class="badge draft">Built-in default</span>{% endif %}
+        </td>
+      </tr>
+      {% endif %}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h2>Edit Overrides</h2>
+  <form method="post" novalidate>
+    {{ form.hidden_tag() }}
+    {% for field in [form.recording_retention_days, form.snapshot_retention_days, form.ended_login_session_retention_days, form.login_security_event_retention_days, form.activity_log_retention_days, form.notification_log_retention_days] %}
+    <div class="field">
+      <label for="{{ field.id }}">{{ field.label.text }}</label>
+      {{ field(placeholder="platform default") }}
+      {% for e in field.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+    </div>
+    {% endfor %}
+    <button type="submit" class="btn">Save Retention Settings</button>
+  </form>
+</div>
+{% endblock %}

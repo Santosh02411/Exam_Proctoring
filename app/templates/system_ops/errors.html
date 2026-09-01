@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% from "_pagination.html" import render_pagination %}
+{% block title %}Error Log{% endblock %}
+{% block content %}
+<h1>System Monitoring &amp; Operations</h1>
+{% include "system_ops/_nav.html" with context %}
+
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:10px">
+  <div class="lead">{{ unresolved_count }} unresolved error(s).</div>
+  <div style="display:flex;gap:6px">
+    <a class="btn ghost small {{ 'active' if status_filter == 'unresolved' }}" href="{{ url_for('system_ops.error_log', status='unresolved') }}">Unresolved</a>
+    <a class="btn ghost small {{ 'active' if status_filter == 'resolved' }}" href="{{ url_for('system_ops.error_log', status='resolved') }}">Resolved</a>
+    <a class="btn ghost small {{ 'active' if status_filter == 'all' }}" href="{{ url_for('system_ops.error_log', status='all') }}">All</a>
+  </div>
+</div>
+
+<div class="card">
+  {% if entries %}
+  <table class="table">
+    <thead><tr><th>When</th><th>Endpoint</th><th>Error</th><th>User</th><th></th></tr></thead>
+    <tbody>
+      {% for e in entries %}
+      <tr>
+        <td class="small">{{ e.occurred_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+        <td class="small">{{ e.method }} {{ e.path }}</td>
+        <td class="small">
+          <strong>{{ e.error_type }}</strong>: {{ e.error_message }}
+          <details><summary class="small">Traceback</summary><pre style="white-space:pre-wrap;font-size:11px">{{ e.traceback }}</pre></details>
+        </td>
+        <td class="small">{{ e.user.name if e.user else '—' }}</td>
+        <td>
+          {% if not e.resolved %}
+          <form method="post" action="{{ url_for('system_ops.resolve_error', error_id=e.id) }}">
+            <button type="submit" class="btn ghost small">Mark Resolved</button>
+          </form>
+          {% else %}
+          <span class="badge pass">Resolved</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {{ render_pagination(pagination, 'system_ops.error_log', extra_args={'status': status_filter}) }}
+  {% else %}
+  <div class="small">No errors recorded.</div>
+  {% endif %}
+</div>
+{% endblock %}

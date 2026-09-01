@@ -69,6 +69,9 @@
         <td class="small">{{ u.created_at.strftime('%Y-%m-%d') if u.created_at else '—' }}</td>
         <td>
           <div class="actions">
+            {% if u.role == 'student' %}
+            <a class="btn ghost small" href="{{ url_for('admin.student_analytics', student_id=u.id) }}">Analytics</a>
+            {% endif %}
             {% if u.id != current_user.id %}
             <form class="inline" method="post" action="{{ url_for('admin.toggle_user_status', user_id=u.id) }}"
                   onsubmit="return confirm('{{ 'Deactivate' if u.status == 'active' else 'Reactivate' }} {{ u.name }}\'s account?');">

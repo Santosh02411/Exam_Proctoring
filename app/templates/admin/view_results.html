@@ -8,6 +8,7 @@
     <h1 style="margin-top:8px">Results — {{ test.title }}</h1>
     <div class="lead">Passing marks: {{ test.passing_marks }} / {{ test.total_marks() }}</div>
   </div>
+  <a class="btn ghost" href="{{ url_for('admin.plagiarism_queue', test_id=test.id) }}">Plagiarism Check</a>
   <a class="btn ghost" href="{{ url_for('admin.export_results', test_id=test.id) }}">Export CSV</a>
 </div>
 
@@ -33,7 +34,7 @@
         <td><span class="badge {{ a.status }}">{{ a.status|replace('_',' ')|capitalize }}</span></td>
         <td>
           {% if a.score is not none %}
-            {{ a.score }} / {{ test.total_marks() }}
+            {{ a.score }} / {{ a.max_marks() }}
             {% if a.status != 'terminated' %}
               {% if a.score >= test.passing_marks %}<span class="badge pass">Pass</span>{% else %}<span class="badge fail">Fail</span>{% endif %}
             {% endif %}

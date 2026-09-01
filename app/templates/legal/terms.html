@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Terms of Service{% endblock %}
+{% block content %}
+<div class="card" style="max-width:800px;margin:0 auto">
+  <div class="flash flash-warning" style="margin-bottom:16px">
+    <strong>Template, not legal advice.</strong> This page describes what this specific
+    application actually does with your data, accurately, but it is a starting draft — have it
+    reviewed by qualified legal counsel for your jurisdiction and student population before
+    relying on it for a real deployment (see also the Privacy Policy).
+  </div>
+
+  <h1>Terms of Service</h1>
+  <p class="small muted">Version {{ version }}</p>
+
+  <h2>1. What this service is</h2>
+  <p>
+    This is an online exam-delivery and proctoring platform. Depending on your role, you may
+    take proctored exams, or create/manage/review exams for an organization ("institution")
+    using this service.
+  </p>
+
+  <h2>2. Accounts and organizations</h2>
+  <p>
+    Every account belongs to one organization (or, for a platform operator account, to none) —
+    see the Privacy Policy for what that means for who can see your data. You're responsible for
+    keeping your password confidential and for all activity under your account. Signing in from
+    a new device or location may end a session you left open elsewhere; see the Privacy Policy's
+    Security section.
+  </p>
+
+  <h2>3. Proctored exams</h2>
+  <p>
+    If you take a proctored exam through this service, you'll be asked to grant camera and
+    microphone access, and to enroll a one-time reference photo before your first exam. During an
+    exam, the service performs automated identity checks, monitors for signs of academic
+    dishonesty (leaving the browser tab, exiting fullscreen, multiple faces in frame, unusual
+    audio), and records the session. Declining camera/microphone access or enrollment means you
+    won't be able to start a proctored exam. See the Privacy Policy for exactly what's collected,
+    why, and for how long.
+  </p>
+
+  <h2>4. Academic integrity</h2>
+  <p>
+    Submitted answers may be automatically compared against other students' submissions to the
+    same question for similarity, and flagged for an examiner's review. A flag is not, by itself,
+    a finding of misconduct — it's a signal for a human to evaluate. Proctoring violations,
+    similarity flags, and their review outcomes may be shared with your institution.
+  </p>
+
+  <h2>5. Acceptable use</h2>
+  <p>
+    Don't attempt to circumvent proctoring, impersonate another person, share exam content
+    without authorization, or use the service to violate any applicable law or your
+    institution's own academic-integrity policy.
+  </p>
+
+  <h2>6. Changes</h2>
+  <p>
+    These terms may be updated from time to time; the version number above changes when they do.
+    Continued use of the service after a change constitutes acceptance of the updated terms.
+  </p>
+
+  <h2>7. Contact</h2>
+  <p>
+    For questions about these terms, contact your institution's administrator, or the operator
+    of this platform.
+  </p>
+</div>
+{% endblock %}

@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% from "_pagination.html" import render_pagination %}
+{% block title %}Failed Sessions{% endblock %}
+{% block content %}
+<h1>System Monitoring &amp; Operations</h1>
+{% include "system_ops/_nav.html" with context %}
+
+<div class="card">
+  <h2>Failed Proctoring Sessions ({{ pagination.total }})</h2>
+  <div class="small muted" style="margin-bottom:10px">
+    Every attempt auto-terminated for proctoring violations, across all organizations. An organization's
+    own review queue has the full drill-down for its own attempts.
+  </div>
+  {% if attempts %}
+  <table class="table">
+    <thead><tr><th>Organization</th><th>Test</th><th>Student</th><th>Violations</th><th>Suspicion</th><th>Started</th></tr></thead>
+    <tbody>
+      {% for a in attempts %}
+      <tr>
+        <td class="small">{{ a.test.organization.name if a.test.organization else '—' }}</td>
+        <td class="small">{{ a.test.title }}</td>
+        <td class="small">{{ a.student.name }}</td>
+        <td><span class="badge risk-high">{{ a.violation_count }}</span></td>
+        <td class="small">{{ a.suspicion_score }}</td>
+        <td class="small">{{ a.started_at.strftime('%Y-%m-%d %H:%M') if a.started_at else '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {{ render_pagination(pagination, 'system_ops.failed_sessions') }}
+  {% else %}
+  <div class="small">No terminated attempts.</div>
+  {% endif %}
+</div>
+{% endblock %}

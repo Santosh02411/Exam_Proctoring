@@ -2,6 +2,8 @@
 {% block title %}{{ test.title }} — Proctored Test{% endblock %}
 {% block head %}
 <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
 {% endblock %}
 {% block content %}
 
@@ -13,13 +15,24 @@
       video and audio are analyzed locally in your browser, and the session is also recorded for
       admin review. Your identity will be verified against your enrolled reference photo before you
       begin and periodically throughout. You must stay in fullscreen; leaving fullscreen, switching
-      tabs, having no face / multiple faces visible, or an identity mismatch will be logged and can
-      end your attempt after repeated warnings.
+      tabs, having no face / multiple faces visible, sustained looking-away from the screen, a
+      phone/book/extra person detected in frame, or an identity mismatch will be logged and can end
+      your attempt after repeated warnings.
     </p>
     {% if test.instructions %}
     <div class="opt" style="margin-top:10px">
       <strong>Instructions</strong>
       <p class="small" style="white-space:pre-wrap;margin:6px 0 0 0">{{ test.instructions }}</p>
+    </div>
+    {% endif %}
+    {% if is_resume %}
+    <div class="opt" style="margin-top:10px;border-color:var(--warning)">
+      <strong>Resuming your attempt</strong>
+      <p class="small" style="margin:6px 0 0 0">
+        You already have an in-progress attempt on this test — this continues it rather than starting
+        over. Any answers you'd already saved are still there, and your time left reflects what's
+        actually remaining (not a fresh clock).
+      </p>
     </div>
     {% endif %}
     <div style="display:flex;gap:16px;align-items:center;margin-top:14px">
@@ -41,6 +54,23 @@
 
 <video id="camPreview" autoplay muted playsinline></video>
 
+<div id="spotCheckOverlay" role="dialog" aria-modal="true">
+  <div id="spotCheckBox">
+    <h3 style="margin-top:0">Identity Spot Check</h3>
+    <p class="small">Please look directly at the camera and blink naturally.</p>
+    <div id="spotCheckPrompt" class="small" style="font-weight:700;min-height:20px"></div>
+  </div>
+</div>
+
+<div id="sessionConflictOverlay" role="dialog" aria-modal="true" style="display:none;position:fixed;inset:0;background:rgba(2,6,23,0.85);z-index:10000;align-items:center;justify-content:center">
+  <div class="card" style="max-width:440px;text-align:center">
+    <h3 style="margin-top:0">This session has ended</h3>
+    <p class="small">This exam is now active in another browser tab or device for your account, so this tab can no
+      longer save answers or continue monitoring. Your latest saved answers are safe.</p>
+    <a class="btn" href="{{ url_for('student.dashboard') }}">Back to My Tests</a>
+  </div>
+</div>
+
 <div id="examArea">
   <div class="sticky-exam-header">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
@@ -49,6 +79,7 @@
         <div class="small muted">{{ test.description or '' }}</div>
       </div>
       <div style="display:flex;gap:14px;align-items:center">
+        <div class="status-pill"><span id="connDot" class="status-dot"></span> <span id="connStatusText">Online</span></div>
         <div class="status-pill"><span id="proctorDot" class="status-dot"></span> <span id="proctorStatusText">Monitoring</span></div>
         <div>Time left: <span id="timer" class="timer">--:--</span></div>
         <button id="submitBtn" class="btn">Submit Test</button>
@@ -57,6 +88,7 @@
     {% if extra_time_minutes %}
     <div class="small muted" style="margin-top:6px">Includes {{ extra_time_minutes }} extra minute(s) of accommodation time.</div>
     {% endif %}
+    <div id="connectionBanner" class="connection-banner" style="display:none;margin-top:10px"></div>
     <div id="violationBanner" class="violation-banner" style="display:none;margin-top:10px"></div>
   </div>
 
@@ -147,10 +179,18 @@
     attemptId: {{ attempt.id }},
     testId: {{ test.id }},
     durationSeconds: {{ duration_seconds }},
+    isResume: {{ is_resume | tojson }},
+    sessionToken: {{ attempt.session_token | tojson }},
     eventUrl: "{{ url_for('proctoring.log_event') }}",
     snapshotUrl: "{{ url_for('proctoring.check_snapshot') }}",
     submitUrl: "{{ url_for('student.submit_answers', attempt_id=attempt.id) }}",
     autosaveUrl: "{{ url_for('student.autosave_answers', attempt_id=attempt.id) }}",
+    heartbeatUrl: "{{ url_for('student.heartbeat', attempt_id=attempt.id) }}",
+    releaseSessionUrl: "{{ url_for('proctoring.release_session_route') }}",
+    resultUrl: "{{ url_for('student.result', attempt_id=attempt.id) }}",
+    dashboardUrl: "{{ url_for('student.dashboard') }}",
+    identitySpotcheckMinSeconds: {{ config.IDENTITY_SPOTCHECK_MIN_SECONDS }},
+    identitySpotcheckMaxSeconds: {{ config.IDENTITY_SPOTCHECK_MAX_SECONDS }},
     recordingChunkUrl: "{{ url_for('proctoring.upload_recording_chunk') }}",
     modelsUrl: "{{ url_for('static', filename='models') }}",
     referenceDescriptor: {{ reference_descriptor | tojson }},

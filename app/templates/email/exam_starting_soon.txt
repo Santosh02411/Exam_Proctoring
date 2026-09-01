@@ -1,0 +1,7 @@
+Hi {{ student_name }},
+
+This is a reminder that {{ test_title }} opens at {{ start_time }} — about {{ minutes_until }} minute(s) from now.
+
+Make sure you're somewhere quiet with a working camera and a stable connection before it starts.
+
+Log in here when you're ready: {{ dashboard_url }}

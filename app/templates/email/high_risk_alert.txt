@@ -1,0 +1,10 @@
+Heads up — a proctored attempt just crossed into {{ risk_level|upper }} risk.
+
+Student: {{ student_name }}
+Test: {{ test_title }}
+Suspicion score: {{ suspicion_score }} / 100
+Violations so far: {{ violation_count }}
+
+This is a proactive flag, not a termination — the attempt is still in progress. Review the events,
+snapshots, and recording here:
+{{ view_url }}

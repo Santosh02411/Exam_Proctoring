@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Certificate Verification{% endblock %}
+{% block content %}
+<div class="center-page" style="max-width:520px">
+  <div class="card" style="text-align:center">
+    <h1>Certificate Verification</h1>
+    {% if valid %}
+    <div class="badge pass" style="font-size:14px;padding:8px 16px;margin-top:10px">Valid Certificate</div>
+    <table class="table" style="margin-top:18px;text-align:left">
+      <tbody>
+        <tr><th style="width:140px">Issued to</th><td>{{ cert.attempt.student.name }}</td></tr>
+        <tr><th>Test</th><td>{{ cert.attempt.test.title }}</td></tr>
+        <tr><th>Organization</th><td>{{ cert.attempt.test.organization.name }}</td></tr>
+        <tr><th>Issued</th><td>{{ cert.issued_at.strftime('%B %d, %Y') if cert.issued_at else '—' }}</td></tr>
+        <tr><th>Certificate ID</th><td><code class="small">{{ cert.certificate_code }}</code></td></tr>
+      </tbody>
+    </table>
+    {% else %}
+    <div class="badge fail" style="font-size:14px;padding:8px 16px;margin-top:10px">Not Found</div>
+    <p class="small" style="margin-top:12px">
+      No valid certificate matches this ID. It may have been mistyped, or the underlying attempt is no longer in
+      good standing.
+    </p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

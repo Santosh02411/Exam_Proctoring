@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}New Organization{% endblock %}
+{% block content %}
+<div class="center-page">
+  <div class="auth-box">
+    <h2>New Organization</h2>
+    <form method="post" novalidate>
+      {{ form.hidden_tag() }}
+      <div class="field">
+        <label for="{{ form.name.id }}">Organization Name</label>
+        {{ form.name(placeholder="e.g. Springfield College of Engineering") }}
+        {% for e in form.name.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+      </div>
+      <div class="field">
+        <label for="{{ form.status.id }}">Status</label>
+        {{ form.status() }}
+      </div>
+      <button type="submit" class="btn" style="width:100%">Create</button>
+    </form>
+    <div class="small" style="margin-top:16px;text-align:center">
+      <a href="{{ url_for('organizations.list_organizations') }}">&larr; Back to organizations</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

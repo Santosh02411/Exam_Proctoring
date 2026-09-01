@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Plagiarism Check — {{ test.title }}{% endblock %}
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+  <div>
+    <a class="small" href="{{ url_for('admin.view_results', test_id=test.id) }}">&larr; Back to results</a>
+    <h1 style="margin-top:8px">Plagiarism Check — {{ test.title }}</h1>
+    <div class="lead">
+      Compares every pair of submitted descriptive/coding answers to the same question and flags
+      pairs above a similarity threshold for review. A flag is a signal, not a verdict — two students
+      can legitimately give a similar answer (a standard definition, a common coding idiom).
+    </div>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:16px">
+  <form method="post" action="{{ url_for('admin.run_plagiarism_check', test_id=test.id) }}"
+        style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap">
+    <div class="field" style="margin:0">
+      <label for="threshold">Similarity threshold (%)</label>
+      <input type="number" id="threshold" name="threshold" min="0" max="100" step="1" value="{{ threshold|int }}" style="max-width:120px">
+    </div>
+    <button type="submit" class="btn">Run Plagiarism Check</button>
+    <div class="small muted">Only compares descriptive/coding answers from submitted attempts — not multiple-choice questions.</div>
+  </form>
+</div>
+
+<div class="card">
+  {% if flags %}
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Question</th><th>Student A</th><th>Student B</th><th>Similarity</th><th>Status</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for f in flags %}
+      <tr>
+        <td class="small">
+          {{ f.question.question_text[:60] }}{{ '…' if f.question.question_text|length > 60 else '' }}
+          <br><span class="badge draft">{{ f.answer_type|capitalize }}</span>
+        </td>
+        <td class="small">
+          {{ f.answer_a.attempt.student.name }}
+          <br><a href="{{ url_for('admin.view_attempt', attempt_id=f.answer_a.attempt_id) }}">View attempt</a>
+        </td>
+        <td class="small">
+          {{ f.answer_b.attempt.student.name }}
+          <br><a href="{{ url_for('admin.view_attempt', attempt_id=f.answer_b.attempt_id) }}">View attempt</a>
+        </td>
+        <td>
+          <span class="badge {{ 'risk-critical' if f.similarity_pct >= 90 else 'risk-high' if f.similarity_pct >= 80 else 'risk-medium' }}">
+            {{ f.similarity_pct }}%
+          </span>
+        </td>
+        <td>
+          {% if f.review_status == 'pending' %}
+            <span class="badge draft">Pending</span>
+          {% elif f.review_status == 'confirmed' %}
+            <span class="badge fail">Confirmed</span>
+          {% else %}
+            <span class="badge pass">Dismissed</span>
+          {% endif %}
+          {% if f.reviewed_by_id %}
+            <div class="small muted">by {{ f.reviewer.name }}{% if f.review_notes %} — {{ f.review_notes }}{% endif %}</div>
+          {% endif %}
+        </td>
+        <td>
+          <details>
+            <summary class="small">Compare</summary>
+            <div class="small" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0;max-width:520px">
+              <div style="white-space:pre-wrap;background:var(--bg2);border-radius:8px;padding:8px;{% if f.answer_type == 'coding' %}font-family:monospace{% endif %}">{{ f.answer_a.selected_option }}</div>
+              <div style="white-space:pre-wrap;background:var(--bg2);border-radius:8px;padding:8px;{% if f.answer_type == 'coding' %}font-family:monospace{% endif %}">{{ f.answer_b.selected_option }}</div>
+            </div>
+            {% if f.review_status == 'pending' %}
+            <form method="post" action="{{ url_for('admin.review_plagiarism_flag', flag_id=f.id) }}" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <input type="text" name="notes" placeholder="Notes (optional)" class="small" style="flex:1;min-width:160px">
+              <button type="submit" name="decision" value="confirmed" class="btn ghost small">Confirm</button>
+              <button type="submit" name="decision" value="dismissed" class="btn ghost small">Dismiss</button>
+            </form>
+            {% endif %}
+          </details>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="small">No similar answer pairs flagged yet — run a check above.</div>
+  {% endif %}
+</div>
+{% endblock %}

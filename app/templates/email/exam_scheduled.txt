@@ -1,0 +1,8 @@
+Hi {{ student_name }},
+
+You've been assigned a new test: {{ test_title }}.
+
+Duration: {{ duration_minutes }} minutes.
+{% if start_time %}Opens: {{ start_time }}
+{% endif %}
+Log in to Exam Proctoring to take it: {{ dashboard_url }}

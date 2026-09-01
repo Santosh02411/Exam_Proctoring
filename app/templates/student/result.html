@@ -21,7 +21,13 @@
       <div class="small" style="margin-top:10px">Passing marks required: {{ test.passing_marks }}</div>
     {% endif %}
     <div class="small" style="margin-top:16px">Proctoring violations recorded: {{ attempt.violation_count }}</div>
+    {% if certificate_eligible %}
+    <div class="small" style="margin-top:6px;color:var(--success);font-weight:600">🎓 You've earned a certificate for this exam!</div>
+    {% endif %}
     <div style="margin-top:24px;display:flex;gap:8px;justify-content:center">
+      {% if certificate_eligible %}
+      <a class="btn" href="{{ url_for('student.download_certificate', attempt_id=attempt.id) }}">Download Certificate</a>
+      {% endif %}
       {% if test.allow_review and attempt.status != 'in_progress' %}
       <a class="btn ghost" href="{{ url_for('student.review', attempt_id=attempt.id) }}">Review Answers</a>
       {% endif %}

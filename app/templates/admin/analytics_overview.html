@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Analytics{% endblock %}
+{% block content %}
+<div style="margin-bottom:16px">
+  <a class="small" href="{{ url_for('admin.dashboard') }}">&larr; Dashboard</a>
+  <h1 style="margin-top:8px">Analytics</h1>
+  <div class="lead">Exam-wise comparison and violation trends across every test. Open a test from Manage Tests for its topic/difficulty/skip breakdown.</div>
+</div>
+
+<div class="card" style="margin-bottom:20px">
+  <h3 style="margin-top:0">Exam-wise Comparison</h3>
+  {% if comparison %}
+  <table class="table">
+    <thead><tr><th>Test</th><th>Attempts</th><th>Avg Score</th><th>Pass Rate</th><th>Avg Violations</th></tr></thead>
+    <tbody>
+      {% for row in comparison %}
+      <tr>
+        <td><a href="{{ url_for('admin.test_analytics', test_id=row.test_id) }}">{{ row.title }}</a><div class="small muted">{{ row.test_code }}</div></td>
+        <td>{{ row.attempts }}</td>
+        <td>{{ row.avg_score_pct ~ '%' if row.avg_score_pct is not none else '—' }}</td>
+        <td>{{ row.pass_rate ~ '%' if row.pass_rate is not none else '—' }}</td>
+        <td>{{ row.avg_violations if row.avg_violations is not none else '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="small">No tests yet.</div>
+  {% endif %}
+</div>
+
+<div class="card" style="margin-bottom:20px">
+  <h3 style="margin-top:0">Performance Trend (last 12 weeks)</h3>
+  <div class="small muted" style="margin-bottom:10px">Average score % across every finished attempt in the organization, by week — a cohort-wide trend over time, distinct from the exam-wise snapshot above.</div>
+  {% if score_trend %}
+  <div style="display:flex;align-items:flex-end;gap:4px;height:90px">
+    {% for row in score_trend %}
+    <div title="{{ row.week }}: {{ row.avg_score_pct }}% ({{ row.attempts }} attempt(s))"
+         style="flex:1;background:var(--accent);border-radius:2px 2px 0 0;height:{{ row.avg_score_pct }}%;min-height:2px"></div>
+    {% endfor %}
+  </div>
+  <div class="small muted" style="display:flex;justify-content:space-between;margin-top:4px">
+    <span>{{ score_trend[0].week }}</span><span>{{ score_trend[-1].week }}</span>
+  </div>
+  {% else %}
+  <div class="small">No finished attempts in this window.</div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3 style="margin-top:0">Violation Trends (last 30 days)</h3>
+  <div class="small muted" style="margin-bottom:10px">{{ trends.total }} violation event(s) system-wide.</div>
+
+  {% if trends.by_type %}
+  {% set max_count = trends.by_type[0].count %}
+  <div style="margin-bottom:18px">
+    {% for row in trends.by_type %}
+    <div class="bar-row">
+      <div class="bar-label">{{ row.event_type|replace('_',' ')|capitalize }}</div>
+      <div class="bar-track"><div class="bar-fill bad" style="width:{{ (100 * row.count / max_count)|round(1) }}%"></div></div>
+      <div class="bar-value">{{ row.count }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if trends.by_day and trends.total %}
+  {% set max_day = (trends.by_day | map(attribute='count') | max) or 1 %}
+  <div class="small muted" style="margin-bottom:6px">By day</div>
+  <div style="display:flex;align-items:flex-end;gap:2px;height:80px">
+    {% for day in trends.by_day %}
+    <div title="{{ day.date }}: {{ day.count }}"
+         style="flex:1;background:var(--accent);border-radius:2px 2px 0 0;height:{{ (100 * day.count / max_day)|round(1) if max_day else 0 }}%;min-height:{{ '2px' if day.count == 0 else '0' }}"></div>
+    {% endfor %}
+  </div>
+  {% elif not trends.total %}
+  <div class="small">No violations recorded in this window.</div>
+  {% endif %}
+</div>
+{% endblock %}

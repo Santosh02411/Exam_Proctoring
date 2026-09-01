@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block title %}{{ test.title }} Analytics{% endblock %}
+{% block content %}
+<div style="margin-bottom:16px">
+  <a class="small" href="{{ url_for('admin.analytics_overview') }}">&larr; Analytics</a>
+  <h1 style="margin-top:8px">{{ test.title }}</h1>
+  <div class="lead">{{ test.test_code }} · <a href="{{ url_for('admin.view_results', test_id=test.id) }}">View results &rarr;</a></div>
+</div>
+
+<div class="card" style="margin-bottom:20px;border-left:4px solid var(--danger)">
+  <h3 style="margin-top:0">Weak Areas <span class="small muted" style="font-weight:400">(below {{ weak.threshold }}%)</span></h3>
+  {% if weak.topics or weak.questions %}
+    {% if weak.topics %}
+    <div class="small" style="font-weight:600;margin-bottom:6px">Topics</div>
+    <ul style="margin:0 0 12px 0;padding-left:18px" class="small">
+      {% for row in weak.topics %}
+      <li>{{ row.topic }} — {{ row.avg_pct }}% average ({{ row.answered }}/{{ row.questions }} answered)</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    {% if weak.questions %}
+    <div class="small" style="font-weight:600;margin-bottom:6px">Questions</div>
+    <ul style="margin:0;padding-left:18px" class="small">
+      {% for row in weak.questions %}
+      <li>{{ row.question_text[:80] }}{{ '…' if row.question_text|length > 80 }} — {{ row.avg_score_pct }}% average{% if row.category != 'Uncategorized' %} <span class="muted">({{ row.category }})</span>{% endif %}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  {% else %}
+  <div class="small">Nothing below {{ weak.threshold }}% — no weak areas flagged.</div>
+  {% endif %}
+</div>
+
+<div class="card" style="margin-bottom:20px">
+  <h3 style="margin-top:0">Student Performance by Topic</h3>
+  {% if topics %}
+  {% for row in topics %}
+  <div class="bar-row">
+    <div class="bar-label">{{ row.topic }} <span class="small muted">({{ row.questions }} q)</span></div>
+    <div class="bar-track">
+      <div class="bar-fill {{ 'bad' if row.avg_pct is not none and row.avg_pct < 40 else ('warn' if row.avg_pct is not none and row.avg_pct < 70 else '') }}"
+           style="width:{{ row.avg_pct if row.avg_pct is not none else 0 }}%"></div>
+    </div>
+    <div class="bar-value">{{ (row.avg_pct ~ '%') if row.avg_pct is not none else '—' }}</div>
+  </div>
+  {% endfor %}
+  {% else %}
+  <div class="small">No finished attempts yet.</div>
+  {% endif %}
+</div>
+
+<div class="card" style="margin-bottom:20px">
+  <h3 style="margin-top:0">Question Difficulty Analysis</h3>
+  <div class="small muted" style="margin-bottom:10px">
+    Bucketed by <em>observed</em> success rate (easy &ge;70%, medium 40&ndash;69%, hard &lt;40%) — compared against the difficulty label set when the question was authored.
+  </div>
+  {% if difficulty %}
+  <table class="table">
+    <thead><tr><th>Question</th><th>Authored As</th><th>Observed</th><th>Success Rate</th><th>Match?</th></tr></thead>
+    <tbody>
+      {% for row in difficulty %}
+      <tr>
+        <td class="small">{{ row.question_text[:80] }}{{ '…' if row.question_text|length > 80 }}</td>
+        <td><span class="badge draft">{{ row.difficulty|capitalize }}</span></td>
+        <td><span class="badge {{ 'active' if row.observed_difficulty == 'easy' else ('inactive' if row.observed_difficulty == 'hard' else 'draft') }}">{{ row.observed_difficulty|capitalize }}</span></td>
+        <td>{{ row.success_rate }}%</td>
+        <td>{{ '✓' if row.label_matches_observed else '✗' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="small">No auto-graded questions with answers yet.</div>
+  {% endif %}
+</div>
+
+<div class="card" style="margin-bottom:20px">
+  <h3 style="margin-top:0">Time-per-Question Analysis</h3>
+  <div class="small muted" style="margin-bottom:10px">
+    Average time-on-screen compared against the rest of the test, cross-referenced with success rate to tell
+    apart different causes: <strong>slow &amp; low-scoring</strong> suggests the question itself is confusing or
+    poorly worded; <strong>fast &amp; low-scoring</strong> suggests students are misreading or guessing rather
+    than running out of time.
+    {% if time_analysis.avg_time_seconds is not none %}Test-wide average: {{ time_analysis.avg_time_seconds }}s per question.{% endif %}
+  </div>
+  {% if time_analysis.rows %}
+  <table class="table">
+    <thead><tr><th>Question</th><th>Avg Time</th><th>vs. Test Avg</th><th>Success / Avg Score</th><th>Flag</th></tr></thead>
+    <tbody>
+      {% for row in time_analysis.rows %}
+      <tr>
+        <td class="small">{{ row.question_text[:70] }}{{ '…' if row.question_text|length > 70 }}</td>
+        <td class="small">{{ row.avg_time_seconds }}s</td>
+        <td class="small">{{ row.time_ratio }}&times;</td>
+        <td class="small">{{ (row.avg_score_pct ~ '%') if row.avg_score_pct is not none else '—' }}</td>
+        <td class="small">
+          {% if row.time_flag == 'slow_and_low_success' %}<span class="badge inactive">Slow &amp; low-scoring</span>
+          {% elif row.time_flag == 'fast_and_low_success' %}<span class="badge inactive">Fast &amp; low-scoring</span>
+          {% elif row.time_flag == 'slow' %}<span class="badge draft">Slow</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="small">No time-on-screen data reported yet.</div>
+  {% endif %}
+</div>
+
+<div class="card" style="margin-bottom:20px">
+  <h3 style="margin-top:0">Question-wise Success Rate &amp; Time Spent</h3>
+  {% if questions %}
+  <table class="table">
+    <thead><tr><th>Question</th><th>Category</th><th>Answered</th><th>Skipped</th><th>Success / Avg Score</th><th>Avg Time</th></tr></thead>
+    <tbody>
+      {% for row in questions %}
+      <tr>
+        <td class="small">{{ row.question_text[:80] }}{{ '…' if row.question_text|length > 80 }}</td>
+        <td class="small">{{ row.category }}</td>
+        <td class="small">{{ row.answered_count }} / {{ row.total_attempts }}</td>
+        <td class="small">{{ row.skipped_count }} {{ '(' ~ row.skip_rate ~ '%)' if row.skip_rate is not none }}</td>
+        <td class="small">
+          {% if row.avg_score_pct is not none %}{{ row.avg_score_pct }}%{% if row.needs_manual_grading %} <span class="muted">(graded so far)</span>{% endif %}
+          {% else %}—{% endif %}
+        </td>
+        <td class="small">{{ (row.avg_time_seconds ~ 's') if row.avg_time_seconds is not none else '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="small">No questions on this test yet.</div>
+  {% endif %}
+</div>
+
+<div class="card" style="margin-bottom:20px">
+  <h3 style="margin-top:0">Most Frequently Skipped Questions</h3>
+  {% if skipped %}
+  {% for row in skipped %}
+  <div class="bar-row">
+    <div class="bar-label small">{{ row.question_text[:40] }}{{ '…' if row.question_text|length > 40 }}</div>
+    <div class="bar-track"><div class="bar-fill warn" style="width:{{ row.skip_rate }}%"></div></div>
+    <div class="bar-value">{{ row.skip_rate }}%</div>
+  </div>
+  {% endfor %}
+  {% else %}
+  <div class="small">No skipped questions.</div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3 style="margin-top:0">Violation Trends for This Test (last 30 days)</h3>
+  <div class="small muted" style="margin-bottom:10px">{{ trends.total }} violation event(s) on this test's attempts.</div>
+  {% if trends.by_type %}
+  {% set max_count = trends.by_type[0].count %}
+  {% for row in trends.by_type %}
+  <div class="bar-row">
+    <div class="bar-label">{{ row.event_type|replace('_',' ')|capitalize }}</div>
+    <div class="bar-track"><div class="bar-fill bad" style="width:{{ (100 * row.count / max_count)|round(1) }}%"></div></div>
+    <div class="bar-value">{{ row.count }}</div>
+  </div>
+  {% endfor %}
+  {% else %}
+  <div class="small">No violations recorded in this window.</div>
+  {% endif %}
+</div>
+{% endblock %}

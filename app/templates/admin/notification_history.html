@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% from "_pagination.html" import render_pagination %}
+{% block title %}Notifications{% endblock %}
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:16px">
+  <div>
+    <a class="small" href="{{ url_for('admin.dashboard') }}">&larr; Dashboard</a>
+    <h1 style="margin-top:8px">Notification History</h1>
+    <div class="lead">Every exam-scheduled, starting-soon, completion, result, and high-risk-alert email sent by the system.</div>
+  </div>
+  <form method="post" action="{{ url_for('admin.trigger_reminders') }}">
+    <button type="submit" class="btn">Send Starting-Soon Reminders Now</button>
+  </form>
+</div>
+
+<div class="card">
+  <div class="actions" style="margin-bottom:16px;flex-wrap:wrap">
+    <a class="btn small {{ 'ghost' if type_filter }}" href="{{ url_for('admin.notification_history') }}">All</a>
+    {% for t in notif_types %}
+    <a class="btn small {{ 'ghost' if type_filter != t }}" href="{{ url_for('admin.notification_history', type=t) }}">{{ t|replace('_',' ')|capitalize }}</a>
+    {% endfor %}
+  </div>
+
+  {% if entries %}
+  <table class="table">
+    <thead><tr><th>When</th><th>Type</th><th>To</th><th>Subject</th><th>Status</th><th>Related</th></tr></thead>
+    <tbody>
+      {% for n in entries %}
+      <tr>
+        <td class="small">{{ n.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+        <td><span class="badge draft">{{ n.notif_type|replace('_',' ')|capitalize }}</span></td>
+        <td class="small">{{ n.user.name if n.user else '—' }}</td>
+        <td class="small">{{ n.subject }}</td>
+        <td class="small">
+          {% if n.send_status == 'sent' %}<span class="badge active">Sent</span>
+          {% elif n.send_status == 'logged' %}<span class="badge draft">Logged (no SMTP)</span>
+          {% else %}<span class="badge inactive">Failed</span>{% endif %}
+        </td>
+        <td class="small">
+          {% if n.attempt_id %}<a href="{{ url_for('admin.view_attempt', attempt_id=n.attempt_id) }}">Attempt #{{ n.attempt_id }}</a>
+          {% elif n.test_id %}Test #{{ n.test_id }}
+          {% else %}—{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {{ render_pagination(pagination, 'admin.notification_history', {'type': type_filter}) }}
+  {% else %}
+  <div class="small">No notifications sent yet.</div>
+  {% endif %}
+</div>
+{% endblock %}

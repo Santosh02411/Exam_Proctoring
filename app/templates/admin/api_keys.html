@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}API Access{% endblock %}
+{% block content %}
+<div style="margin-bottom:16px">
+  <h1>API Access — {{ org.name }}</h1>
+  <div class="lead">
+    Keys and webhook for external systems — an institutional LMS (Moodle, Canvas, Google Classroom) or a custom
+    integration — to sync rosters and pull results via the <a href="#reference">REST API</a> below.
+  </div>
+</div>
+
+{% if new_key %}
+<div class="card" style="margin-bottom:16px;border-left:4px solid var(--warning)">
+  <h2 style="margin:0 0 6px 0">Copy this key now</h2>
+  <div class="small muted" style="margin-bottom:10px">
+    This is the only time the full key is shown — it isn't stored anywhere retrievable. If you lose it, revoke it
+    and create a new one.
+  </div>
+  <code style="display:block;padding:10px 12px;background:var(--bg2);border-radius:8px;word-break:break-all;font-size:13px">{{ new_key }}</code>
+</div>
+{% endif %}
+
+<div class="card" style="margin-bottom:16px">
+  <h2>API Keys</h2>
+  {% if keys %}
+  <table class="table">
+    <thead><tr><th>Label</th><th>Key</th><th>Created</th><th>Last used</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+      {% for key in keys %}
+      <tr>
+        <td>{{ key.label }}</td>
+        <td><code class="small">{{ key.prefix }}…</code></td>
+        <td class="small">{{ key.created_at.strftime('%Y-%m-%d') }}</td>
+        <td class="small">{{ key.last_used_at.strftime('%Y-%m-%d %H:%M') if key.last_used_at else 'Never' }}</td>
+        <td>
+          {% if key.revoked %}<span class="badge">Revoked</span>{% else %}<span class="badge published">Active</span>{% endif %}
+        </td>
+        <td>
+          {% if not key.revoked %}
+          <form method="post" action="{{ url_for('admin.revoke_api_key', key_id=key.id) }}"
+                onsubmit="return confirm('Revoke this key? Anything using it will stop working immediately.')">
+            <button type="submit" class="btn ghost small">Revoke</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="small muted">No API keys yet.</div>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('admin.create_api_key') }}" novalidate style="margin-top:14px;display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+    {{ key_form.hidden_tag() }}
+    <div class="field" style="margin-bottom:0">
+      <label for="{{ key_form.label.id }}">New key label</label>
+      {{ key_form.label(placeholder="e.g. Moodle production") }}
+      {% for e in key_form.label.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+    </div>
+    <button type="submit" class="btn">Create Key</button>
+  </form>
+</div>
+
+<div class="card" style="margin-bottom:16px">
+  <h2>Result Webhook</h2>
+  <div class="small muted" style="margin-bottom:10px">
+    Optional. When set, a JSON payload is POSTed here every time a result is published, so your LMS doesn't have
+    to poll the API for new grades.
+  </div>
+  <form method="post" action="{{ url_for('admin.set_lms_webhook') }}" novalidate style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+    {{ webhook_form.hidden_tag() }}
+    <div class="field" style="margin-bottom:0;flex:1;min-width:260px">
+      <label for="{{ webhook_form.lms_webhook_url.id }}">Webhook URL</label>
+      {{ webhook_form.lms_webhook_url(placeholder="https://your-lms.example.edu/webhooks/exam-results", style="width:100%") }}
+      {% for e in webhook_form.lms_webhook_url.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+    </div>
+    <button type="submit" class="btn">Save</button>
+  </form>
+</div>
+
+<div class="card" id="reference">
+  <h2>API Reference</h2>
+  <div class="small muted" style="margin-bottom:10px">
+    Send an API key as <code>Authorization: Bearer &lt;key&gt;</code>. Every endpoint is scoped to this
+    organization automatically. This is a plain REST API rather than native LTI — see the note at the top of
+    <code>app/api_v1.py</code> for how to bridge it into an LTI-based Moodle/Canvas setup.
+  </div>
+  <table class="table small">
+    <thead><tr><th>Method</th><th>Endpoint</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td>GET</td><td><code>/api/v1/tests</code></td><td>List published tests</td></tr>
+      <tr><td>GET</td><td><code>/api/v1/tests/&lt;test_code&gt;</code></td><td>Test detail</td></tr>
+      <tr><td>POST</td><td><code>/api/v1/tests/&lt;test_code&gt;/enroll</code></td><td>Push a roster (create-or-fetch students, grant eligibility)</td></tr>
+      <tr><td>GET</td><td><code>/api/v1/tests/&lt;test_code&gt;/results</code></td><td>Pull results/grades, optionally <code>?since=&lt;ISO timestamp&gt;</code></td></tr>
+      <tr><td>GET</td><td><code>/api/v1/students/&lt;email&gt;/attempts</code></td><td>One student's attempts across all tests</td></tr>
+    </tbody>
+  </table>
+</div>
+{% endblock %}

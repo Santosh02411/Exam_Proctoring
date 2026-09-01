@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Branding — {{ org.name }}{% endblock %}
+{% block content %}
+<div style="margin-bottom:16px">
+  <a class="small" href="{{ url_for('organizations.view_organization', org_id=org.id) }}">&larr; {{ org.name }}</a>
+  <h1 style="margin-top:8px">Branding — {{ org.name }}</h1>
+  <div class="lead">Editable here by a platform admin, or by this organization's own admin from their Branding page.</div>
+</div>
+
+<div class="card" style="margin-bottom:16px">
+  <h2>Current Logo</h2>
+  <div style="display:flex;align-items:center;gap:16px">
+    {% if org.logo_filename %}
+    <img src="{{ url_for('branding_logo', org_id=org.id) }}" alt="{{ org.name }} logo" style="max-height:60px;max-width:200px">
+    <form method="post" action="{{ url_for('organizations.remove_org_branding_logo', org_id=org.id) }}">
+      <button type="submit" class="btn ghost small">Remove Logo</button>
+    </form>
+    {% else %}
+    <span class="small muted">No logo set — using the platform default.</span>
+    {% endif %}
+  </div>
+  <form method="post" action="{{ url_for('organizations.upload_org_branding_logo', org_id=org.id) }}" enctype="multipart/form-data" novalidate style="margin-top:12px">
+    {{ form.hidden_tag() }}
+    <div class="field">
+      <label for="{{ form.logo.id }}">Upload Logo</label>
+      {{ form.logo() }}
+      {% for e in form.logo.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+    </div>
+    <button type="submit" class="btn">Save Logo</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Primary Color</h2>
+  <div style="display:flex;align-items:center;gap:16px;margin-bottom:12px">
+    {% if org.primary_color %}
+    <span style="display:inline-block;width:24px;height:24px;border-radius:6px;background:{{ org.primary_color }};border:1px solid var(--border)"></span>
+    <span class="small">{{ org.primary_color }}</span>
+    <form method="post" action="{{ url_for('organizations.remove_org_branding_color', org_id=org.id) }}">
+      <button type="submit" class="btn ghost small">Remove Color</button>
+    </form>
+    {% else %}
+    <span class="small muted">No primary color set — using the platform default.</span>
+    {% endif %}
+  </div>
+  <form method="post" action="{{ url_for('organizations.set_org_branding_color', org_id=org.id) }}" novalidate>
+    {{ form.hidden_tag() }}
+    <div class="field">
+      <label for="{{ form.primary_color.id }}">Choose a color</label>
+      {{ form.primary_color(value=org.primary_color or '#0b6ef6') }}
+      {% for e in form.primary_color.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+    </div>
+    <button type="submit" class="btn">Save Color</button>
+  </form>
+</div>
+{% endblock %}

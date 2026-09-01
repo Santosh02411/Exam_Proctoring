@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% from "_pagination.html" import render_pagination %}
+{% block title %}Recording Storage{% endblock %}
+{% block content %}
+<h1>System Monitoring &amp; Operations</h1>
+{% include "system_ops/_nav.html" with context %}
+
+<div class="kpi-row">
+  <div class="kpi"><div class="kpi-value">{{ total_count }}</div><div class="kpi-label">Recordings</div></div>
+  <div class="kpi"><div class="kpi-value">{{ total_size }}</div><div class="kpi-label">Total Size</div></div>
+</div>
+
+<div class="card" style="margin-bottom:16px">
+  <h2>Bulk Cleanup</h2>
+  <form method="post" action="{{ url_for('system_ops.bulk_delete_recordings') }}" style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap">
+    <div class="field" style="margin:0">
+      <label for="older_than_days">Delete recordings older than (days)</label>
+      <input type="number" id="older_than_days" name="older_than_days" min="1" value="90" style="max-width:120px">
+    </div>
+    <button type="submit" class="btn ghost" onclick="return confirm('Delete all matching recordings? This cannot be undone.')">Delete Now</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Recordings ({{ pagination.total }})</h2>
+  {% if recordings %}
+  <table class="table">
+    <thead><tr><th>Attempt</th><th>Chunk</th><th>Size</th><th>Created</th><th></th></tr></thead>
+    <tbody>
+      {% for r in recordings %}
+      <tr>
+        <td class="small">#{{ r.attempt_id }} — {{ r.attempt.test.title if r.attempt else '—' }}</td>
+        <td class="small">{{ r.chunk_index }}</td>
+        <td class="small">{{ (r.file_size / 1024 / 1024)|round(2) }} MB</td>
+        <td class="small">{{ r.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td>
+          <form method="post" action="{{ url_for('system_ops.delete_recording', recording_id=r.id) }}"
+                onsubmit="return confirm('Delete this recording?')">
+            <button type="submit" class="btn ghost small">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {{ render_pagination(pagination, 'system_ops.recordings') }}
+  {% else %}
+  <div class="small">No recordings stored.</div>
+  {% endif %}
+</div>
+{% endblock %}

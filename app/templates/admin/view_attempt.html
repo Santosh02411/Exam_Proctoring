@@ -6,7 +6,7 @@
   <h1 style="margin-top:8px">{{ attempt.student.name }} — {{ attempt.test.title }}</h1>
   <div class="lead">
     <span class="badge {{ attempt.status }}">{{ attempt.status|replace('_',' ')|capitalize }}</span>
-    {% if attempt.score is not none %} · Score: {{ attempt.score }} / {{ attempt.test.total_marks() }}{% endif %}
+    {% if attempt.score is not none %} · Score: {{ attempt.score }} / {{ attempt.max_marks() }}{% endif %}
     · Violations: {{ attempt.violation_count }}
   </div>
   {% if attempt.termination_reason %}
@@ -14,13 +14,95 @@
   {% endif %}
 </div>
 
+{% if attempt.device_info or attempt.ip_address %}
+<div class="card" style="margin-bottom:16px">
+  <h2 style="margin:0 0 6px 0">Device &amp; Session</h2>
+  <div class="small muted" style="margin-bottom:8px">
+    The most recent browser/device to hold this attempt's exam session (see Exam Session Device Management) —
+    overwritten each time a device change is legitimately claimed, so this reflects the current/last owner, not
+    a full history. Device switches and blocked concurrent sessions still appear as individual entries in the
+    proctoring log below.
+  </div>
+  <table class="table" style="font-size:13px">
+    <tbody>
+      {% if attempt.ip_address %}<tr><th style="width:160px">IP address</th><td>{{ attempt.ip_address }}</td></tr>{% endif %}
+      {% set info = (attempt.device_info | from_json) if attempt.device_info else {} %}
+      {% if info.get('user_agent') %}<tr><th>Browser / user agent</th><td style="word-break:break-all">{{ info.user_agent }}</td></tr>{% endif %}
+      {% if info.get('platform') %}<tr><th>Platform</th><td>{{ info.platform }}</td></tr>{% endif %}
+      {% if info.get('screen') %}<tr><th>Screen</th><td>{{ info.screen }}</td></tr>{% endif %}
+      {% if info.get('timezone') %}<tr><th>Timezone</th><td>{{ info.timezone }}</td></tr>{% endif %}
+      {% if info.get('language') %}<tr><th>Language</th><td>{{ info.language }}</td></tr>{% endif %}
+      {% if attempt.session_started_at %}<tr><th>Session claimed at</th><td>{{ attempt.session_started_at.strftime('%Y-%m-%d %H:%M:%S') }}</td></tr>{% endif %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if risk.score > 0 %}
+<div class="card" style="margin-bottom:16px;border-left:4px solid {{ {'critical':'var(--danger)','high':'var(--danger)','medium':'var(--warning)','low':'var(--success)'}[risk.level] }}">
+  <h2 style="margin:0 0 6px 0">
+    Suspicion Score
+    <span class="badge risk-{{ risk.level }}" style="font-size:14px;padding:6px 12px">{{ risk.score }}/100 · {{ risk.level|capitalize }}</span>
+  </h2>
+  <div class="small muted" style="margin-bottom:8px">
+    A deterministic weighted score combining this attempt's violations (see the per-event weights in <code>app/proctoring.py</code>) —
+    not a trained ML model and not an automated verdict. Use it to prioritize review, not to replace it.
+  </div>
+  {% if risk.reasons or risk.signals %}
+  <div style="margin-top:10px">
+    <div class="small" style="font-weight:600;margin-bottom:4px">Why this attempt was flagged</div>
+    {% if risk.reasons %}
+    <ul style="margin:0 0 8px 0;padding-left:18px" class="small">
+      {% for reason in risk.reasons %}
+      <li>{{ reason }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    {% if risk.signals %}
+    <div class="small muted" style="margin-bottom:2px">Patterns noticed:</div>
+    <ul style="margin:0;padding-left:18px" class="small">
+      {% for signal in risk.signals %}
+      <li>{{ signal }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if timeline.entries %}
+<div class="card" style="margin-bottom:16px">
+  <h2>Behavior Timeline</h2>
+  <div class="small muted" style="margin-bottom:10px">
+    Every violation, flagged snapshot, and recording segment from this attempt, in one chronological feed.
+    Click an entry to jump the recording (if available) to that moment and highlight the matching detail below.
+  </div>
+  <ul id="behaviorTimeline" class="events-list" style="padding-left:18px;max-height:360px;overflow-y:auto">
+    {% for item in timeline.entries %}
+    <li class="{{ item.severity or '' }}" data-offset="{{ item.offset }}" data-anchor="{{ item.anchor }}"
+        style="cursor:pointer" tabindex="0" role="button">
+      [{{ '%02d:%02d:%02d'|format((item.offset // 3600)|int, ((item.offset % 3600) // 60)|int, (item.offset % 60)|int) }}]
+      {{ item.label }}
+      {% if item.detail %} — <span class="muted" style="font-weight:400">{{ item.detail }}</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
 <div class="card">
   <h2>Proctoring Log</h2>
   {% if events %}
   <ul class="events-list" style="padding-left:18px">
     {% for e in events %}
-    <li class="{{ e.severity }}">
+    <li class="{{ e.severity }}" id="event-{{ e.id }}">
       [{{ e.created_at.strftime('%H:%M:%S') }}] {{ e.event_type|replace('_',' ')|capitalize }}
+      {% if e.confidence is not none %}
+        <span class="small muted">(confidence: {{ (e.confidence * 100)|round|int }}%)</span>
+      {% else %}
+        <span class="small muted">(directly observed — not a model prediction)</span>
+      {% endif %}
       {% if e.details %} — <span class="muted" style="font-weight:400">{{ e.details }}</span>{% endif %}
     </li>
     {% endfor %}
@@ -38,7 +120,7 @@
   </div>
   <div class="wrap" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr));display:grid;gap:12px">
     {% for snap in attempt.snapshots|sort(attribute='created_at') %}
-    <div>
+    <div id="snap-{{ snap.id }}">
       <img src="{{ url_for('proctoring.serve_snapshot', snapshot_id=snap.id) }}" style="width:100%;border-radius:8px;background:#000">
       <div class="small muted" style="margin-top:4px">
         {{ snap.created_at.strftime('%H:%M:%S') }} · {{ snap.faces_detected }} face(s)
@@ -59,9 +141,11 @@
   </div>
   <div class="wrap" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr));display:grid;gap:12px">
     {% for rec in attempt.recordings|sort(attribute='chunk_index') %}
-    <div>
-      <video controls preload="none" style="width:100%;border-radius:8px;background:#000"
-             src="{{ url_for('proctoring.serve_recording', recording_id=rec.id) }}"></video>
+    {% set seg = (timeline.segments|selectattr('recording_id', 'equalto', rec.id)|first) if timeline else none %}
+    <div id="rec-{{ rec.id }}">
+      <video controls preload="none" class="timeline-video" style="width:100%;border-radius:8px;background:#000"
+             src="{{ url_for('proctoring.serve_recording', recording_id=rec.id) }}"
+             data-start="{{ seg.start if seg else 0 }}" data-end="{{ seg.end if seg else 0 }}"></video>
       <div class="small muted" style="margin-top:4px">
         Segment {{ rec.chunk_index + 1 }} · {{ rec.created_at.strftime('%H:%M:%S') }} · {{ (rec.file_size / 1024)|round(1) }} KB
       </div>
@@ -137,4 +221,64 @@
   </form>
   {% endif %}
 </div>
+
+<script>
+(function () {
+  var list = document.getElementById('behaviorTimeline');
+  if (!list) return;
+
+  var videos = Array.prototype.slice.call(document.querySelectorAll('.timeline-video'));
+
+  function highlight(el) {
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.add('timeline-highlight');
+    setTimeout(function () { el.classList.remove('timeline-highlight'); }, 2000);
+  }
+
+  function jumpTo(offsetSeconds, anchorId) {
+    // Find the recording segment whose [start, end) window contains this
+    // moment — falls back to the last segment if the offset is past the
+    // final chunk (e.g. an event logged right as the exam ended).
+    var target = null;
+    for (var i = 0; i < videos.length; i++) {
+      var start = parseFloat(videos[i].dataset.start || '0');
+      var end = parseFloat(videos[i].dataset.end || '0');
+      if (offsetSeconds >= start && offsetSeconds < end) { target = videos[i]; break; }
+    }
+    if (!target && videos.length) target = videos[videos.length - 1];
+
+    if (target) {
+      var seekTo = Math.max(offsetSeconds - parseFloat(target.dataset.start || '0'), 0);
+      var doSeek = function () {
+        try { target.currentTime = seekTo; } catch (e) { /* not seekable yet */ }
+        target.play().catch(function () {});
+      };
+      if (target.readyState >= 1) {
+        doSeek();
+      } else {
+        target.addEventListener('loadedmetadata', doSeek, { once: true });
+        target.load();
+      }
+      highlight(target.closest('div'));
+    }
+
+    var anchorEl = anchorId && document.getElementById(anchorId);
+    if (anchorEl && anchorEl !== (target && target.closest('div'))) highlight(anchorEl);
+  }
+
+  list.addEventListener('click', function (evt) {
+    var li = evt.target.closest('li[data-offset]');
+    if (!li) return;
+    jumpTo(parseFloat(li.dataset.offset), li.dataset.anchor);
+  });
+  list.addEventListener('keydown', function (evt) {
+    if (evt.key !== 'Enter' && evt.key !== ' ') return;
+    var li = evt.target.closest('li[data-offset]');
+    if (!li) return;
+    evt.preventDefault();
+    jumpTo(parseFloat(li.dataset.offset), li.dataset.anchor);
+  });
+})();
+</script>
 {% endblock %}

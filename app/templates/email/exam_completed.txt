@@ -1,0 +1,9 @@
+Hi {{ student_name }},
+
+We've received your submission for {{ test_title }}.
+
+{% if pending_grading -%}
+Part of this test needs to be graded manually, so your final score isn't ready yet — we'll email you again as soon as it is.
+{%- else -%}
+Your result is ready now — see it here: {{ result_url }}
+{%- endif %}

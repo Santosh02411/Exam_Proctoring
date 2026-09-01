@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% from "_pagination.html" import render_pagination %}
+{% block title %}System Alerts{% endblock %}
+{% block content %}
+<h1>System Monitoring &amp; Operations</h1>
+{% include "system_ops/_nav.html" with context %}
+
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:10px">
+  <div class="lead">{{ unresolved_count }} unresolved alert(s). Notified by email (and Slack, if configured) the moment they're raised.</div>
+  <form method="post" action="{{ url_for('system_ops.run_health_check_now') }}">
+    <button type="submit" class="btn">Run Health Check Now</button>
+  </form>
+</div>
+
+<div style="display:flex;gap:6px;margin-bottom:12px">
+  <a class="btn ghost small {{ 'active' if status_filter == 'unresolved' }}" href="{{ url_for('system_ops.alerts', status='unresolved') }}">Unresolved</a>
+  <a class="btn ghost small {{ 'active' if status_filter == 'resolved' }}" href="{{ url_for('system_ops.alerts', status='resolved') }}">Resolved</a>
+  <a class="btn ghost small {{ 'active' if status_filter == 'all' }}" href="{{ url_for('system_ops.alerts', status='all') }}">All</a>
+</div>
+
+<div class="card">
+  {% if entries %}
+  <table class="table">
+    <thead><tr><th>When</th><th>Type</th><th>Severity</th><th>Message</th><th>Notified</th><th></th></tr></thead>
+    <tbody>
+      {% for a in entries %}
+      <tr>
+        <td class="small">{{ a.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+        <td class="small">{{ a.alert_type|replace('_',' ')|capitalize }}</td>
+        <td><span class="badge {{ 'risk-critical' if a.severity == 'critical' else 'risk-medium' }}">{{ a.severity }}</span></td>
+        <td class="small">{{ a.message }}</td>
+        <td class="small">{{ a.notified_at.strftime('%Y-%m-%d %H:%M') if a.notified_at else 'Not sent' }}</td>
+        <td>
+          {% if not a.resolved %}
+          <form method="post" action="{{ url_for('system_ops.resolve_alert', alert_id=a.id) }}">
+            <button type="submit" class="btn ghost small">Mark Resolved</button>
+          </form>
+          {% else %}
+          <span class="badge pass">Resolved</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {{ render_pagination(pagination, 'system_ops.alerts', extra_args={'status': status_filter}) }}
+  {% else %}
+  <div class="small">No alerts recorded.</div>
+  {% endif %}
+</div>
+{% endblock %}

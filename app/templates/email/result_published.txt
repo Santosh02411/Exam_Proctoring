@@ -1,0 +1,11 @@
+Hi {{ student_name }},
+
+Your result for {{ test_title }} is ready.
+
+{% if score is not none -%}
+Score: {{ score }} / {{ total_marks }} — {{ "Passed" if passed else "Not passed" }}
+{%- else -%}
+Score: pending
+{%- endif %}
+
+View the full result here: {{ result_url }}

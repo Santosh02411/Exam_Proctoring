@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Data Retention{% endblock %}
+{% block content %}
+<h1>System Monitoring &amp; Operations</h1>
+{% include "system_ops/_nav.html" with context %}
+
+<div class="card" style="margin-bottom:16px">
+  <h2>Platform-Wide Defaults</h2>
+  <div class="small muted" style="margin-bottom:10px">
+    Every organization inherits these unless it sets its own override (from its own /admin/retention page,
+    or from that organization's detail page here). Leave a field blank to fall back to the built-in
+    config.py default. For a periodic schedule, run <code>flask apply-retention</code> from an external
+    cron/Task Scheduler entry.
+  </div>
+  <table class="table" style="margin-bottom:16px">
+    <thead><tr><th>Category</th><th>Effective Days</th><th>Source</th></tr></thead>
+    <tbody>
+      {% for category, (days, source) in effective.items() %}
+      <tr>
+        <td>{{ labels[category] }}</td>
+        <td class="small">{{ days }}</td>
+        <td>
+          {% if source == 'platform' %}<span class="badge pass">Platform override</span>
+          {% else %}<span class="badge draft">Built-in default</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <form method="post" novalidate>
+    {{ form.hidden_tag() }}
+    {% for field in [form.recording_retention_days, form.snapshot_retention_days, form.ended_login_session_retention_days, form.login_security_event_retention_days, form.activity_log_retention_days, form.notification_log_retention_days, form.error_log_retention_days] %}
+    <div class="field">
+      <label for="{{ field.id }}">{{ field.label.text }}</label>
+      {{ field(placeholder="built-in default") }}
+      {% for e in field.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+    </div>
+    {% endfor %}
+    <button type="submit" class="btn">Save Platform Defaults</button>
+  </form>
+</div>
+
+<div class="card" style="margin-bottom:16px">
+  <h2>Per-Organization Overrides</h2>
+  <div class="small muted" style="margin-bottom:10px">An organization's own admin can also set these from their own Retention Settings page.</div>
+  <table class="table">
+    <thead><tr><th>Organization</th><th></th></tr></thead>
+    <tbody>
+      {% for org in orgs %}
+      <tr>
+        <td>{{ org.name }}</td>
+        <td><a class="btn ghost small" href="{{ url_for('organizations.org_retention', org_id=org.id) }}">Edit Overrides</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h2>Run Cleanup Now</h2>
+  <div class="small muted" style="margin-bottom:10px">
+    Permanently deletes recordings, snapshots, and log entries past each organization's effective
+    retention window. Active login sessions are never deleted regardless of age.
+  </div>
+  <form method="post" action="{{ url_for('system_ops.run_retention') }}" onsubmit="return confirm('Run retention cleanup now? This permanently deletes old records and cannot be undone.')">
+    <button type="submit" class="btn">Run Retention Cleanup Now</button>
+  </form>
+</div>
+{% endblock %}

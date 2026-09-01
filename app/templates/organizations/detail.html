@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}{{ summary.org.name }}{% endblock %}
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+  <div>
+    <a class="small" href="{{ url_for('organizations.list_organizations') }}">&larr; All organizations</a>
+    <h1 style="margin-top:8px">{{ summary.org.name }}</h1>
+    <div class="lead">
+      {% if summary.org.status == 'active' %}<span class="badge pass">Active</span>{% else %}<span class="badge fail">Inactive</span>{% endif %}
+      · Created {{ summary.org.created_at.strftime('%Y-%m-%d') }}
+    </div>
+  </div>
+  <div style="display:flex;gap:8px">
+    <form method="post" action="{{ url_for('organizations.impersonate_organization', org_id=summary.org.id) }}">
+      <button type="submit" class="btn ghost">View Exam Content (Read-only)</button>
+    </form>
+    <a class="btn ghost" href="{{ url_for('organizations.org_retention', org_id=summary.org.id) }}">Retention</a>
+    <a class="btn ghost" href="{{ url_for('organizations.org_branding', org_id=summary.org.id) }}">Branding</a>
+    <a class="btn ghost" href="{{ url_for('organizations.export_organization', org_id=summary.org.id) }}">Download Data Export</a>
+    <a class="btn ghost" href="{{ url_for('organizations.export_report_csv', org_id=summary.org.id) }}">Report (CSV)</a>
+    <a class="btn ghost" href="{{ url_for('organizations.export_report_pdf', org_id=summary.org.id) }}">Report (PDF)</a>
+    <a class="btn ghost" href="{{ url_for('organizations.edit_organization', org_id=summary.org.id) }}">Edit</a>
+    <form method="post" action="{{ url_for('organizations.toggle_organization_status', org_id=summary.org.id) }}">
+      <button type="submit" class="btn ghost">{{ 'Deactivate' if summary.org.status == 'active' else 'Activate' }}</button>
+    </form>
+  </div>
+</div>
+
+<div class="kpi-row">
+  <div class="kpi"><div class="kpi-value">{{ summary.total_users }}</div><div class="kpi-label">Users</div></div>
+  <div class="kpi"><div class="kpi-value">{{ summary.total_tests }}</div><div class="kpi-label">Tests ({{ summary.published_tests }} published)</div></div>
+  <div class="kpi"><div class="kpi-value">{{ summary.total_attempts }}</div><div class="kpi-label">Attempts</div></div>
+  <div class="kpi"><div class="kpi-value">{{ summary.pass_rate ~ '%' if summary.pass_rate is not none else '—' }}</div><div class="kpi-label">Pass Rate</div></div>
+</div>
+
+<div class="card" style="margin-bottom:16px">
+  <h2>Users by Role</h2>
+  {% if summary.role_counts %}
+  <div class="small">
+    {% for role, count in summary.role_counts.items() %}<span class="badge role">{{ role }}: {{ count }}</span> {% endfor %}
+  </div>
+  {% else %}
+  <div class="small">No users yet.</div>
+  {% endif %}
+</div>
+
+<div class="card" style="margin-bottom:16px">
+  <h2>Organization Admins</h2>
+  {% if admins %}
+  <table class="table">
+    <thead><tr><th>Name</th><th>Email</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for a in admins %}
+      <tr><td>{{ a.name }}</td><td class="small">{{ a.email }}</td><td>
+        {% if a.status == 'active' %}<span class="badge pass">Active</span>{% else %}<span class="badge fail">Inactive</span>{% endif %}
+      </td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="small">No admins registered for this organization yet.</div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Recent Tests</h2>
+  {% if recent_tests %}
+  <table class="table">
+    <thead><tr><th>Title</th><th>Status</th><th>Created</th></tr></thead>
+    <tbody>
+      {% for t in recent_tests %}
+      <tr>
+        <td>{{ t.title }}</td>
+        <td><span class="badge {{ 'pass' if t.status == 'published' else 'draft' }}">{{ t.status }}</span></td>
+        <td class="small">{{ t.created_at.strftime('%Y-%m-%d') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="small">No tests created yet.</div>
+  {% endif %}
+</div>
+{% endblock %}

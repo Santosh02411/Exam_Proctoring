@@ -1,0 +1,11 @@
+<div class="tabs" style="margin-bottom:16px;display:flex;gap:6px;flex-wrap:wrap">
+  <a class="btn ghost small {{ 'active' if active == 'health' }}" href="{{ url_for('system_ops.health_dashboard') }}">Health</a>
+  <a class="btn ghost small {{ 'active' if active == 'alerts' }}" href="{{ url_for('system_ops.alerts') }}">Alerts</a>
+  <a class="btn ghost small {{ 'active' if active == 'sessions' }}" href="{{ url_for('system_ops.active_sessions') }}">Active Sessions</a>
+  <a class="btn ghost small {{ 'active' if active == 'storage' }}" href="{{ url_for('system_ops.storage_usage') }}">Storage</a>
+  <a class="btn ghost small {{ 'active' if active == 'failed' }}" href="{{ url_for('system_ops.failed_sessions') }}">Failed Sessions</a>
+  <a class="btn ghost small {{ 'active' if active == 'recordings' }}" href="{{ url_for('system_ops.recordings') }}">Recordings</a>
+  <a class="btn ghost small {{ 'active' if active == 'errors' }}" href="{{ url_for('system_ops.error_log') }}">Errors</a>
+  <a class="btn ghost small {{ 'active' if active == 'backups' }}" href="{{ url_for('system_ops.backups') }}">Backups</a>
+  <a class="btn ghost small {{ 'active' if active == 'retention' }}" href="{{ url_for('system_ops.retention_policy') }}">Retention</a>
+</div>

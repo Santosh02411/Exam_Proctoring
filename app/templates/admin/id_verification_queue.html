@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% from "_pagination.html" import render_pagination %}
+{% block title %}ID Verification{% endblock %}
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+  <div>
+    <a class="small" href="{{ url_for('admin.dashboard') }}">&larr; Dashboard</a>
+    <h1 style="margin-top:8px">ID Verification</h1>
+    <div class="small">
+      Review uploaded government/college IDs. This is separate from — and doesn't block — the automatic
+      photo-to-live-face match that actually enrolls a student; it's a human check on the document itself
+      (legible, right type, OCR fields look plausible against the roster).
+    </div>
+  </div>
+</div>
+
+<div class="kpi-row">
+  <div class="kpi"><div class="num">{{ total_pending }}</div><div class="label">Pending Review</div></div>
+</div>
+
+<div class="card">
+  <div class="actions" style="margin-bottom:16px">
+    <a class="btn small {{ 'ghost' if status_filter != 'pending' }}" href="{{ url_for('admin.id_verification_queue', status='pending') }}">Pending</a>
+    <a class="btn small {{ 'ghost' if status_filter != 'approved' }}" href="{{ url_for('admin.id_verification_queue', status='approved') }}">Approved</a>
+    <a class="btn small {{ 'ghost' if status_filter != 'rejected' }}" href="{{ url_for('admin.id_verification_queue', status='rejected') }}">Rejected</a>
+  </div>
+
+  {% if documents %}
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Student</th><th>Doc</th><th>OCR Extracted</th><th>Face Match</th><th>Liveness</th>
+        <th>Uploaded</th><th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for doc in documents %}
+      <tr>
+        <td>
+          <div style="font-weight:700">{{ doc.user.name }}</div>
+          <div class="small muted">{{ doc.user.email }}</div>
+        </td>
+        <td>
+          <a href="{{ url_for('proctoring.serve_id_document_image', doc_id=doc.id) }}" target="_blank" rel="noopener">
+            <img src="{{ url_for('proctoring.serve_id_document_image', doc_id=doc.id) }}" alt="ID photo"
+                 style="width:90px;height:60px;object-fit:cover;border-radius:6px;border:1px solid var(--border)">
+          </a>
+          <div class="small muted">{{ doc.doc_type|replace('_',' ')|capitalize }}</div>
+        </td>
+        <td class="small">
+          <div><strong>Name:</strong> {{ doc.ocr_name or '—' }}</div>
+          <div><strong>ID #:</strong> {{ doc.ocr_id_number or '—' }}</div>
+          <div><strong>DOB:</strong> {{ doc.ocr_dob or '—' }}</div>
+        </td>
+        <td class="small">
+          {% if doc.face_match_passed is none %}
+            <span class="muted">Not yet run</span>
+          {% elif doc.face_match_passed %}
+            <span class="badge active">Matched</span><br>distance {{ '%.3f'|format(doc.face_match_distance) }}
+          {% else %}
+            <span class="badge inactive">No match</span><br>distance {{ '%.3f'|format(doc.face_match_distance) }}
+          {% endif %}
+        </td>
+        <td class="small">
+          {% if doc.liveness_passed is none %}
+            <span class="muted">—</span>
+          {% elif doc.liveness_passed %}
+            <span class="badge active">Passed</span> ({{ doc.liveness_blink_count }} blink(s))
+          {% else %}
+            <span class="badge inactive">Failed</span>
+          {% endif %}
+        </td>
+        <td class="small">{{ doc.uploaded_at.strftime('%Y-%m-%d %H:%M') if doc.uploaded_at else '—' }}</td>
+        <td>
+          {% if doc.review_status == 'pending' %}
+          <div class="actions" style="flex-direction:column;align-items:flex-start;gap:6px">
+            <form class="inline" method="post" action="{{ url_for('admin.review_id_document', doc_id=doc.id) }}" style="display:flex;gap:6px;align-items:center">
+              <input type="hidden" name="decision" value="approved">
+              <input type="hidden" name="return_status" value="{{ status_filter }}">
+              <input type="text" name="notes" placeholder="Notes (optional)" class="small" style="width:140px">
+              <button type="submit" class="btn small">Approve</button>
+            </form>
+            <form class="inline" method="post" action="{{ url_for('admin.review_id_document', doc_id=doc.id) }}"
+                  onsubmit="return confirm('Reject this ID? This also revokes {{ doc.user.name }}\'s current enrollment.');" style="display:flex;gap:6px;align-items:center">
+              <input type="hidden" name="decision" value="rejected">
+              <input type="hidden" name="return_status" value="{{ status_filter }}">
+              <button type="submit" class="btn danger ghost small">Reject</button>
+            </form>
+          </div>
+          {% else %}
+          <span class="badge {{ 'active' if doc.review_status == 'approved' else 'inactive' }}">{{ doc.review_status|capitalize }}</span>
+          {% if doc.reviewer %}<div class="small muted">by {{ doc.reviewer.name }}</div>{% endif %}
+          {% if doc.review_notes %}<div class="small muted">"{{ doc.review_notes }}"</div>{% endif %}
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {{ render_pagination(pagination, 'admin.id_verification_queue', {'status': status_filter}) }}
+  {% else %}
+  <div class="small">No documents in this category.</div>
+  {% endif %}
+</div>
+{% endblock %}

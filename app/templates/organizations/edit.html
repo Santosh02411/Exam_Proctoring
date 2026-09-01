@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Edit {{ org.name }}{% endblock %}
+{% block content %}
+<div class="center-page">
+  <div class="auth-box">
+    <h2>Edit Organization</h2>
+    <form method="post" novalidate>
+      {{ form.hidden_tag() }}
+      <div class="field">
+        <label for="{{ form.name.id }}">Organization Name</label>
+        {{ form.name() }}
+        {% for e in form.name.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+      </div>
+      <div class="field">
+        <label for="{{ form.status.id }}">Status</label>
+        {{ form.status() }}
+      </div>
+      <button type="submit" class="btn" style="width:100%">Save</button>
+    </form>
+    <div class="small" style="margin-top:16px;text-align:center">
+      <a href="{{ url_for('organizations.view_organization', org_id=org.id) }}">&larr; Back to {{ org.name }}</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

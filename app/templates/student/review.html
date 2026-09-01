@@ -5,7 +5,7 @@
   <a class="small" href="{{ url_for('student.result', attempt_id=attempt.id) }}">&larr; Back to result</a>
   <h1 style="margin-top:8px">Review — {{ test.title }}</h1>
   <div class="lead">
-    Score: {{ attempt.score }} / {{ test.total_marks() }}
+    Score: {{ attempt.score }} / {{ attempt.max_marks() }}
     {% if test.negative_marks_per_wrong %}
       <span class="small muted">(negative marking: -{{ test.negative_marks_per_wrong }} per wrong answer)</span>
     {% endif %}

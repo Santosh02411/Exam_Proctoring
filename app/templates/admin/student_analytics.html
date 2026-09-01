@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}{{ student.name }} Analytics{% endblock %}
+{% block content %}
+<div style="margin-bottom:16px">
+  <a class="small" href="{{ url_for('admin.manage_users') }}">&larr; Manage Users</a>
+  <h1 style="margin-top:8px">{{ student.name }}</h1>
+  <div class="lead">{{ student.email }}</div>
+</div>
+
+<div class="card" style="margin-bottom:20px">
+  <h3 style="margin-top:0">Performance Trend</h3>
+  {% if trend %}
+  <table class="table">
+    <thead><tr><th>Test</th><th>Submitted</th><th>Score</th><th>Violations</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for row in trend %}
+      <tr>
+        <td><a href="{{ url_for('admin.view_attempt', attempt_id=row.attempt_id) }}">{{ row.test_title }}</a></td>
+        <td class="small">{{ row.submitted_at.strftime('%Y-%m-%d %H:%M') if row.submitted_at else '—' }}</td>
+        <td class="small">{{ row.score }} / {{ row.total_marks }} {{ '(' ~ row.score_pct ~ '%)' if row.score_pct is not none }}</td>
+        <td class="small">{{ row.violation_count }}</td>
+        <td><span class="badge {{ row.status }}">{{ row.status|capitalize }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if trend|length > 1 %}
+  <div class="small muted" style="margin:14px 0 6px">Score % over time</div>
+  <div style="display:flex;align-items:flex-end;gap:4px;height:80px">
+    {% for row in trend %}
+    <div title="{{ row.test_title }}: {{ row.score_pct }}%"
+         style="flex:1;background:var(--accent);border-radius:2px 2px 0 0;height:{{ row.score_pct if row.score_pct is not none else 0 }}%;min-height:2px"></div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% else %}
+  <div class="small">No finished attempts yet.</div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3 style="margin-top:0">Performance by Topic (across all tests)</h3>
+  {% if topics %}
+  {% for row in topics %}
+  <div class="bar-row">
+    <div class="bar-label">{{ row.topic }} <span class="small muted">({{ row.questions }} q)</span></div>
+    <div class="bar-track">
+      <div class="bar-fill {{ 'bad' if row.avg_pct is not none and row.avg_pct < 40 else ('warn' if row.avg_pct is not none and row.avg_pct < 70 else '') }}"
+           style="width:{{ row.avg_pct if row.avg_pct is not none else 0 }}%"></div>
+    </div>
+    <div class="bar-value">{{ (row.avg_pct ~ '%') if row.avg_pct is not none else '—' }}</div>
+  </div>
+  {% endfor %}
+  {% else %}
+  <div class="small">No finished attempts yet.</div>
+  {% endif %}
+</div>
+
+<div class="card" style="margin-top:20px;border-left:4px solid var(--danger)">
+  <h3 style="margin-top:0">Weak Areas</h3>
+  <div class="small muted" style="margin-bottom:10px">
+    Topics below 50%, or trailing this organization's average for that topic by 15 points or more.
+  </div>
+  {% if weak %}
+  <table class="table">
+    <thead><tr><th>Topic</th><th>This Student</th><th>Org Average</th><th>Gap</th></tr></thead>
+    <tbody>
+      {% for row in weak %}
+      <tr>
+        <td class="small">{{ row.topic }}</td>
+        <td class="small">{{ row.avg_pct }}%</td>
+        <td class="small">{{ (row.cohort_avg_pct ~ '%') if row.cohort_avg_pct is not none else '—' }}</td>
+        <td class="small">{{ (row.gap_vs_cohort ~ ' pts behind') if row.gap_vs_cohort is not none and row.gap_vs_cohort > 0 else '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="small">No weak areas flagged for this student.</div>
+  {% endif %}
+</div>
+{% endblock %}

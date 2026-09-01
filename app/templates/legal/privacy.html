@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Privacy Policy{% endblock %}
+{% block content %}
+<div class="card" style="max-width:800px;margin:0 auto">
+  <div class="flash flash-warning" style="margin-bottom:16px">
+    <strong>Template, not legal advice.</strong> This page accurately describes what this
+    codebase actually collects and stores today, but it is a starting draft — have it reviewed
+    by qualified legal counsel before relying on it for a real deployment. Applicable law (GDPR,
+    COPPA, state-level biometric privacy statutes such as Illinois' BIPA, etc.) depends on where
+    you operate and who your students are.
+  </div>
+
+  <h1>Privacy Policy</h1>
+  <p class="small muted">Version {{ version }}</p>
+
+  <h2>1. Account information</h2>
+  <p>
+    Name, email address, phone number, and role. Your account belongs to one organization (an
+    institution using this platform); that organization's own admins can see your account and
+    activity within their organization. Organizations cannot see each other's data.
+  </p>
+
+  <h2>2. Biometric data (face descriptor)</h2>
+  <p>
+    Before taking a proctored exam, you enroll a one-time reference photo. The photo is
+    processed in your browser to compute a 128-number mathematical descriptor of your face; the
+    photo itself is never uploaded or stored — only that descriptor is sent to and kept by the
+    server. During an exam, your live camera feed is compared to this stored descriptor (both in
+    the browser and, if you upload a government/institutional ID, by the server independently)
+    to help confirm the person taking the exam is the person who enrolled. This descriptor cannot
+    be reversed back into a photo, but it is still biometric data and is treated as sensitive.
+  </p>
+
+  <h2>3. ID documents (if enabled)</h2>
+  <p>
+    If your institution enables enhanced identity verification, you may be asked to upload a
+    photo of a government or institutional ID. The server runs OCR on it to extract identifying
+    text and compares its photo to your live camera feed. The uploaded image is stored so it can
+    be reviewed by an administrator if needed; a re-upload replaces the previous one.
+  </p>
+
+  <h2>4. Exam recordings and snapshots</h2>
+  <p>
+    During a proctored exam, your webcam and microphone are recorded in short chunks and
+    uploaded for your institution's later review. Separately, periodic camera snapshots are
+    analyzed automatically on the server; a snapshot image is only <em>saved</em> when that
+    analysis flags something unusual (e.g., no face or multiple faces detected) — routine
+    snapshots that don't trigger a flag are not kept.
+  </p>
+
+  <h2>5. Proctoring events and answer similarity</h2>
+  <p>
+    Events like leaving the exam tab, exiting fullscreen, or unusual audio are logged against
+    your attempt and visible to your institution's admins/examiners/proctors. If you submit a
+    descriptive or coding answer, it may be automatically compared to other students' answers to
+    the same question for similarity, and a suspiciously similar pair may be flagged for an
+    examiner's review.
+  </p>
+
+  <h2>6. Login and security data</h2>
+  <p>
+    Each login records the IP address and browser/device used, to support account security (for
+    example, detecting a login from an unfamiliar device or location, and limiting an account to
+    one active session at a time). This data is visible to your organization's admins and, in
+    aggregate, to the platform operator.
+  </p>
+
+  <h2>7. How long data is kept</h2>
+  <p>
+    Exam recordings, snapshots, login history, and various activity logs are each kept for a
+    configured retention period and then deleted automatically — by default, recordings and
+    snapshots for 90 days, and login/security/activity logs for 180–365 days, though your
+    organization or the platform operator may configure different windows. Your enrolled face
+    descriptor and ID document are kept as long as your account remains active with identity
+    verification enabled.
+  </p>
+
+  <h2>8. Who can see your data</h2>
+  <p>
+    Your own organization's admins, examiners, and proctors (as relevant to their role) — never
+    another organization's. The platform operator does not have standing access to any
+    organization's exam content, but may, for support purposes, use a logged, read-only,
+    time-limited view of an organization's exam content at that organization's request.
+  </p>
+
+  <h2>9. Your choices</h2>
+  <p>
+    Proctored exams require camera/microphone access and face enrollment to start; declining
+    means you can't take a proctored exam through this service. Contact your institution's
+    administrator to request access to, correction of, or deletion of your data, subject to
+    what your institution needs to retain for academic-integrity or record-keeping purposes.
+  </p>
+
+  <h2>10. Contact</h2>
+  <p>
+    For privacy questions, contact your institution's administrator, or the operator of this
+    platform.
+  </p>
+</div>
+{% endblock %}

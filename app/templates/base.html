@@ -6,6 +6,14 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  {% if org_branding and org_branding.primary_color %}
+  <style>
+    /* Org-level branding override (see app.branding) — applied on top of
+       the platform's default theme, both light and dark, so an org's
+       accent color survives a theme switch. */
+    :root, [data-theme="dark"] { --primary: {{ org_branding.primary_color }}; }
+  </style>
+  {% endif %}
   <script>
     // Applied before first paint (and before the stylesheet above finishes
     // loading, since this is inline) so switching themes never flashes the
@@ -24,23 +32,54 @@
   {% if current_user.is_authenticated %}
   <nav class="topnav">
     <div class="topnav-inner">
-      <a class="brand" href="{{ url_for('index') }}">🛡️ Exam Proctoring</a>
-      <div class="nav-links">
-        {% if current_user.role in ('admin', 'examiner') %}
+      <a class="brand" href="{{ url_for('index') }}">
+        {% if org_branding and org_branding.logo_url %}
+          <img src="{{ org_branding.logo_url }}" alt="{{ org_branding.name }}" class="brand-logo">
+        {% else %}
+          🛡️ Exam Proctoring
+        {% endif %}
+      </a>
+      <button type="button" class="nav-toggle" id="navToggle" aria-label="Open menu" aria-expanded="false" aria-controls="navLinks">
+        <span></span><span></span><span></span>
+      </button>
+      <div class="nav-links" id="navLinks">
+        {% if current_user.role == 'super_admin' and not session.get('impersonate_org_id') %}
+          <a href="{{ url_for('organizations.list_organizations') }}">Organizations</a>
+          <a href="{{ url_for('system_ops.health_dashboard') }}">Operations</a>
+        {% elif current_user.role in ('admin', 'examiner') or (current_user.role == 'super_admin' and session.get('impersonate_org_id')) %}
           <a href="{{ url_for('admin.dashboard') }}">Dashboard</a>
           <a href="{{ url_for('admin.manage_tests') }}">Manage Tests</a>
-          <a href="{{ url_for('admin.create_test') }}">+ New Test</a>
+          {% if not session.get('impersonate_org_id') %}<a href="{{ url_for('admin.create_test') }}">+ New Test</a>{% endif %}
           <a href="{{ url_for('admin.manage_bank') }}">Question Bank</a>
           <a href="{{ url_for('admin.proctor_queue') }}">Review Queue</a>
+          <a href="{{ url_for('admin.analytics_overview') }}">Analytics</a>
           {% if current_user.role == 'admin' %}
             <a href="{{ url_for('admin.manage_users') }}">Manage Users</a>
+            <a href="{{ url_for('admin.id_verification_queue') }}">ID Verification</a>
+            <a href="{{ url_for('admin.notification_history') }}">Notifications</a>
             <a href="{{ url_for('admin.activity_log') }}">Activity Log</a>
+            <a href="{{ url_for('admin.security_log') }}">Security</a>
+            <a href="{{ url_for('admin.retention_settings') }}">Retention</a>
+            <a href="{{ url_for('admin.org_report') }}">Org Report</a>
+            <a href="{{ url_for('admin.branding_settings') }}">Branding</a>
+            <a href="{{ url_for('admin.api_keys') }}">API Access</a>
           {% endif %}
         {% elif current_user.role == 'proctor' %}
           <a href="{{ url_for('admin.proctor_queue') }}">Review Queue</a>
+          <a href="{{ url_for('admin.analytics_overview') }}">Analytics</a>
         {% else %}
           <a href="{{ url_for('student.dashboard') }}">My Tests</a>
-          <a href="{{ url_for('student.enroll_face') }}">Enroll Face</a>
+          <a href="{{ url_for('student.enroll_face') }}">Identity Verification</a>
+        {% endif %}
+        {% if current_user.role in ('admin', 'examiner', 'proctor') %}
+        <div style="position:relative">
+          <button type="button" class="proctor-alert-bell" id="proctorAlertBell" aria-label="Live proctor alerts" title="Live proctor alerts">
+            🔔<span class="proctor-alert-badge" id="proctorAlertBadge" style="display:none">0</span>
+          </button>
+          <div class="proctor-alert-panel" id="proctorAlertPanel">
+            <div class="proctor-alert-empty" id="proctorAlertEmpty">No live alerts yet. You'll be notified here the moment a high-severity event happens during an active exam.</div>
+          </div>
+        </div>
         {% endif %}
         <a href="{{ url_for('profile.view_profile') }}">Profile</a>
         <button type="button" class="theme-toggle" id="themeToggle" aria-pressed="false" aria-label="Switch to dark mode">
@@ -58,6 +97,15 @@
   {% endif %}
 
   <main class="page" id="mainContent">
+    {% if session.get('impersonate_org_id') and current_user.is_authenticated and current_user.role == 'super_admin' %}
+    <div class="flash flash-warning" style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px">
+      <span>Read-only support view — viewing an organization's exam content as a platform admin. No edits, deletes, or user/security changes are possible while impersonating.</span>
+      <form method="post" action="{{ url_for('organizations.stop_impersonating') }}" style="margin:0">
+        <button type="submit" class="btn ghost small">Stop Impersonating</button>
+      </form>
+    </div>
+    {% endif %}
+
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         <div class="flash-wrap" role="status" aria-live="polite">
@@ -70,6 +118,44 @@
 
     {% block content %}{% endblock %}
   </main>
+
+  {% if current_user.is_authenticated and current_user.role in ('admin', 'examiner', 'proctor') %}
+  <div class="proctor-alert-toast-wrap" id="proctorAlertToastWrap" aria-live="polite"></div>
+  {% endif %}
+
+  <footer class="site-footer">
+    <a href="{{ url_for('legal.terms') }}">Terms of Service</a>
+    <span aria-hidden="true">·</span>
+    <a href="{{ url_for('legal.privacy') }}">Privacy Policy</a>
+  </footer>
+
+  <script>
+    (function () {
+      // Mobile-Friendly nav: below the .nav-toggle breakpoint, the link
+      // list is hidden by default and this button reveals it — desktop
+      // never sees the toggle at all (hidden in CSS), so this only wires
+      // up behavior that's actually reachable on a narrow screen.
+      var toggle = document.getElementById('navToggle');
+      var links = document.getElementById('navLinks');
+      if (!toggle || !links) return;
+
+      toggle.addEventListener('click', function () {
+        var open = links.classList.toggle('open');
+        toggle.setAttribute('aria-expanded', String(open));
+        toggle.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+      });
+      // Tapping a nav link (i.e. actually navigating away) should close
+      // the panel rather than leaving it open for whenever the user comes
+      // back — otherwise the very first thing they'd see on the next page
+      // is their own menu still covering the screen.
+      links.addEventListener('click', function (evt) {
+        if (evt.target.tagName === 'A') {
+          links.classList.remove('open');
+          toggle.setAttribute('aria-expanded', 'false');
+        }
+      });
+    })();
+  </script>
 
   <script>
     (function () {
@@ -95,5 +181,98 @@
       });
     })();
   </script>
+
+  {% if current_user.is_authenticated and current_user.role in ('admin', 'examiner', 'proctor') %}
+  <script>
+    (function () {
+      var bell = document.getElementById('proctorAlertBell');
+      var badge = document.getElementById('proctorAlertBadge');
+      var panel = document.getElementById('proctorAlertPanel');
+      var emptyMsg = document.getElementById('proctorAlertEmpty');
+      var toastWrap = document.getElementById('proctorAlertToastWrap');
+      if (!bell || !panel || !toastWrap) return;
+
+      var unread = 0;
+      var MAX_PANEL_ITEMS = 20;
+
+      function setBadge() {
+        if (unread > 0) {
+          badge.style.display = 'flex';
+          badge.textContent = unread > 99 ? '99+' : String(unread);
+        } else {
+          badge.style.display = 'none';
+        }
+      }
+
+      function addPanelItem(alert) {
+        if (emptyMsg) { emptyMsg.remove(); emptyMsg = null; }
+        var item = document.createElement('a');
+        item.className = 'proctor-alert-item';
+        item.href = alert.view_url;
+        item.style.display = 'block';
+        item.style.color = 'inherit';
+        item.style.textDecoration = 'none';
+        item.innerHTML =
+          '<div style="font-weight:700">' + alert.label + '</div>' +
+          '<div class="muted" style="margin-top:2px">' + alert.student_name + ' · ' + alert.test_title + '</div>' +
+          '<div class="muted" style="margin-top:2px">' + alert.created_at + '</div>';
+        panel.insertBefore(item, panel.firstChild);
+        while (panel.children.length > MAX_PANEL_ITEMS) {
+          panel.removeChild(panel.lastChild);
+        }
+      }
+
+      function showToast(alert) {
+        var toast = document.createElement('div');
+        toast.className = 'proctor-alert-toast';
+        toast.innerHTML =
+          '<div style="font-weight:700">⚠ ' + alert.label + '</div>' +
+          '<div class="muted" style="margin-top:2px">' + alert.student_name + ' · ' + alert.test_title + '</div>' +
+          '<a href="' + alert.view_url + '" style="display:inline-block;margin-top:6px;font-weight:700">View attempt →</a>';
+        toastWrap.appendChild(toast);
+        setTimeout(function () {
+          toast.style.transition = 'opacity .4s';
+          toast.style.opacity = '0';
+          setTimeout(function () { toast.remove(); }, 400);
+        }, 8000);
+      }
+
+      bell.addEventListener('click', function () {
+        panel.classList.toggle('open');
+        if (panel.classList.contains('open')) {
+          unread = 0;
+          setBadge();
+        }
+      });
+      document.addEventListener('click', function (evt) {
+        if (!panel.classList.contains('open')) return;
+        if (evt.target === bell || bell.contains(evt.target) || panel.contains(evt.target)) return;
+        panel.classList.remove('open');
+      });
+
+      // Live Proctor Alerts (see app.admin.proctor_alerts_stream): a
+      // long-lived SSE connection that pushes high-severity proctoring
+      // events the moment they're logged for any exam in progress in this
+      // organization. The stream ends on its own every so often (see
+      // PROCTOR_ALERT_STREAM_SECONDS server-side); EventSource reconnects
+      // automatically and resumes via Last-Event-ID, so nothing is missed
+      // or repeated across reconnects.
+      if (typeof EventSource === 'undefined') return;
+      var source = new EventSource("{{ url_for('admin.proctor_alerts_stream') }}");
+      source.onmessage = function (evt) {
+        var alert;
+        try { alert = JSON.parse(evt.data); } catch (e) { return; }
+        unread += 1;
+        setBadge();
+        addPanelItem(alert);
+        showToast(alert);
+      };
+      source.onerror = function () {
+        // EventSource retries on its own (per the "retry:" hint the server
+        // sends); nothing to do here beyond letting it reconnect quietly.
+      };
+    })();
+  </script>
+  {% endif %}
 </body>
 </html>

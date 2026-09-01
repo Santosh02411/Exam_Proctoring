@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% from "_pagination.html" import render_pagination %}
+{% block title %}Active Sessions{% endblock %}
+{% block content %}
+<h1>System Monitoring &amp; Operations</h1>
+{% include "system_ops/_nav.html" with context %}
+
+<div class="card">
+  <h2>Active Sessions ({{ pagination.total }})</h2>
+  <div class="small muted" style="margin-bottom:10px">Every currently-active login session across all organizations.</div>
+  {% if sessions %}
+  <table class="table">
+    <thead><tr><th>User</th><th>Organization</th><th>IP Address</th><th>Device</th><th>Signed in</th><th>Last seen</th></tr></thead>
+    <tbody>
+      {% for s in sessions %}
+      <tr>
+        <td class="small">{{ s.user.name }} <span class="badge role">{{ s.user.role }}</span></td>
+        <td class="small">{{ s.user.organization.name if s.user.organization else '—' }}</td>
+        <td class="small">{{ s.ip_address }}</td>
+        <td class="small">{{ s.user_agent[:50] if s.user_agent else '—' }}</td>
+        <td class="small">{{ s.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+        <td class="small">{{ s.last_seen_at.strftime('%Y-%m-%d %H:%M:%S') if s.last_seen_at else '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {{ render_pagination(pagination, 'system_ops.active_sessions') }}
+  {% else %}
+  <div class="small">No active sessions.</div>
+  {% endif %}
+</div>
+{% endblock %}

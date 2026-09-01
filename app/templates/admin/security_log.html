@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% from "_pagination.html" import render_pagination %}
+{% block title %}Security Log{% endblock %}
+{% block content %}
+<div style="margin-bottom:16px">
+  <a class="small" href="{{ url_for('admin.dashboard') }}">&larr; Dashboard</a>
+  <h1 style="margin-top:8px">Account Security</h1>
+  <div class="lead">Login sessions, devices, and IPs across all accounts, plus anything unusual detected on login.</div>
+</div>
+
+<div class="card" style="margin-bottom:16px">
+  <h2>Currently Active Sessions</h2>
+  <div class="small muted" style="margin-bottom:10px">
+    At most one active session per account when single-session enforcement is on — a new login ends any
+    other active session for that account automatically.
+  </div>
+  {% if active_sessions %}
+  <table class="table">
+    <thead><tr><th>User</th><th>IP Address</th><th>Device</th><th>Signed in</th><th>Last seen</th></tr></thead>
+    <tbody>
+      {% for s in active_sessions %}
+      <tr>
+        <td class="small">{{ s.user.name }} <span class="badge role">{{ s.user.role }}</span></td>
+        <td class="small">{{ s.ip_address }}</td>
+        <td class="small">{{ s.user_agent[:60] if s.user_agent else '—' }}</td>
+        <td class="small">{{ s.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+        <td class="small">{{ s.last_seen_at.strftime('%Y-%m-%d %H:%M:%S') if s.last_seen_at else '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="small">No active sessions.</div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Login Security Events</h2>
+  <div class="small muted" style="margin-bottom:10px">
+    New device, new IP/location, a concurrent login that ended another session, or a suspected VPN/proxy
+    (if enabled) — a signal for review, not an automated block.
+  </div>
+  {% if events %}
+  <table class="table">
+    <thead><tr><th>When</th><th>User</th><th>Event</th><th>Details</th></tr></thead>
+    <tbody>
+      {% for e in events %}
+      <tr>
+        <td class="small">{{ e.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+        <td class="small">{{ e.user.name }}</td>
+        <td>
+          <span class="badge {{ 'risk-high' if e.event_type == 'vpn_or_proxy_suspected' else 'risk-medium' if e.event_type in ('new_device', 'new_location') else 'draft' }}">
+            {{ e.event_type|replace('_',' ')|capitalize }}
+          </span>
+        </td>
+        <td class="small">{{ e.details or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {{ render_pagination(pagination, 'admin.security_log') }}
+  {% else %}
+  <div class="small">No security events recorded yet.</div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -33,10 +33,34 @@
         {{ form.role() }}
       </div>
       <div class="field">
+        <label for="{{ form.org_choice.id }}">Organization</label>
+        {{ form.org_choice() }}
+        <div class="hint">Join your institution's existing account, or (Admin only) create a new one for it.</div>
+        {% for e in form.org_choice.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+      </div>
+      <div class="field" id="new-org-field">
+        <label for="{{ form.new_org_name.id }}">New organization name</label>
+        {{ form.new_org_name(placeholder="e.g. Springfield College of Engineering") }}
+        {% for e in form.new_org_name.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+      </div>
+      <div class="field">
         <label for="{{ form.password.id }}">Create Password</label>
         {{ form.password(placeholder="Create Password") }}
         <div class="hint">At least 8 characters, with a lowercase letter, an uppercase letter, a number, and a special character.</div>
         {% for e in form.password.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+      </div>
+      <div class="field">
+        <label class="opt" style="display:flex;align-items:flex-start;gap:8px">
+          {{ form.accepted_terms(required=true) }}
+          <span>
+            I have read and agree to the
+            <a href="{{ url_for('legal.terms') }}" target="_blank" rel="noopener">Terms of Service</a>
+            and
+            <a href="{{ url_for('legal.privacy') }}" target="_blank" rel="noopener">Privacy Policy</a>,
+            including that this app collects a biometric face descriptor and records webcam/mic
+            during proctored exams.
+          </span>
+        </label>
       </div>
       <button type="submit" class="btn" style="width:100%">Register</button>
     </form>
@@ -45,4 +69,17 @@
     </div>
   </div>
 </div>
+<script>
+  (function () {
+    var orgField = document.getElementById("new-org-field");
+    var orgSelect = document.getElementById("{{ form.org_choice.id }}");
+    function sync() {
+      orgField.style.display = orgSelect.value === "__new__" ? "block" : "none";
+    }
+    if (orgSelect) {
+      orgSelect.addEventListener("change", sync);
+      sync();
+    }
+  })();
+</script>
 {% endblock %}

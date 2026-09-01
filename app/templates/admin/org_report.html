@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Organization Report{% endblock %}
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+  <div>
+    <h1>Organization Report — {{ summary.org.name }}</h1>
+    <div class="lead">A snapshot of your organization's usage — users, tests, and exam outcomes.</div>
+  </div>
+  <div style="display:flex;gap:8px">
+    <a class="btn ghost" href="{{ url_for('admin.export_org_report_csv') }}">Export CSV</a>
+    <a class="btn ghost" href="{{ url_for('admin.export_org_report_pdf') }}">Export PDF</a>
+  </div>
+</div>
+
+<div class="kpi-row">
+  <div class="kpi"><div class="kpi-value">{{ summary.total_users }}</div><div class="kpi-label">Users</div></div>
+  <div class="kpi"><div class="kpi-value">{{ summary.total_tests }}</div><div class="kpi-label">Tests ({{ summary.published_tests }} published)</div></div>
+  <div class="kpi"><div class="kpi-value">{{ summary.total_attempts }}</div><div class="kpi-label">Attempts</div></div>
+  <div class="kpi"><div class="kpi-value">{{ summary.pass_rate ~ '%' if summary.pass_rate is not none else '—' }}</div><div class="kpi-label">Pass Rate</div></div>
+</div>
+
+<div class="card">
+  <h2>Users by Role</h2>
+  {% if summary.role_counts %}
+  <div class="small">
+    {% for role, count in summary.role_counts.items() %}<span class="badge role">{{ role }}: {{ count }}</span> {% endfor %}
+  </div>
+  {% else %}
+  <div class="small">No users yet.</div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Storage Usage{% endblock %}
+{% block content %}
+<h1>System Monitoring &amp; Operations</h1>
+{% include "system_ops/_nav.html" with context %}
+
+<div class="card" style="margin-bottom:16px">
+  <h2>Disk</h2>
+  <div class="small">{{ used_disk }} used of {{ total_disk }} total ({{ free_disk }} free) — {{ disk_pct_used ~ '%' if disk_pct_used is not none else '—' }} used</div>
+</div>
+
+<div class="card" style="margin-bottom:16px">
+  <h2>Database</h2>
+  <div class="small">{{ db_size }}</div>
+</div>
+
+<div class="card">
+  <h2>Storage by Category</h2>
+  <table class="table">
+    <thead><tr><th>Category</th><th>Size on Disk</th><th>Records</th></tr></thead>
+    <tbody>
+      {% for label, size, count in breakdown %}
+      <tr><td>{{ label }}</td><td class="small">{{ size }}</td><td class="small">{{ count }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <div class="small muted" style="margin-top:10px">
+    Manage recording storage from the <a href="{{ url_for('system_ops.recordings') }}">Recordings</a> page,
+    or set up automatic cleanup on the <a href="{{ url_for('system_ops.retention_policy') }}">Retention</a> page.
+  </div>
+</div>
+{% endblock %}

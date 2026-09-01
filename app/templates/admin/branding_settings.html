@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Branding{% endblock %}
+{% block content %}
+<div style="margin-bottom:16px">
+  <h1>Branding — {{ org.name }}</h1>
+  <div class="lead">
+    Set a logo and primary accent color applied to your organization's own users. This never
+    changes the login/registration pages, since there's no way to know which organization an
+    anonymous visitor belongs to before they sign in.
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:16px">
+  <h2>Current Logo</h2>
+  <div style="display:flex;align-items:center;gap:16px">
+    {% if org.logo_filename %}
+    <img src="{{ url_for('branding_logo', org_id=org.id) }}" alt="{{ org.name }} logo" style="max-height:60px;max-width:200px">
+    <form method="post" action="{{ url_for('admin.remove_branding_logo') }}">
+      <button type="submit" class="btn ghost small">Remove Logo</button>
+    </form>
+    {% else %}
+    <span class="small muted">No logo set — using the platform default.</span>
+    {% endif %}
+  </div>
+  <form method="post" action="{{ url_for('admin.upload_branding_logo') }}" enctype="multipart/form-data" novalidate style="margin-top:12px">
+    {{ form.hidden_tag() }}
+    <div class="field">
+      <label for="{{ form.logo.id }}">Upload Logo</label>
+      {{ form.logo() }}
+      {% for e in form.logo.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+    </div>
+    <button type="submit" class="btn">Save Logo</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Primary Color</h2>
+  <div style="display:flex;align-items:center;gap:16px;margin-bottom:12px">
+    {% if org.primary_color %}
+    <span style="display:inline-block;width:24px;height:24px;border-radius:6px;background:{{ org.primary_color }};border:1px solid var(--border)"></span>
+    <span class="small">{{ org.primary_color }}</span>
+    <form method="post" action="{{ url_for('admin.remove_branding_color') }}">
+      <button type="submit" class="btn ghost small">Remove Color</button>
+    </form>
+    {% else %}
+    <span class="small muted">No primary color set — using the platform default.</span>
+    {% endif %}
+  </div>
+  <form method="post" action="{{ url_for('admin.set_branding_color') }}" novalidate>
+    {{ form.hidden_tag() }}
+    <div class="field">
+      <label for="{{ form.primary_color.id }}">Choose a color</label>
+      {{ form.primary_color(value=org.primary_color or '#0b6ef6') }}
+      {% for e in form.primary_color.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+    </div>
+    <button type="submit" class="btn">Save Color</button>
+  </form>
+</div>
+
+<div class="card" style="margin-top:16px">
+  <h2>Certificate Signatory</h2>
+  <div class="small muted" style="margin-bottom:12px">
+    Shown on every certificate this organization issues (see the "Issue a downloadable certificate" option on
+    a test's settings) — your logo and primary color above are used on certificates too.
+  </div>
+  <form method="post" action="{{ url_for('admin.set_certificate_settings') }}" novalidate>
+    {{ certificate_form.hidden_tag() }}
+    <div class="field">
+      <label for="{{ certificate_form.certificate_signatory_name.id }}">Signatory name</label>
+      {{ certificate_form.certificate_signatory_name(placeholder="e.g. Dr. Jane Smith") }}
+      {% for e in certificate_form.certificate_signatory_name.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+    </div>
+    <div class="field">
+      <label for="{{ certificate_form.certificate_signatory_title.id }}">Signatory title</label>
+      {{ certificate_form.certificate_signatory_title(placeholder="e.g. Director of Assessments") }}
+      {% for e in certificate_form.certificate_signatory_title.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+    </div>
+    <button type="submit" class="btn">Save</button>
+  </form>
+</div>
+{% endblock %}

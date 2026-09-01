@@ -74,6 +74,15 @@
       </div>
     </div>
     <div class="field">
+      <label for="{{ form.question_pool_size.id }}">Question pool size (optional)</label>
+      {{ form.question_pool_size(placeholder="e.g. 20") }}
+      <div class="hint">
+        Draw this many questions at random per student out of the full question set added below,
+        instead of giving everyone every question. Leave blank to give every student all questions.
+      </div>
+      {% for e in form.question_pool_size.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+    </div>
+    <div class="field">
       <label class="opt" style="display:flex;align-items:center;gap:8px">
         {{ form.randomize_questions() }} <span>Shuffle question order per student</span>
       </label>
@@ -93,6 +102,12 @@
         {{ form.partial_credit_multi() }} <span>Award partial credit on multiple-choice questions</span>
       </label>
       <div class="hint">Instead of all-or-nothing: proportional to correct picks minus incorrect picks, floored at zero.</div>
+    </div>
+    <div class="field">
+      <label class="opt" style="display:flex;align-items:center;gap:8px">
+        {{ form.certificate_enabled() }} <span>Issue a downloadable certificate to students who pass</span>
+      </label>
+      <div class="hint">Set your organization's certificate signatory under Admin &rarr; Branding.</div>
     </div>
     <button type="submit" class="btn">Create Test</button>
   </form>

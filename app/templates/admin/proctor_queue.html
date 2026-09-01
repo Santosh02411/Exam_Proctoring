@@ -2,29 +2,42 @@
 {% from "_pagination.html" import render_pagination %}
 {% block title %}Review Queue{% endblock %}
 {% block content %}
-<div style="margin-bottom:16px">
-  <h1>Review Queue</h1>
-  <div class="lead">Attempts that were terminated or flagged for proctoring violations, across every test.</div>
+<div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px;margin-bottom:16px">
+  <div>
+    <h1>Review Queue</h1>
+    <div class="lead">Attempts that were terminated or flagged for proctoring violations, across every test.</div>
+  </div>
+  <div class="actions">
+    <a class="btn small {{ 'ghost' if sort != 'risk' }}" href="{{ url_for('admin.proctor_queue', sort='risk') }}">Sort: Highest Risk</a>
+    <a class="btn small {{ 'ghost' if sort != 'recent' }}" href="{{ url_for('admin.proctor_queue', sort='recent') }}">Sort: Most Recent</a>
+  </div>
 </div>
 
 <div class="card">
   {% if attempts %}
-  <table class="table">
-    <thead><tr><th>Student</th><th>Test</th><th>Status</th><th>Violations</th><th>Started</th><th></th></tr></thead>
+  <table class="table responsive-table">
+    <thead><tr><th>Student</th><th>Test</th><th>Status</th><th>Violations</th><th>Suspicion Score</th><th>Started</th><th></th></tr></thead>
     <tbody>
       {% for a in attempts %}
       <tr>
-        <td style="font-weight:700">{{ a.student.name }}<br><span class="small muted">{{ a.student.email }}</span></td>
-        <td class="small">{{ a.test.title }}</td>
-        <td><span class="badge {{ a.status }}">{{ a.status|replace('_',' ')|capitalize }}</span></td>
-        <td>{{ a.violation_count }}</td>
-        <td class="small">{{ a.started_at.strftime('%Y-%m-%d %H:%M') }}</td>
-        <td><a class="btn ghost small" href="{{ url_for('admin.view_attempt', attempt_id=a.id) }}">Review</a></td>
+        <td data-label="Student" style="font-weight:700">{{ a.student.name }}<br><span class="small muted">{{ a.student.email }}</span></td>
+        <td data-label="Test" class="small">{{ a.test.title }}</td>
+        <td data-label="Status"><span class="badge {{ a.status }}">{{ a.status|replace('_',' ')|capitalize }}</span></td>
+        <td data-label="Violations">{{ a.violation_count }}</td>
+        <td data-label="Suspicion Score">
+          <span class="badge risk-{{ a.risk_level }}">{{ a.suspicion_score }}/100 · {{ a.risk_level|capitalize }}</span>
+          {% if top_reasons.get(a.id) %}
+          <div class="small muted" style="margin-top:2px">{{ top_reasons[a.id] }}</div>
+          {% endif %}
+        </td>
+        <td data-label="Started" class="small">{{ a.started_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td data-label="" style="justify-content:flex-end"><a class="btn ghost small" href="{{ url_for('admin.view_attempt', attempt_id=a.id) }}">Review</a></td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
-  {{ render_pagination(pagination, 'admin.proctor_queue', {}) }}
+  <div class="small muted" style="margin-top:8px">Suspicion Score is a deterministic weighted score from the violation log (see the attempt detail page for the breakdown) — not a trained ML verdict, and not a substitute for human review.</div>
+  {{ render_pagination(pagination, 'admin.proctor_queue', {'sort': sort}) }}
   {% else %}
   <div class="small">Nothing flagged right now — no terminated or violation-flagged attempts.</div>
   {% endif %}

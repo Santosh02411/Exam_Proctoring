@@ -8,9 +8,9 @@
 <div class="card" style="margin-top:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
   <div>
     <strong>Identity verification not set up.</strong>
-    <div class="small muted">Enroll your face once so we can verify it's you before and during proctored tests.</div>
+    <div class="small muted">Upload an ID and verify your face once so we can confirm it's you before and during proctored tests.</div>
   </div>
-  <a class="btn" href="{{ url_for('student.enroll_face') }}">Enroll Face</a>
+  <a class="btn" href="{{ url_for('student.enroll_face') }}">Verify Identity</a>
 </div>
 {% endif %}
 
@@ -41,7 +41,7 @@
         <td class="small">{{ row.completed_count }} / {{ test.max_attempts }}{% if row.eligibility.extra_attempts %}<span class="badge draft" style="margin-left:4px">+{{ row.eligibility.extra_attempts }} extra</span>{% endif %} used</td>
         <td class="small">
           {% if attempt and attempt.score is not none %}
-            {{ attempt.score }} / {{ test.total_marks() }}
+            {{ attempt.score }} / {{ attempt.max_marks() }}
             {% if attempt.score >= test.passing_marks %}<span class="badge pass">Pass</span>{% else %}<span class="badge fail">Fail</span>{% endif %}
           {% else %}—{% endif %}
         </td>

@@ -8,11 +8,16 @@
     <div class="small">Code: <strong>{{ test.test_code }}</strong> · <span class="badge {{ test.status }}">{{ test.status|capitalize }}</span></div>
   </div>
   <div class="actions">
+    {% if session.get('impersonate_org_id') %}
+    <span class="badge draft">Read-only support view</span>
+    <a class="btn" href="{{ url_for('admin.view_results', test_id=test.id) }}">View Results</a>
+    {% else %}
     <a class="btn ghost" href="{{ url_for('admin.edit_test', test_id=test.id) }}">Edit</a>
     <a class="btn ghost" href="{{ url_for('admin.manage_sections', test_id=test.id) }}">Sections</a>
     <a class="btn ghost" href="{{ url_for('admin.add_question', test_id=test.id) }}">Add Questions</a>
     <a class="btn ghost" href="{{ url_for('admin.assign_students', test_id=test.id) }}">Assign Students</a>
     <a class="btn" href="{{ url_for('admin.view_results', test_id=test.id) }}">View Results</a>
+    {% endif %}
   </div>
 </div>
 
