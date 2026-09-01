@@ -35,9 +35,16 @@ class TestConfig:
 
     PASSWORD_MIN_LENGTH = 8
 
+    IDENTITY_SPOTCHECK_MIN_SECONDS = 180
+    IDENTITY_SPOTCHECK_MAX_SECONDS = 420
+    ID_DOCUMENT_MAX_BYTES = 8 * 1024 * 1024
+    ID_DOCUMENT_ALLOWED_EXTS = {"png", "jpg", "jpeg", "webp"}
+    EXAM_REMINDER_WINDOW_MINUTES = 60
+
     _base = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "instance")
     SNAPSHOT_UPLOAD_DIR = os.path.join(_base, "snapshots")
     RECORDINGS_DIR = os.path.join(_base, "recordings")
+    ID_DOCUMENT_UPLOAD_DIR = os.path.join(_base, "id_documents")
 
 
 @pytest.fixture()
@@ -54,6 +61,7 @@ def app():
 
     shutil.rmtree(application.config["SNAPSHOT_UPLOAD_DIR"], ignore_errors=True)
     shutil.rmtree(application.config["RECORDINGS_DIR"], ignore_errors=True)
+    shutil.rmtree(application.config["ID_DOCUMENT_UPLOAD_DIR"], ignore_errors=True)
     if os.path.exists(outbox_path):
         os.remove(outbox_path)
 

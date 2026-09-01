@@ -62,7 +62,7 @@ def test_student_cannot_start_without_face_enrollment(client, app, admin_and_stu
 
     login(client, "student@test.com", "Studpass1!")
     r = client.get(f"/student/tests/{test.id}/start", follow_redirects=True)
-    assert b"Enroll your face" in r.data
+    assert b"Identity verification" in r.data
 
 
 def test_full_exam_flow_end_to_end(client, app, admin_and_student):
@@ -153,7 +153,16 @@ def test_extra_time_accommodation_applied(client, app, admin_and_student):
     login(client, "student@test.com", "Studpass1!")
     _enroll_face(client)
     r = client.get(f"/student/tests/{test.id}/start")
-    assert b"durationSeconds: 900" in r.data  # (10 + 5) * 60
+    # durationSeconds is the live remaining time (allotted minus elapsed since
+    # the attempt started), so it can be a second or two under the full
+    # (10 + 5) * 60 = 900s allotment by the time the response renders — see
+    # student._remaining_seconds(), which makes the timer survive a
+    # refresh/crash instead of restarting at the full duration every load.
+    import re
+    match = re.search(rb"durationSeconds: (\d+)", r.data)
+    assert match is not None
+    duration = int(match.group(1))
+    assert 895 <= duration <= 900
 
 
 def test_csv_question_import(client, app, admin_and_student):
