@@ -1,4 +1,4 @@
-# Exam Proctoring (Python rewrite)
+# Exam Proctoring
 
 A full rewrite of the original PHP/MySQL [Exam_Proctoring](https://github.com/Santosh02411/Exam_Proctoring)
 project as a Python **Flask** web app, with working end-to-end webcam proctoring and a
@@ -12,10 +12,10 @@ number of production-readiness features the original never had.
 - **Flask-Login** — session auth (replaces PHP's `$_SESSION` handling)
 - **Flask-WTF / WTForms** — form rendering, validation, CSRF protection
 - **Werkzeug** password hashing (replaces PHP's `password_hash`/`password_verify`)
-- **face-api.js** (client-side, in-browser) — real-time face detection *and* identity
+- **face-api.js** (client-side, in-browser) — real-time face detection _and_ identity
   verification during the exam, using the TensorFlow.js model weights (`tiny_face_detector`,
   `face_landmark_68`, `face_recognition`) bundled under `app/static/models/`
-- **OpenCV (Haar cascade)** — a *second*, independent, server-side face-count check on
+- **OpenCV (Haar cascade)** — a _second_, independent, server-side face-count check on
   periodic snapshots, so proctoring doesn't rely solely on the client's browser
 - **MediaRecorder API** (browser) — records the webcam+mic feed in 30s chunks, uploaded
   to the server for admin playback
@@ -29,6 +29,7 @@ number of production-readiness features the original never had.
 ## What it does
 
 **Admin**
+
 - Register/login as admin (email verification + CAPTCHA + rate-limited login)
 - Create tests: code, title, description, duration, passing marks, publish window, max
   attempts, negative marking, question/option randomization, and whether students can
@@ -45,6 +46,7 @@ number of production-readiness features the original never had.
 - "Manage Tests" clearly distinguishes **your tests** vs **all admins' tests**, with a toggle
 
 **Student**
+
 - Register/login as student — must verify email before logging in; login is rate-limited
   (5 failed attempts locks the account for 15 minutes) and requires a simple CAPTCHA
 - Forgot-password flow to reset a lost password via a signed, expiring link
@@ -134,6 +136,7 @@ python run.py                      # http://localhost:5000
 ```
 
 Then:
+
 1. Log in as the seeded admin (or register a new admin/student from the login screen).
 2. As admin: create a test → add questions (or import a CSV) → assign it to a student → publish it.
 3. Log in as that student, enroll your face once, then take the proctored test.
@@ -174,8 +177,8 @@ should be a persistent volume — `docker-compose.yml` already mounts one.
 
 ## Notes on the proctoring design
 
-- The browser never uploads raw video for *live analysis* — face-api.js runs the face
-  detector and identity check locally and only sends short JSON *event* messages
+- The browser never uploads raw video for _live analysis_ — face-api.js runs the face
+  detector and identity check locally and only sends short JSON _event_ messages
   (`no_face`, `multiple_faces`, `identity_mismatch`, `audio_violation`, `tab_hidden`,
   `fullscreen_exit`, ...) to `/api/proctor/event`. Separately, the full session **is**
   recorded and uploaded in 30s chunks purely for admin playback after the fact.
@@ -255,7 +258,7 @@ options`, floored at zero and scaled to the question's marks — so picking half
 correct options with none wrong earns half credit, and mixing in a wrong pick reduces it
 back down (never below zero). This setting has no effect on `single` or `short`
 questions, which stay strictly right-or-wrong. `short` is graded case-insensitively with
-whitespace trimmed, so "Paris", "paris", and "  Paris  " all match but "Parris" won't —
+whitespace trimmed, so "Paris", "paris", and " Paris " all match but "Parris" won't —
 this is exact-text matching, not semantic grading, so short-answer questions where
 several phrasings could be correct aren't a great fit without a synonym list of your own.
 Bulk CSV import supports a `question_type` column (`single`/`multi`/`short`, defaults to
