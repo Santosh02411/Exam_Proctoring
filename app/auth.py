@@ -1,3 +1,4 @@
+import re
 from datetime import datetime, timedelta
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, current_app
@@ -5,10 +6,11 @@ from flask_login import login_user, logout_user, login_required, current_user
 
 from app import db
 from app.forms import RegisterForm, LoginForm, ForgotPasswordForm, ResetPasswordForm
-from app.models import User, gen_user_id
+from app.models import User, Organization, gen_user_id
 from app.email_utils import generate_token, verify_token, send_email
 from app.captcha import generate_captcha, verify_captcha
 from app.utils import is_rate_limited
+from app import security
 
 bp = Blueprint("auth", __name__)
 
@@ -17,6 +19,65 @@ PASSWORD_RESET_SALT = "password-reset"
 
 MAX_FAILED_ATTEMPTS = 5
 LOCKOUT_MINUTES = 15
+DEFAULT_ORG_SLUG = "default"
+
+
+def _slugify(name):
+    slug = re.sub(r"[^a-z0-9]+", "-", name.strip().lower()).strip("-")
+    return slug or "org"
+
+
+def _get_or_create_default_org():
+    """The shared fallback tenant for a registration that doesn't specify
+    an organization — keeps registration working exactly as before
+    multi-tenancy existed for anything that posts the older, org-less
+    form (including every existing integration/test)."""
+    org = Organization.query.filter_by(slug=DEFAULT_ORG_SLUG).first()
+    if not org:
+        org = Organization(name="Default Organization", slug=DEFAULT_ORG_SLUG, status="active")
+        db.session.add(org)
+        db.session.flush()
+    return org
+
+
+def _unique_slug(name):
+    base = _slugify(name)
+    slug = base
+    i = 2
+    while Organization.query.filter_by(slug=slug).first():
+        slug = f"{base}-{i}"
+        i += 1
+    return slug
+
+
+def _resolve_registration_org(form):
+    """Turn RegisterForm's org_choice/new_org_name into an Organization to
+    attach the new user to. "__new__" (admin role only, enforced by the
+    form's own validator) creates a fresh tenant with this user as its
+    first admin — the normal way a new institution's account gets
+    bootstrapped. A specific org id joins that (active) organization. Blank
+    or anything else falls back to the Default Organization, so this never
+    blocks a registration that doesn't engage with the org picker at all."""
+    choice = (form.org_choice.data or "").strip()
+    if choice == "__new__":
+        org = Organization(name=form.new_org_name.data.strip(), slug=_unique_slug(form.new_org_name.data), status="active")
+        db.session.add(org)
+        db.session.flush()
+        return org
+    if choice.isdigit():
+        org = Organization.query.get(int(choice))
+        if org and org.status == "active":
+            return org
+    return _get_or_create_default_org()
+
+
+def _org_choices():
+    choices = [
+        (str(o.id), o.name)
+        for o in Organization.query.filter_by(status="active").order_by(Organization.name).all()
+    ]
+    choices.append(("__new__", "+ Create a new organization (Admin only)"))
+    return choices
 
 
 def _send_verification_email(user):
@@ -47,6 +108,7 @@ def register():
         return redirect(url_for("index"))
 
     form = RegisterForm()
+    form.org_choice.choices = _org_choices()
 
     if request.method == "POST" and is_rate_limited(
         "register", current_app.config["REGISTER_MAX_PER_IP"], current_app.config["REGISTER_WINDOW_MINUTES"]
@@ -59,6 +121,7 @@ def register():
         if existing:
             flash("Email already registered!", "error")
         else:
+            org = _resolve_registration_org(form)
             user = User(
                 user_id=gen_user_id(form.role.data),
                 name=form.name.data.strip(),
@@ -67,13 +130,24 @@ def register():
                 role=form.role.data,
                 status="active",
                 email_verified=False,
+                org_id=org.id,
             )
             user.set_password(form.password.data)
+            # Recorded only when actually ticked — see app.forms.RegisterForm's
+            # accepted_terms field for why this isn't a hard server-side
+            # requirement (kept Optional for backward compatibility with
+            # anything posting the older, checkbox-less form), and
+            # app.legal for the pages themselves. A registration that
+            # didn't tick the box simply has no consent timestamp, which is
+            # the honest state — not a fabricated "accepted" default.
+            if form.accepted_terms.data:
+                user.terms_accepted_at = datetime.utcnow()
+                user.terms_version_accepted = current_app.config["TERMS_VERSION"]
             db.session.add(user)
             db.session.commit()
 
             link, mode = _send_verification_email(user)
-            flash(f"Registration successful as {form.role.data}! Please verify your email to log in.", "success")
+            flash(f"Registration successful as {form.role.data} under {org.name}! Please verify your email to log in.", "success")
             if mode == "logged":
                 flash(f"(Dev mode — no SMTP configured) Verification link: {link}", "info")
             return redirect(url_for("auth.login"))
@@ -165,6 +239,7 @@ def login():
             user.locked_until = None
             db.session.commit()
             login_user(user)
+            security.register_login(user)
             flash(f"Welcome back, {user.name}!", "success")
             next_url = request.args.get("next")
             if next_url:
@@ -178,6 +253,7 @@ def login():
 @bp.route("/logout")
 @login_required
 def logout():
+    security.end_session(reason="logout")
     logout_user()
     flash("You have been logged out.", "info")
     return redirect(url_for("auth.login"))
