@@ -53,6 +53,29 @@ textarea:focus-visible,[tabindex]:focus-visible{
 .nav-links a{text-decoration:none;color:var(--muted);font-weight:600;font-size:14px}
 .nav-links a:hover{color:var(--primary)}
 .nav-user{font-size:13px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.nav-toggle{display:none;flex-direction:column;justify-content:center;gap:4px;background:transparent;border:1px solid var(--border);border-radius:8px;width:40px;height:36px;cursor:pointer;padding:0 8px}
+.nav-toggle span{display:block;height:2px;width:100%;background:var(--text);border-radius:2px}
+
+/* Mobile-Friendly nav: below this width the link list collapses into a
+   toggleable dropdown instead of wrapping into a multi-row wall of links
+   — this is what makes the review queue/analytics/etc. actually reachable
+   on a phone without endless flex-wrapped clutter at the top of every
+   page. See navToggle's script in base.html for the open/close behavior. */
+@media (max-width: 860px){
+  .nav-toggle{display:flex}
+  .nav-links{
+    display:none;position:absolute;left:0;right:0;top:100%;flex-direction:column;
+    align-items:stretch;gap:0;background:var(--nav-bg);box-shadow:var(--shadow);
+    padding:8px 16px 14px;border-top:1px solid var(--border-soft);
+  }
+  .nav-links.open{display:flex}
+  .nav-links a,.nav-links .nav-user,.nav-links .theme-toggle,.nav-links .btn{width:100%}
+  .nav-links a{padding:12px 4px;border-bottom:1px solid var(--border-soft);font-size:15px}
+  .nav-links .nav-user{padding:10px 4px;border-bottom:1px solid var(--border-soft)}
+  .nav-links > div{width:100%}
+  .proctor-alert-panel{position:fixed;left:12px;right:12px;top:auto;width:auto}
+  .topnav-inner{position:relative;flex-wrap:wrap}
+}
 
 .page{max-width:1100px;margin:0 auto;padding:28px 24px}
 .center-page{max-width:440px;margin:60px auto;padding:0 20px}
@@ -101,6 +124,27 @@ form.inline{display:inline}
 .table th,.table td{padding:12px;border-bottom:1px solid var(--border-soft);text-align:left;font-size:14px;color:var(--text)}
 .table th{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.03em}
 
+/* Mobile-Friendly Proctor Review: a table opted into .responsive-table
+   (see admin/proctor_queue.html) turns each row into its own stacked card
+   below the breakpoint, with each cell's column header shown as a label
+   in front of its value via data-label — the standard no-JS pattern for
+   making a wide, many-column table (student/test/status/violations/score/
+   started/action, in the queue's case) usable on a phone instead of
+   forcing horizontal scrolling through a data-dense grid. Any .table that
+   *isn't* opted in still gets a plain horizontal-scroll fallback just
+   below, so nothing on a narrow screen is ever completely unreachable.
+*/
+@media (max-width: 700px){
+  .table:not(.responsive-table){display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}
+
+  .responsive-table thead{display:none}
+  .responsive-table,.responsive-table tbody,.responsive-table tr,.responsive-table td{display:block;width:100%}
+  .responsive-table tr{margin-bottom:12px;border:1px solid var(--border);border-radius:10px;padding:4px 12px;background:var(--card)}
+  .responsive-table td{border-bottom:1px solid var(--border-soft);padding:10px 0;display:flex;justify-content:space-between;align-items:center;gap:12px;text-align:right}
+  .responsive-table td:last-child{border-bottom:none}
+  .responsive-table td::before{content:attr(data-label);font-weight:600;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.03em;text-align:left;flex-shrink:0}
+}
+
 .badge{padding:4px 10px;border-radius:999px;font-weight:700;font-size:12px;display:inline-block}
 .badge.published{background:rgba(16,185,129,0.15);color:var(--success)}
 .badge.draft{background:rgba(99,102,241,0.15);color:#818cf8}
@@ -112,11 +156,22 @@ form.inline{display:inline}
 .badge.fail{background:rgba(239,68,68,0.15);color:var(--danger)}
 .badge.active{background:rgba(16,185,129,0.15);color:var(--success)}
 .badge.inactive{background:rgba(239,68,68,0.15);color:var(--danger)}
+.badge.risk-low{background:rgba(16,185,129,0.15);color:var(--success)}
+.badge.risk-medium{background:rgba(245,158,11,0.15);color:var(--warning)}
+.badge.risk-high{background:rgba(239,68,68,0.15);color:var(--danger)}
+.badge.risk-critical{background:var(--danger);color:#fff;font-weight:700}
 
 .kpi-row{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:18px}
 .kpi{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px 20px;min-width:140px}
 .kpi .num{font-size:26px;font-weight:800;color:var(--text)}
 .kpi .label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
+.bar-row{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.bar-row .bar-label{width:170px;flex-shrink:0;font-size:13px}
+.bar-track{flex:1;background:var(--bg);border-radius:6px;height:14px;overflow:hidden}
+.bar-fill{height:100%;background:var(--accent);border-radius:6px}
+.bar-fill.warn{background:var(--warning)}
+.bar-fill.bad{background:var(--danger)}
+.bar-value{width:56px;flex-shrink:0;text-align:right;font-size:13px;font-weight:700}
 
 .actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 
@@ -133,6 +188,8 @@ form.inline{display:inline}
 #consentCamPreview{width:180px;height:135px;background:#000;border-radius:10px;object-fit:cover}
 #camPreview{display:none;position:fixed;right:16px;top:80px;width:170px;height:128px;border-radius:10px;z-index:9998;box-shadow:0 10px 30px rgba(2,6,23,0.25);border:3px solid var(--card)}
 #camPreview.flagged{border-color:var(--danger)}
+#spotCheckOverlay{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(2,6,23,0.72);z-index:9999}
+#spotCheckBox{width:92%;max-width:420px;background:var(--card);border-radius:14px;padding:26px;box-shadow:0 18px 50px rgba(2,6,23,0.45);text-align:center}
 #examArea{display:none}
 .qcard{border-radius:12px;padding:16px;background:var(--card);box-shadow:0 6px 20px rgba(11,22,50,0.08);margin-bottom:14px;border:1px solid var(--border-soft)}
 .section-header{border-bottom:2px solid var(--border-soft);padding-bottom:6px;margin-top:22px}
@@ -147,7 +204,10 @@ label.opt:hover{border-color:var(--primary)}
 .status-pill{display:flex;align-items:center;gap:8px;font-size:13px;padding:8px 12px;border-radius:10px;background:var(--bg2);color:var(--text)}
 .status-dot{width:10px;height:10px;border-radius:50%;background:var(--success)}
 .status-dot.bad{background:var(--danger)}
+.status-dot.warn{background:var(--warning)}
 .violation-banner{background:rgba(239,68,68,0.15);color:var(--danger);padding:10px 14px;border-radius:10px;font-weight:700;margin-bottom:12px}
+.connection-banner{background:rgba(245,158,11,0.15);color:var(--warning);padding:10px 14px;border-radius:10px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.connection-banner.offline{background:rgba(239,68,68,0.15);color:var(--danger)}
 .sticky-exam-header{position:sticky;top:0;background:var(--card);z-index:50;padding:14px 0;border-bottom:1px solid var(--border-soft);margin-bottom:14px}
 
 .opt{padding:10px;border-radius:8px;background:var(--card);border:1px solid var(--border-soft);font-size:14px;color:var(--text)}
@@ -157,3 +217,63 @@ label.opt:hover{border-color:var(--primary)}
 .events-list li{margin-bottom:6px;font-size:13px}
 .events-list .violation{color:var(--danger);font-weight:700}
 .events-list .warning{color:var(--warning);font-weight:700}
+.events-list li:hover,.events-list li:focus{background:var(--bg2);border-radius:6px;outline:none}
+.timeline-highlight{outline:3px solid var(--primary);outline-offset:2px;border-radius:8px;transition:outline-color .3s}
+
+/* Live Proctor Alerts (see app.admin.proctor_alerts_stream) */
+.proctor-alert-bell{position:relative;background:transparent;border:1px solid var(--border);color:var(--text);border-radius:999px;width:38px;height:38px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px}
+.proctor-alert-bell:hover{border-color:var(--primary);color:var(--primary)}
+.proctor-alert-badge{position:absolute;top:-4px;right:-4px;background:var(--danger);color:#fff;border-radius:999px;font-size:10px;font-weight:700;min-width:16px;height:16px;padding:0 4px;display:flex;align-items:center;justify-content:center;line-height:1}
+.proctor-alert-panel{position:absolute;right:0;top:46px;width:340px;max-height:420px;overflow-y:auto;background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);z-index:1000;display:none}
+.proctor-alert-panel.open{display:block}
+.proctor-alert-panel .proctor-alert-item{padding:12px 14px;border-bottom:1px solid var(--border-soft);font-size:13px}
+.proctor-alert-panel .proctor-alert-item:last-child{border-bottom:none}
+.proctor-alert-panel .proctor-alert-empty{padding:16px;font-size:13px;color:var(--muted);text-align:center}
+.proctor-alert-toast-wrap{position:fixed;top:76px;right:16px;z-index:9999;display:flex;flex-direction:column;gap:8px;max-width:320px}
+.proctor-alert-toast{background:var(--card);border-left:4px solid var(--danger);border-radius:10px;box-shadow:var(--shadow);padding:12px 14px;font-size:13px;animation:proctorToastIn .2s ease-out}
+@keyframes proctorToastIn{from{transform:translateX(20px);opacity:0}to{transform:translateX(0);opacity:1}}
+
+.site-footer{max-width:1100px;margin:24px auto 12px;padding:16px 24px;text-align:center;font-size:13px;color:var(--muted);border-top:1px solid var(--border-soft)}
+.site-footer a{color:var(--muted);text-decoration:none}
+.site-footer a:hover{color:var(--primary);text-decoration:underline}
+.site-footer span{margin:0 6px}
+
+.brand-logo{max-height:32px;max-width:160px;vertical-align:middle;object-fit:contain}
+
+/* ---------------------------------------------------------------------
+   Mobile-Friendly Proctor Review: general small-screen tuning so the
+   review workflow (queue -> attempt detail -> evidence) is comfortable
+   on a phone, not just technically reachable. Table/nav specifics are
+   handled by their own rules above (.responsive-table, .nav-toggle);
+   this section is the remaining page-chrome and touch-target sizing.
+   --------------------------------------------------------------------- */
+@media (max-width: 700px){
+  .page{padding:16px 14px}
+  .card{padding:16px}
+  .center-page{margin:24px auto;padding:0 12px}
+  h1{font-size:19px}
+  h2{font-size:17px}
+
+  /* A row of side-by-side fields (date range pickers, name/label +
+     button, etc.) stacks instead of squeezing — most of these were never
+     designed with a ~350px viewport in mind, and stacking is always
+     legible where forcing a fit isn't. */
+  .row{flex-direction:column}
+
+  /* Buttons and nav links are common tap targets — 44px is the standard
+     minimum comfortable touch-target height (Apple/WCAG both land near
+     this number); the desktop sizing is a bit tighter than that. */
+  .btn{padding:12px 16px;min-height:44px;display:inline-flex;align-items:center;justify-content:center}
+  .btn.small{min-height:38px;padding:9px 12px}
+  .actions{flex-direction:column;align-items:stretch}
+  .actions .btn{width:100%}
+
+  /* The evidence grids in admin/view_attempt.html (snapshots, recording
+     segments) already use auto-fill/minmax and naturally collapse to
+     fewer columns as the viewport narrows, so no override is needed
+     there — this just tightens the gap so a single evidence card isn't
+     awkwardly narrow on the smallest phones. */
+  .wrap{gap:12px}
+
+  .proctor-alert-toast-wrap{left:12px;right:12px;top:64px;max-width:none}
+}
