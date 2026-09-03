@@ -47,14 +47,27 @@ textarea:focus-visible,[tabindex]:focus-visible{
 .theme-toggle-floating{position:fixed;right:16px;bottom:16px;z-index:500;background:var(--card);box-shadow:var(--shadow)}
 
 .topnav{background:var(--nav-bg);box-shadow:var(--shadow);position:sticky;top:0;z-index:100}
-.topnav-inner{max-width:1100px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;padding:12px 24px}
-.brand{font-weight:800;text-decoration:none;color:var(--text);font-size:17px}
-.nav-links{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
-.nav-links a{text-decoration:none;color:var(--muted);font-weight:600;font-size:14px}
+.topnav-inner{max-width:1400px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;gap:20px;padding:12px 24px}
+.brand{font-weight:800;text-decoration:none;color:var(--text);font-size:17px;white-space:nowrap;flex-shrink:0}
+.nav-links{display:flex;gap:14px;align-items:center;flex-wrap:wrap;row-gap:8px}
+.nav-links a{text-decoration:none;color:var(--muted);font-weight:600;font-size:14px;white-space:nowrap}
 .nav-links a:hover{color:var(--primary)}
-.nav-user{font-size:13px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.nav-user{font-size:13px;color:var(--muted);display:flex;align-items:center;gap:6px;white-space:nowrap}
 .nav-toggle{display:none;flex-direction:column;justify-content:center;gap:4px;background:transparent;border:1px solid var(--border);border-radius:8px;width:40px;height:36px;cursor:pointer;padding:0 8px}
 .nav-toggle span{display:block;height:2px;width:100%;background:var(--text);border-radius:2px}
+
+/* The "Admin ▾" group — collapses the long tail of admin-only pages
+   (Activity Log, Security, Retention, Org Report, Branding, API Access)
+   behind one toggle instead of them all sitting as flat top-level links,
+   which is what was wrapping the nav into a multi-row wall of text. Same
+   floating-panel look as .proctor-alert-panel for visual consistency. */
+.nav-dropdown{position:relative}
+.nav-dropdown-toggle{background:transparent;border:none;color:var(--muted);font-weight:600;font-size:14px;cursor:pointer;padding:0;font-family:inherit;white-space:nowrap}
+.nav-dropdown-toggle:hover{color:var(--primary)}
+.nav-dropdown-panel{position:absolute;right:0;top:28px;min-width:190px;background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);z-index:1000;padding:6px;display:none;flex-direction:column;gap:2px}
+.nav-dropdown-panel.open{display:flex}
+.nav-dropdown-panel a{padding:8px 10px;border-radius:8px}
+.nav-dropdown-panel a:hover{background:var(--bg2);color:var(--primary)}
 
 /* Mobile-Friendly nav: below this width the link list collapses into a
    toggleable dropdown instead of wrapping into a multi-row wall of links
@@ -73,6 +86,12 @@ textarea:focus-visible,[tabindex]:focus-visible{
   .nav-links a{padding:12px 4px;border-bottom:1px solid var(--border-soft);font-size:15px}
   .nav-links .nav-user{padding:10px 4px;border-bottom:1px solid var(--border-soft)}
   .nav-links > div{width:100%}
+  /* On mobile the whole link list is already a scrollable vertical stack
+     with no wrapping problem, so the "Admin ▾" grouping (a desktop-only
+     space-saving trick) is undone here — the toggle button is hidden and
+     its panel always renders inline, flush with the rest of the list. */
+  .nav-dropdown-toggle{display:none}
+  .nav-dropdown-panel{position:static;display:flex !important;box-shadow:none;border:none;padding:0;background:transparent}
   .proctor-alert-panel{position:fixed;left:12px;right:12px;top:auto;width:auto}
   .topnav-inner{position:relative;flex-wrap:wrap}
 }
