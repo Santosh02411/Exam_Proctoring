@@ -1,11 +1,38 @@
 import os
 
+from dotenv import load_dotenv
+
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+
+# .env.example documents every setting below as something to copy into a
+# real .env and edit — but nothing previously actually loaded that file
+# into the process environment, so every value in it was silently ignored
+# no matter what you set (python-dotenv was a listed dependency but never
+# called). Loading it here, before Config reads any os.environ value,
+# makes the .env.example workflow actually work. override=False (the
+# default) means a real OS/shell environment variable always wins over
+# .env, matching how every os.environ.get() call below already behaves.
+load_dotenv(os.path.join(BASE_DIR, ".env"))
+
+
+def _env_or(key, default):
+    """Like os.environ.get(key, default), but also falls back to `default`
+    when the variable is *set but blank* (e.g. `KEY=` in a .env file) —
+    .env.example intentionally ships several path/URL overrides blank to
+    mean "use the built-in default," but os.environ.get alone treats a
+    blank value as "explicitly set to empty string," not "unset." That
+    distinction doesn't matter for settings that already have an
+    `if X:` guard elsewhere (MAIL_SERVER, SLACK_WEBHOOK_URL, etc.) — but
+    for ones used directly as a directory path or a DB URI, a blank
+    string breaks things outright (e.g. os.makedirs("") raises) rather
+    than just no-op'ing, so those go through this helper instead."""
+    val = os.environ.get(key)
+    return val if val else default
 
 
 class Config:
     SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-key-change-this-in-production")
-    SQLALCHEMY_DATABASE_URI = os.environ.get(
+    SQLALCHEMY_DATABASE_URI = _env_or(
         "DATABASE_URL", f"sqlite:///{os.path.join(BASE_DIR, 'instance', 'exam_proctoring.db')}"
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
@@ -84,7 +111,7 @@ class Config:
     SIMILARITY_THRESHOLD_DEFAULT = float(os.environ.get("SIMILARITY_THRESHOLD_DEFAULT", 70))
 
     # System Monitoring & Operations (see app.system_ops, app.backup, app.retention).
-    BACKUPS_DIR = os.environ.get("BACKUPS_DIR", os.path.join(BASE_DIR, "instance", "backups"))
+    BACKUPS_DIR = _env_or("BACKUPS_DIR", os.path.join(BASE_DIR, "instance", "backups"))
     # How many days of exam recordings/snapshots/session & log history to
     # keep before app.retention.apply_retention_policies() deletes them —
     # run manually from /ops/retention or periodically via the
@@ -146,6 +173,6 @@ class Config:
     # Org-level branding (see app.branding): each organization can upload
     # its own logo and set a primary accent color, applied to their users'
     # UI. Logos are stored on disk, one per org, under this directory.
-    ORG_BRANDING_DIR = os.environ.get("ORG_BRANDING_DIR", os.path.join(BASE_DIR, "instance", "org_branding"))
+    ORG_BRANDING_DIR = _env_or("ORG_BRANDING_DIR", os.path.join(BASE_DIR, "instance", "org_branding"))
     ORG_LOGO_MAX_BYTES = 2 * 1024 * 1024  # 2 MB is plenty for a logo
     ORG_LOGO_ALLOWED_EXTS = {"png", "jpg", "jpeg", "svg", "webp"}
