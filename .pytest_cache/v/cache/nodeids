@@ -43,6 +43,7 @@
   "tests/test_cheat_detection.py::test_suspicion_score_persisted_on_attempt_after_violation",
   "tests/test_cheat_detection.py::test_terminated_attempt_scores_at_least_high",
   "tests/test_cheat_detection.py::test_view_attempt_shows_new_event_types_readably",
+  "tests/test_create_test_errors.py::test_create_test_shows_validation_errors_when_fields_missing",
   "tests/test_exam_flow.py::test_activity_log_records_admin_actions",
   "tests/test_exam_flow.py::test_admin_can_create_test_and_add_questions",
   "tests/test_exam_flow.py::test_csv_question_import",
