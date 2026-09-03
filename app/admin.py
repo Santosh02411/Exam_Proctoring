@@ -18,7 +18,7 @@ from werkzeug.utils import secure_filename
 from app import db
 from app.forms import (
     TestForm, QuestionForm, QuestionImportForm, UserImportForm, QuestionBankForm, SectionForm,
-    RetentionPolicyForm, BrandingForm, ApiKeyForm, LmsWebhookForm, CertificateSettingsForm,
+    RetentionPolicyForm, BrandingForm, ApiKeyForm, LmsWebhookForm, CertificateSettingsForm, ProctoringPolicyForm,
 )
 from app.models import (
     Test, Question, User, TestEligibility, Attempt, Answer, ProctoringEvent, AdminActivityLog,
@@ -36,6 +36,7 @@ from app.notifications import (
     notify_exam_scheduled, notify_result_published_if_now_complete, send_starting_soon_reminders,
 )
 from app import analytics
+from app import proctoring
 from app import similarity as similarity_module
 from app import retention as retention_module
 from app import org_export
@@ -587,6 +588,87 @@ def view_test(test_id):
     return render_template("admin/view_test.html", test=test)
 
 
+@bp.route("/tests/<int:test_id>/proctoring-policy", methods=["GET", "POST"])
+@content_access
+def proctoring_policy(test_id):
+    """Configurable Proctoring Policies: per-event-type action overrides
+    for this test (see app.proctoring.get_policy/_record_violation). GET
+    shows the editor; POST parses one select per configurable event type
+    from the raw form data (see ProctoringPolicyForm's docstring for why
+    these aren't bound WTForms fields) and stores only the entries that
+    actually differ from "use the default", so the stored JSON stays a
+    lean set of overrides rather than a full copy of every event type."""
+    test = Test.query.get_or_404(test_id)
+    ensure_same_org(test)
+    form = ProctoringPolicyForm()
+    current_policy = proctoring.get_policy(test)
+
+    if form.validate_on_submit():
+        new_policy = {}
+        for event_type in proctoring.POLICY_CONFIGURABLE_EVENT_TYPES:
+            action = request.form.get(f"policy_{event_type}", "default")
+            if action not in proctoring.POLICY_ACTIONS:
+                action = "default"
+
+            entry = {}
+            if action != "default":
+                entry["action"] = action
+
+            if action == "warning":
+                limit_raw = request.form.get(f"warning_limit_{event_type}", "").strip()
+                if limit_raw:
+                    try:
+                        limit = int(limit_raw)
+                        if limit > 0:
+                            entry["warning_limit"] = limit
+                    except ValueError:
+                        pass
+                escalate = request.form.get(f"escalate_{event_type}", "")
+                if escalate in proctoring.ESCALATE_ACTIONS and entry.get("warning_limit"):
+                    entry["escalate_action"] = escalate
+
+            message = request.form.get(f"message_{event_type}", "").strip()
+            if message:
+                entry["message"] = message[:300]
+
+            grace_raw = request.form.get(f"grace_{event_type}", "").strip()
+            if grace_raw:
+                try:
+                    grace = int(grace_raw)
+                    if grace > 0:
+                        entry["grace_period_seconds"] = grace
+                except ValueError:
+                    pass
+
+            if entry:
+                new_policy[event_type] = entry
+
+        test.proctoring_policy = json.dumps(new_policy) if new_policy else None
+        db.session.commit()
+        log_activity("updated_proctoring_policy", f"Updated proctoring policy for '{test.title}'")
+        flash("Proctoring policy updated.", "success")
+        return redirect(url_for("admin.proctoring_policy", test_id=test.id))
+
+    rows = [
+        {
+            "event_type": et,
+            "label": proctoring.EVENT_TYPE_LABELS.get(et, et.replace("_", " ")),
+            "weight": proctoring.EVENT_WEIGHTS.get(et, proctoring.DEFAULT_EVENT_WEIGHT),
+            "current": current_policy.get(et, proctoring._DEFAULT_POLICY_ENTRY)["action"],
+            "warning_limit": current_policy.get(et, proctoring._DEFAULT_POLICY_ENTRY)["warning_limit"] or "",
+            "escalate_action": current_policy.get(et, proctoring._DEFAULT_POLICY_ENTRY)["escalate_action"] or "flag",
+            "message": current_policy.get(et, proctoring._DEFAULT_POLICY_ENTRY)["message"] or "",
+            "grace_period_seconds": current_policy.get(et, proctoring._DEFAULT_POLICY_ENTRY)["grace_period_seconds"] or "",
+        }
+        for et in proctoring.POLICY_CONFIGURABLE_EVENT_TYPES
+    ]
+    rows.sort(key=lambda r: r["label"])
+    return render_template(
+        "admin/proctoring_policy.html", test=test, form=form, rows=rows,
+        escalate_actions=proctoring.ESCALATE_ACTIONS,
+    )
+
+
 @bp.route("/tests/<int:test_id>/sections", methods=["GET", "POST"])
 @content_access
 def manage_sections(test_id):
@@ -813,9 +895,12 @@ def view_attempt(attempt_id):
     ensure_same_org(attempt.test)
     events = ProctoringEvent.query.filter_by(attempt_id=attempt.id).order_by(ProctoringEvent.created_at).all()
     risk = compute_suspicion_score(attempt)
+    quality = proctoring.compute_quality_score(attempt)
     timeline = build_timeline(attempt)
+    patterns = proctoring.detect_behavioral_patterns(attempt)
     return render_template(
         "admin/view_attempt.html", attempt=attempt, events=events, risk=risk, timeline=timeline,
+        patterns=patterns, quality=quality,
     )
 
 

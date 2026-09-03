@@ -150,6 +150,16 @@ class Test(db.Model):
     # one, so this is an opt-in per test rather than automatic for every
     # passing score.
     certificate_enabled = db.Column(db.Boolean, nullable=False, default=False)
+
+    # Configurable Proctoring Policies (see app.proctoring.get_policy): a
+    # per-event-type action override for this test, stored as a JSON
+    # object mapping event_type -> one of "ignore"/"warning"/"flag"/
+    # "terminate" (app.proctoring.POLICY_ACTIONS). NULL/missing entries
+    # fall back to that event's normal default behavior — this column
+    # only ever holds *overrides*, not a full copy of the default policy,
+    # so a future new event type is automatically sensible without this
+    # test needing to be touched.
+    proctoring_policy = db.Column(db.Text, nullable=True)
     # Partial credit for multi-select questions: award proportional marks based on
     # how many correct options were picked minus how many incorrect ones were,
     # instead of all-or-nothing. Doesn't affect single-choice or short-answer grading.
@@ -475,8 +485,29 @@ class Attempt(db.Model):
     # fresh gets blocked as a concurrent session.
     session_owner_key = db.Column(db.String(64), nullable=True)
 
+    # Proctoring Quality Score (see app.proctoring.compute_quality_score):
+    # a running mean/min of the lighting level (0-255 grayscale
+    # brightness) sampled from the same periodic frames the server-side
+    # face-count check already decodes (see app.proctoring.check_snapshot)
+    # — no extra client instrumentation needed for this one. A running
+    # mean rather than one row per sample, since these arrive every ~15s
+    # for the whole exam and aren't violations worth keeping individually.
+    avg_brightness = db.Column(db.Float, nullable=True)
+    min_brightness = db.Column(db.Float, nullable=True)
+    brightness_sample_count = db.Column(db.Integer, nullable=False, default=0)
+
+    # Customizable Warning System (see app.proctoring.get_policy/_record_violation):
+    # per-event-type count of how many times a "warning"-stage policy has
+    # fired on this attempt so far, JSON text (event_type -> int). Only
+    # populated for event types whose policy sets a warning_limit — used to
+    # tell "still within the allowed warnings" from "just crossed the limit,
+    # escalate to this type's configured post-limit action" without a extra
+    # query over ProctoringEvent on every single event.
+    warning_counts = db.Column(db.Text, nullable=True)
+
     answers = db.relationship("Answer", backref="attempt", cascade="all, delete-orphan", lazy=True)
     events = db.relationship("ProctoringEvent", backref="attempt", cascade="all, delete-orphan", lazy=True)
+    answer_events = db.relationship("AnswerEvent", backref="attempt", cascade="all, delete-orphan", lazy=True)
 
     def max_marks(self):
         """Maximum marks obtainable on this specific attempt. For a pooled
@@ -525,6 +556,34 @@ class Answer(db.Model):
     __table_args__ = (db.UniqueConstraint("attempt_id", "question_id", name="uq_attempt_question"),)
 
 
+class AnswerEvent(db.Model):
+    """A timestamped log of when a student's answer to a question first
+    appeared or changed during an attempt — written by
+    app.student.autosave_answers whenever a diff against the previous
+    autosave shows a question's value changed (see _diff_answer_changes).
+    This exists purely to give Complete Exam Replay (see
+    app.proctoring.build_timeline) a synchronized "answers" track on the
+    timeline alongside violations/recordings — it deliberately does NOT
+    store the answer value itself (that's Answer.selected_option's job);
+    this is just "the student touched question N at time T" so the replay
+    view can show which question was being worked on as the recording
+    plays, without duplicating or lagging behind the authoritative answer
+    data."""
+
+    __tablename__ = "answer_events"
+
+    id = db.Column(db.Integer, primary_key=True)
+    attempt_id = db.Column(db.Integer, db.ForeignKey("attempts.id"), nullable=False, index=True)
+    question_id = db.Column(db.Integer, db.ForeignKey("questions.id"), nullable=False)
+    # first_answered | changed — "first_answered" the first time this
+    # question gets a non-empty value in an autosave, "changed" every
+    # subsequent autosave where the value differs from what was last saved.
+    action = db.Column(db.String(20), nullable=False, default="changed")
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+
+    question = db.relationship("Question")
+
+
 def recompute_attempt_score(attempt):
     """Single source of truth for an attempt's score. Auto-graded questions
     score themselves via Question.score_for (with negative marking applied
@@ -567,7 +626,7 @@ class ProctoringEvent(db.Model):
     # (see app.proctoring.VALID_EVENT_TYPES for the authoritative set, and
     # proctor.js's object-detection section for what COCO-SSD can and can't
     # tell apart)
-    severity = db.Column(db.String(20), nullable=False, default="warning")  # warning | violation
+    severity = db.Column(db.String(20), nullable=False, default="warning")  # info | warning | violation
     details = db.Column(db.String(500))
     # Model confidence (0-1) for genuinely probabilistic detections only —
     # face-api.js's detection score for no_face/multiple_faces, COCO-SSD's
@@ -588,6 +647,12 @@ class Recording(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     attempt_id = db.Column(db.Integer, db.ForeignKey("attempts.id"), nullable=False)
+    # webcam | screen — Complete Exam Replay records both tracks
+    # independently (see app.static.js.proctor.js's screen-capture
+    # MediaRecorder, parallel to the existing webcam one), each chunked
+    # and indexed on its own, so a screen-share decline/failure just means
+    # no "screen" rows exist rather than breaking the webcam recording.
+    kind = db.Column(db.String(10), nullable=False, default="webcam")
     chunk_index = db.Column(db.Integer, nullable=False, default=0)
     filename = db.Column(db.String(255), nullable=False)
     content_type = db.Column(db.String(100), nullable=False, default="video/webm")

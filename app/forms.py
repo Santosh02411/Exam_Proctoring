@@ -118,6 +118,16 @@ class CertificateSettingsForm(FlaskForm):
     certificate_signatory_title = StringField("Signatory title", validators=[Optional(), Length(max=120)])
 
 
+class ProctoringPolicyForm(FlaskForm):
+    """CSRF-only — the actual per-event-type action selects (see
+    app.proctoring.POLICY_CONFIGURABLE_EVENT_TYPES) are rendered and
+    parsed by hand in admin.proctoring_policy/update_proctoring_policy
+    rather than as bound WTForms fields, since the field set is generated
+    dynamically from that list rather than being fixed at class-definition
+    time."""
+    pass
+
+
 class RetentionPolicyForm(FlaskForm):
     """Editable retention-window overrides — see app.retention. These six
     fields are the ones an organization's own admin can override; the

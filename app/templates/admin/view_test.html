@@ -16,6 +16,7 @@
     <a class="btn ghost" href="{{ url_for('admin.manage_sections', test_id=test.id) }}">Sections</a>
     <a class="btn ghost" href="{{ url_for('admin.add_question', test_id=test.id) }}">Add Questions</a>
     <a class="btn ghost" href="{{ url_for('admin.assign_students', test_id=test.id) }}">Assign Students</a>
+    <a class="btn ghost" href="{{ url_for('admin.proctoring_policy', test_id=test.id) }}">Proctoring Policy</a>
     <a class="btn" href="{{ url_for('admin.view_results', test_id=test.id) }}">View Results</a>
     {% endif %}
   </div>

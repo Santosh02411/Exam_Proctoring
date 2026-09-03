@@ -21,6 +21,18 @@
   const spotCheckPrompt = document.getElementById('spotCheckPrompt');
   const sessionConflictOverlay = document.getElementById('sessionConflictOverlay');
 
+  // Candidate Technical Pre-Check / Exam Environment Verification elements
+  const precheckOverlay = document.getElementById('precheckOverlay');
+  const precheckCamPreview = document.getElementById('precheckCamPreview');
+  const precheckContinue = document.getElementById('precheckContinue');
+  const environmentOverlay = document.getElementById('environmentOverlay');
+  const envCamPreview = document.getElementById('envCamPreview');
+  const envStartScan = document.getElementById('envStartScan');
+  const envContinue = document.getElementById('envContinue');
+  const envStatus = document.getElementById('envStatus');
+  const envProgress = document.getElementById('envProgress');
+  const envResult = document.getElementById('envResult');
+
   let sharedStream = null;
   let examActive = false;
   let examEnded = false;
@@ -51,6 +63,19 @@
   let mediaRecorder = null;
   let recordingChunkIndex = 0;
   let recordingRetryInterval = null;
+  let qualitySampleTickCount = 0;
+
+  // Complete Exam Replay: a second, independent recording of the
+  // student's screen (see startScreenRecording), alongside the existing
+  // webcam recording above. Kept entirely separate — its own stream,
+  // its own MediaRecorder, its own chunk index/retry queue — so a
+  // student declining the screen-share prompt (or a browser that can't
+  // support it) never affects the webcam recording, which is the one
+  // thing this app has always required.
+  let screenStream = null;
+  let screenMediaRecorder = null;
+  let screenRecordingChunkIndex = 0;
+  let pendingScreenRecordingChunks = [];
 
   let audioCtx = null;
   let analyser = null;
@@ -381,7 +406,15 @@
         })
       });
       const data = await res.json();
-      if (severity === 'violation') {
+      // Customizable Warning System: the server resolves this test's
+      // per-event-type policy (warning limits, custom messages, grace
+      // periods) and tells us exactly what the student should see —
+      // including plain "warning" severity events that a policy has
+      // given a custom message, which the pre-existing violation-only
+      // banner never covered.
+      if (data.message) {
+        showBanner(data.message);
+      } else if (severity === 'violation') {
         showBanner(`Warning: ${eventType.replace(/_/g, ' ')} (${data.violation_count} violation${data.violation_count === 1 ? '' : 's'} recorded)`);
       }
       if (data.terminated) {
@@ -398,15 +431,24 @@
   async function initCamera() {
     try {
       sharedStream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 320, height: 240 },
+        // Ideal (not exact) so a low-end webcam still connects at
+        // whatever it supports — 640x480 is a floor worth asking for
+        // since resolution feeds the Proctoring Quality Score's evidence
+        // grade, but a hard 'exact' constraint would reject a phone/older
+        // laptop camera outright over what's just a nice-to-have.
+        video: { width: { ideal: 640, min: 320 }, height: { ideal: 480, min: 240 } },
         audio: true
       });
       consentCamPreview.srcObject = sharedStream;
       camPreview.srcObject = sharedStream;
+      if (precheckCamPreview) precheckCamPreview.srcObject = sharedStream;
+      if (envCamPreview) envCamPreview.srcObject = sharedStream;
       camStatus.textContent = 'Ready';
       maybeEnableVerify();
+      precheckOnCameraReady();
     } catch (e) {
       camStatus.textContent = 'Permission denied — camera & mic are required to start.';
+      precheckOnCameraFailed();
     }
   }
 
@@ -437,6 +479,324 @@
       cocoModelFailed = true;
       console.warn('object detection model unavailable', e);
     }
+  }
+
+  // =====================================================================
+  // Candidate Technical Pre-Check
+  // Runs first, before identity verification/consent: confirms webcam,
+  // microphone, speakers, browser compatibility, internet speed, and
+  // (where the browser supports it) display/permission info, with a
+  // pass/warn/fail checklist. Camera, mic, and browser compatibility are
+  // required to continue; speaker and network results are informational
+  // only, since a slow connection or muted speakers shouldn't by
+  // themselves block a student who otherwise has working proctoring
+  // hardware — they're surfaced so the student can fix what they can
+  // before starting, not as a hard gate.
+  // =====================================================================
+  const precheckState = { camera: false, mic: false, browser: false, speaker: null, network: null, display: null };
+  let micAnalyser = null;
+  let micAudioCtx = null;
+  let micLevelRaf = null;
+  let micEverDetectedSound = false;
+
+  function setCheckIcon(iconId, state) {
+    const el = document.getElementById(iconId);
+    if (!el) return;
+    el.className = 'check-icon ' + state;
+    el.textContent = state === 'pass' ? '✓' : (state === 'fail' ? '✕' : (state === 'warn' ? '!' : '•'));
+  }
+
+  function maybeEnablePrecheckContinue() {
+    if (!precheckContinue) return;
+    precheckContinue.disabled = !(precheckState.camera && precheckState.mic && precheckState.browser);
+  }
+
+  function precheckOnCameraFailed() {
+    setCheckIcon('pcIconCamera', 'fail');
+    const el = document.getElementById('pcCameraDetail');
+    if (el) el.textContent = 'Camera/microphone permission denied — allow access in your browser and reload.';
+    setCheckIcon('pcIconMic', 'fail');
+  }
+
+  function precheckOnCameraReady() {
+    const track = sharedStream && sharedStream.getVideoTracks()[0];
+    const settings = track ? track.getSettings() : {};
+    const resText = settings.width && settings.height ? `${settings.width}x${settings.height}` : 'connected';
+    setCheckIcon('pcIconCamera', 'pass');
+    precheckState.camera = true;
+    const camDetail = document.getElementById('pcCameraDetail');
+    if (camDetail) camDetail.textContent = `Working (${resText})`;
+    maybeEnablePrecheckContinue();
+
+    startMicLevelMeter();
+    runBrowserCompatCheck();
+    runDisplayCheck();
+    runNetworkSpeedTest();
+  }
+
+  function startMicLevelMeter() {
+    const audioTrack = sharedStream && sharedStream.getAudioTracks()[0];
+    const micDetail = document.getElementById('pcMicDetail');
+    const micLevelBar = document.getElementById('pcMicLevel');
+    if (!audioTrack) {
+      setCheckIcon('pcIconMic', 'fail');
+      if (micDetail) micDetail.textContent = 'No microphone detected.';
+      return;
+    }
+    try {
+      const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+      micAudioCtx = new AudioContextCtor();
+      const source = micAudioCtx.createMediaStreamSource(sharedStream);
+      micAnalyser = micAudioCtx.createAnalyser();
+      micAnalyser.fftSize = 512;
+      source.connect(micAnalyser);
+      const data = new Uint8Array(micAnalyser.frequencyBinCount);
+      if (micDetail) micDetail.textContent = 'Listening — say something to confirm your mic is picked up…';
+
+      const tick = () => {
+        micAnalyser.getByteTimeDomainData(data);
+        let sumSquares = 0;
+        for (let i = 0; i < data.length; i++) {
+          const v = (data[i] - 128) / 128;
+          sumSquares += v * v;
+        }
+        const rms = Math.sqrt(sumSquares / data.length);
+        if (micLevelBar) micLevelBar.style.width = Math.min(rms * 400, 100) + '%';
+        if (rms > 0.02) {
+          micEverDetectedSound = true;
+          if (!precheckState.mic) {
+            precheckState.mic = true;
+            setCheckIcon('pcIconMic', 'pass');
+            if (micDetail) micDetail.textContent = 'Working — sound detected.';
+            maybeEnablePrecheckContinue();
+          }
+        }
+        micLevelRaf = requestAnimationFrame(tick);
+      };
+      tick();
+
+      // Don't leave the student stuck forever if the room is silent and
+      // they don't realize they need to make noise — after a few seconds
+      // with nothing detected, nudge them explicitly rather than staying
+      // on "Listening…" indefinitely.
+      setTimeout(() => {
+        if (!precheckState.mic && micDetail) {
+          setCheckIcon('pcIconMic', 'warn');
+          micDetail.textContent = "No sound detected yet — try saying something, or check your mic isn't muted.";
+        }
+      }, 6000);
+    } catch (e) {
+      setCheckIcon('pcIconMic', 'warn');
+      if (micDetail) micDetail.textContent = "Couldn't measure mic level in this browser — continuing anyway.";
+      precheckState.mic = true; // don't hard-block on an environment where level metering itself isn't supported
+      maybeEnablePrecheckContinue();
+    }
+  }
+
+  function runBrowserCompatCheck() {
+    const required = {
+      'Camera/mic access': !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia),
+      'Screen recording': typeof MediaRecorder !== 'undefined',
+      'Fullscreen mode': !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen),
+    };
+    const missing = Object.keys(required).filter((k) => !required[k]);
+    const detail = document.getElementById('pcBrowserDetail');
+    if (missing.length === 0) {
+      setCheckIcon('pcIconBrowser', 'pass');
+      if (detail) detail.textContent = 'Compatible';
+      precheckState.browser = true;
+    } else {
+      setCheckIcon('pcIconBrowser', 'fail');
+      if (detail) detail.textContent = `Missing: ${missing.join(', ')} — try an up-to-date Chrome, Edge, or Firefox.`;
+      precheckState.browser = false;
+    }
+    maybeEnablePrecheckContinue();
+  }
+
+  async function runDisplayCheck() {
+    const detail = document.getElementById('pcDisplayDetail');
+    // The Window Management API (getScreenDetails) is the only way to see
+    // connected-display *count* from the browser, and it's Chromium-only,
+    // requires its own permission prompt, and is frequently unavailable —
+    // this is intentionally treated as informational-only (never blocks
+    // continuing) since most students on a supported single-monitor setup
+    // will simply see "not available in this browser", not a failure.
+    if (typeof window.getScreenDetails !== 'function') {
+      setCheckIcon('pcIconDisplay', 'warn');
+      if (detail) detail.textContent = 'Multi-monitor detection not supported in this browser — skipped.';
+      precheckState.display = null;
+      return;
+    }
+    try {
+      const details = await window.getScreenDetails();
+      const count = details.screens ? details.screens.length : 1;
+      precheckState.display = count;
+      if (count > 1) {
+        setCheckIcon('pcIconDisplay', 'warn');
+        if (detail) detail.textContent = `${count} displays detected — some exams don't allow a second monitor.`;
+      } else {
+        setCheckIcon('pcIconDisplay', 'pass');
+        if (detail) detail.textContent = 'Single display';
+      }
+    } catch (e) {
+      setCheckIcon('pcIconDisplay', 'warn');
+      if (detail) detail.textContent = 'Permission not granted — skipped.';
+    }
+  }
+
+  async function runNetworkSpeedTest() {
+    const detail = document.getElementById('pcNetworkDetail');
+    if (detail) detail.textContent = 'Testing…';
+    try {
+      const start = performance.now();
+      const res = await fetch(cfg.speedtestUrl + '?t=' + Date.now(), { cache: 'no-store' });
+      const blob = await res.blob();
+      const seconds = (performance.now() - start) / 1000;
+      const mbps = (blob.size * 8) / seconds / 1e6;
+      precheckState.network = Math.round(mbps * 10) / 10;
+      if (mbps >= 5) {
+        setCheckIcon('pcIconNetwork', 'pass');
+        if (detail) detail.textContent = `${precheckState.network} Mbps — good`;
+      } else if (mbps >= 1) {
+        setCheckIcon('pcIconNetwork', 'warn');
+        if (detail) detail.textContent = `${precheckState.network} Mbps — usable, but on the slower side`;
+      } else {
+        setCheckIcon('pcIconNetwork', 'warn');
+        if (detail) detail.textContent = `${precheckState.network} Mbps — slow; video/recording may be choppy`;
+      }
+    } catch (e) {
+      setCheckIcon('pcIconNetwork', 'warn');
+      if (detail) detail.textContent = 'Could not measure — continuing anyway';
+    }
+  }
+
+  const pcPlaySound = document.getElementById('pcPlaySound');
+  const pcSpeakerConfirm = document.getElementById('pcSpeakerConfirm');
+  if (pcPlaySound) {
+    pcPlaySound.addEventListener('click', () => {
+      try {
+        const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+        const ctx = new AudioContextCtor();
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.value = 440;
+        osc.connect(ctx.destination);
+        osc.start();
+        setTimeout(() => { osc.stop(); ctx.close(); }, 600);
+        if (pcSpeakerConfirm) pcSpeakerConfirm.style.display = 'block';
+      } catch (e) {
+        const detail = document.getElementById('pcSpeakerDetail');
+        if (detail) detail.textContent = "Couldn't play a test sound in this browser.";
+      }
+    });
+  }
+  const pcHeardYes = document.getElementById('pcHeardYes');
+  const pcHeardNo = document.getElementById('pcHeardNo');
+  if (pcHeardYes) pcHeardYes.addEventListener('click', () => {
+    precheckState.speaker = true;
+    setCheckIcon('pcIconSpeaker', 'pass');
+    const detail = document.getElementById('pcSpeakerDetail');
+    if (detail) detail.textContent = 'Confirmed working';
+    if (pcSpeakerConfirm) pcSpeakerConfirm.style.display = 'none';
+  });
+  if (pcHeardNo) pcHeardNo.addEventListener('click', () => {
+    precheckState.speaker = false;
+    setCheckIcon('pcIconSpeaker', 'warn');
+    const detail = document.getElementById('pcSpeakerDetail');
+    if (detail) detail.textContent = 'Check your volume/output device — continuing anyway';
+    if (pcSpeakerConfirm) pcSpeakerConfirm.style.display = 'none';
+  });
+
+  if (precheckContinue) {
+    precheckContinue.addEventListener('click', () => {
+      if (micLevelRaf) cancelAnimationFrame(micLevelRaf);
+      if (micAudioCtx) { try { micAudioCtx.close(); } catch (e) {} }
+      const track = sharedStream && sharedStream.getVideoTracks()[0];
+      const settings = track ? track.getSettings() : {};
+      const summary = {
+        resolution: settings.width && settings.height ? `${settings.width}x${settings.height}` : null,
+        mic_confirmed: micEverDetectedSound,
+        speaker_confirmed: precheckState.speaker,
+        network_mbps: precheckState.network,
+        display_count: precheckState.display,
+      };
+      reportEvent('precheck_completed', 'info', JSON.stringify(summary));
+      precheckOverlay.style.display = 'none';
+      environmentOverlay.style.display = 'flex';
+    });
+  }
+
+  // =====================================================================
+  // Exam Environment Verification
+  // A short pre-exam "room scan": captures a handful of frames over a few
+  // seconds while the student pans their camera/device around their
+  // workspace, and runs the same COCO-SSD object detector used during the
+  // exam (see startObjectDetection below) on each frame. This never
+  // blocks starting the exam outright — a false positive here (a book on
+  // a shelf across the room, say) shouldn't lock someone out — but
+  // whatever it finds is logged for the proctor/admin to see, and the
+  // student is asked to clear anything flagged before continuing.
+  // =====================================================================
+  const ENV_SCAN_FRAMES = 5;
+  const ENV_SCAN_INTERVAL_MS = 1500;
+  const ENV_UNAUTHORIZED_CLASSES = new Set([
+    'cell phone', 'book', 'laptop', 'remote', 'tablet', 'tv', 'keyboard', 'mouse', 'clock', 'scissors',
+  ]);
+
+  if (envStartScan) {
+    envStartScan.addEventListener('click', runEnvironmentScan);
+  }
+
+  async function runEnvironmentScan() {
+    envStartScan.disabled = true;
+    envContinue.disabled = true;
+    envResult.textContent = '';
+    envStatus.textContent = 'Scanning…';
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 320;
+    canvas.height = 240;
+    const ctx = canvas.getContext('2d');
+    const foundClasses = new Set();
+    let maxPersonCount = 0;
+
+    for (let i = 0; i < ENV_SCAN_FRAMES; i++) {
+      envProgress.style.width = Math.round(((i + 1) / ENV_SCAN_FRAMES) * 100) + '%';
+      if (cocoModel) {
+        try {
+          ctx.drawImage(envCamPreview, 0, 0, canvas.width, canvas.height);
+          const predictions = await cocoModel.detect(canvas);
+          const relevant = predictions.filter((p) => p.score >= 0.55);
+          relevant.forEach((p) => { if (ENV_UNAUTHORIZED_CLASSES.has(p.class)) foundClasses.add(p.class); });
+          const personCount = relevant.filter((p) => p.class === 'person').length;
+          maxPersonCount = Math.max(maxPersonCount, personCount);
+        } catch (e) { /* skip this frame, keep scanning */ }
+      }
+      if (i < ENV_SCAN_FRAMES - 1) await new Promise((resolve) => setTimeout(resolve, ENV_SCAN_INTERVAL_MS));
+    }
+
+    envStartScan.disabled = false;
+    envContinue.disabled = false;
+    const flagged = foundClasses.size > 0 || maxPersonCount > 1;
+
+    if (flagged) {
+      const items = [...foundClasses];
+      if (maxPersonCount > 1) items.push(`${maxPersonCount} people in frame`);
+      envStatus.textContent = 'Please review before continuing';
+      envResult.innerHTML = `<span style="color:var(--warning);font-weight:600">We noticed: ${items.join(', ')}.</span> Please remove/clear these from your workspace if they shouldn't be there, then continue.`;
+      reportEvent('environment_check_flagged', 'warning', JSON.stringify({ items }));
+    } else {
+      envStatus.textContent = 'Environment looks clear';
+      envResult.innerHTML = '<span style="color:var(--success);font-weight:600">No unauthorized objects or extra people detected.</span>';
+      reportEvent('environment_check_clear', 'info', 'Pre-exam room scan found nothing of concern');
+    }
+  }
+
+  if (envContinue) {
+    envContinue.addEventListener('click', () => {
+      environmentOverlay.style.display = 'none';
+      consentOverlay.style.display = 'flex';
+    });
   }
 
   function maybeEnableVerify() {
@@ -520,6 +880,7 @@
     startAudioMonitoring();
     initQuestionTimeTracking();
     startRecording();
+    startScreenRecording();
     startPerQuestionTimers();
     startSectionTimers();
     startAutosave();
@@ -1233,6 +1594,23 @@
       } else {
         audioLoudStreak = 0;
       }
+
+      // Proctoring Quality Score: a lightweight periodic technical sample
+      // (audio level + capture resolution), separate from the
+      // audio_violation check above — this is evidence-quality
+      // bookkeeping, not a violation signal, so it's reported far less
+      // often (every ~10th tick here, vs. every tick for the loud-audio
+      // check) since it only needs to characterize the *typical* level,
+      // not catch every moment.
+      qualitySampleTickCount += 1;
+      if (qualitySampleTickCount % 10 === 0) {
+        const track = sharedStream && sharedStream.getVideoTracks()[0];
+        const settings = track ? track.getSettings() : {};
+        reportEvent('quality_sample', 'info', JSON.stringify({
+          audio_rms: Math.round(rms * 1000) / 1000,
+          resolution: settings.width && settings.height ? `${settings.width}x${settings.height}` : null,
+        }));
+      }
     }, 3000);
   }
 
@@ -1285,19 +1663,27 @@
   const MAX_QUEUED_RECORDING_CHUNKS = 20; // ~10 minutes of footage at the default 30s chunk size
   const RECORDING_RETRY_INTERVAL_MS = 20000;
 
-  function queueRecordingChunk(blob, index) {
-    pendingRecordingChunks.push({ blob, index });
-    if (pendingRecordingChunks.length > MAX_QUEUED_RECORDING_CHUNKS) {
-      const dropped = pendingRecordingChunks.shift();
-      console.warn(`recording chunk ${dropped.index} dropped — retry queue full`);
+  function queueRecordingChunk(blob, index, kind) {
+    const queue = kind === 'screen' ? pendingScreenRecordingChunks : pendingRecordingChunks;
+    queue.push({ blob, index, kind: kind || 'webcam' });
+    if (queue.length > MAX_QUEUED_RECORDING_CHUNKS) {
+      const dropped = queue.shift();
+      console.warn(`${dropped.kind} recording chunk ${dropped.index} dropped — retry queue full`);
     }
   }
 
   function flushPendingRecordingChunks() {
-    if (!pendingRecordingChunks.length || !isOnline) return;
-    const toSend = pendingRecordingChunks;
-    pendingRecordingChunks = [];
-    toSend.forEach((item) => uploadRecordingChunk(item.blob, item.index));
+    if (!isOnline) return;
+    if (pendingRecordingChunks.length) {
+      const toSend = pendingRecordingChunks;
+      pendingRecordingChunks = [];
+      toSend.forEach((item) => uploadRecordingChunk(item.blob, item.index, item.kind));
+    }
+    if (pendingScreenRecordingChunks.length) {
+      const toSend = pendingScreenRecordingChunks;
+      pendingScreenRecordingChunks = [];
+      toSend.forEach((item) => uploadRecordingChunk(item.blob, item.index, item.kind));
+    }
   }
 
   function startRecording() {
@@ -1317,7 +1703,7 @@
 
     mediaRecorder.ondataavailable = (event) => {
       if (event.data && event.data.size > 0) {
-        uploadRecordingChunk(event.data, recordingChunkIndex);
+        uploadRecordingChunk(event.data, recordingChunkIndex, 'webcam');
         recordingChunkIndex += 1;
       }
     };
@@ -1326,10 +1712,68 @@
     recordingRetryInterval = setInterval(flushPendingRecordingChunks, RECORDING_RETRY_INTERVAL_MS);
   }
 
-  function uploadRecordingChunk(blob, index) {
+  // Complete Exam Replay: capture the student's screen as a second track
+  // alongside the webcam recording above. Requested via getDisplayMedia,
+  // which — unlike getUserMedia — must be called from a direct user
+  // gesture in most browsers, so this runs from startExam() (fired by the
+  // student clicking "Start Exam" on the consent screen) rather than
+  // earlier alongside camera setup. A decline, an unsupported browser, or
+  // any other failure here is non-fatal: the exam proceeds on the webcam
+  // recording and every other proctoring signal exactly as it always has
+  // — screen recording is additional evidence, never a requirement to sit
+  // the exam, since making it one would mean a rejected OS-level
+  // permission prompt (which some lab/kiosk machines lock down entirely)
+  // could block a student from an otherwise-legitimate attempt.
+  async function startScreenRecording() {
+    if (typeof MediaRecorder === 'undefined' || !navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+      console.warn('Screen capture not supported in this browser — replay will only have the webcam track.');
+      return;
+    }
+    try {
+      screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 5 }, audio: false });
+    } catch (e) {
+      console.warn('Screen recording declined or unavailable — continuing with webcam recording only.', e);
+      return;
+    }
+
+    // If the student stops sharing mid-exam (browser-native "Stop
+    // sharing" control), just end that track cleanly rather than trying
+    // to re-prompt mid-exam — a re-prompt would itself be a distracting
+    // interruption, and the webcam recording keeps covering the rest of
+    // the attempt regardless.
+    const [track] = screenStream.getVideoTracks();
+    if (track) {
+      track.addEventListener('ended', () => {
+        if (screenMediaRecorder && screenMediaRecorder.state !== 'inactive') {
+          try { screenMediaRecorder.stop(); } catch (e) { /* noop */ }
+        }
+      });
+    }
+
+    const mimeCandidates = ['video/webm;codecs=vp8', 'video/webm'];
+    const mimeType = mimeCandidates.find(m => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(m)) || '';
+
+    try {
+      screenMediaRecorder = new MediaRecorder(screenStream, mimeType ? { mimeType } : undefined);
+    } catch (e) {
+      console.warn('Could not start screen MediaRecorder', e);
+      return;
+    }
+
+    screenMediaRecorder.ondataavailable = (event) => {
+      if (event.data && event.data.size > 0) {
+        uploadRecordingChunk(event.data, screenRecordingChunkIndex, 'screen');
+        screenRecordingChunkIndex += 1;
+      }
+    };
+    screenMediaRecorder.start(30000);
+  }
+
+  function uploadRecordingChunk(blob, index, kind) {
     const fd = new FormData();
     fd.append('attempt_id', cfg.attemptId);
     fd.append('chunk_index', index);
+    fd.append('kind', kind || 'webcam');
     fd.append('chunk', blob, `chunk_${index}.webm`);
     fetch(cfg.recordingChunkUrl, { method: 'POST', body: fd })
       .then((res) => {
@@ -1337,7 +1781,7 @@
       })
       .catch((e) => {
         console.warn('recording chunk upload failed, queued for retry', e);
-        queueRecordingChunk(blob, index);
+        queueRecordingChunk(blob, index, kind);
       });
   }
 
@@ -1363,6 +1807,12 @@
 
     if (mediaRecorder && mediaRecorder.state !== 'inactive') {
       try { mediaRecorder.stop(); } catch (e) { /* noop */ }
+    }
+    if (screenMediaRecorder && screenMediaRecorder.state !== 'inactive') {
+      try { screenMediaRecorder.stop(); } catch (e) { /* noop */ }
+    }
+    if (screenStream) {
+      screenStream.getTracks().forEach(t => t.stop());
     }
     if (audioCtx) {
       try { audioCtx.close(); } catch (e) { /* noop */ }

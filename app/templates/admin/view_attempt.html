@@ -71,16 +71,69 @@
 </div>
 {% endif %}
 
+{% if quality.score is not none %}
+<div class="card" style="margin-bottom:16px;border-left:4px solid {{ {'excellent':'var(--success)','good':'var(--success)','fair':'var(--warning)','poor':'var(--danger)'}[quality.level] }}">
+  <h2 style="margin:0 0 6px 0">
+    Proctoring Quality Score
+    <span class="badge risk-{{ 'low' if quality.level in ('excellent','good') else ('medium' if quality.level == 'fair' else 'high') }}" style="font-size:14px;padding:6px 12px">{{ quality.score }}/100 · {{ quality.level|capitalize }}</span>
+  </h2>
+  <div class="small muted" style="margin-bottom:8px">
+    How reliable this attempt's recorded evidence is — lighting, face visibility, audio, network stability, and
+    capture resolution. This is separate from any violation-based risk assessment shown above: a low score
+    doesn't mean the student cheated; it means the evidence itself (video/audio) may be harder to trust or review.
+  </div>
+  <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:8px">
+    {% for dim, val in quality.dimensions.items() %}
+    <div style="min-width:110px">
+      <div class="small muted">{{ dim|replace('_',' ')|capitalize }}</div>
+      <div style="font-weight:700;font-size:16px">{{ val }}/100</div>
+    </div>
+    {% endfor %}
+    {% if quality.resolution %}
+    <div style="min-width:110px">
+      <div class="small muted">Capture resolution</div>
+      <div style="font-weight:700;font-size:16px">{{ quality.resolution }}</div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+{% if patterns %}
+<div class="card" style="margin-bottom:16px">
+  <h2 style="margin:0 0 6px 0">Behavioral Pattern Analysis</h2>
+  <div class="small muted" style="margin-bottom:10px">
+    Violations grouped into incidents by timing, and checked for whether each incident combines multiple
+    <em>different</em> signal sources (face, gaze, audio, tab/window, object detection, network) rather than one
+    sensor repeating — a coordinated multi-signal incident is a materially stronger indicator of deliberate
+    behavior than the same number of same-type events spread across the attempt. Worst incidents first.
+  </div>
+  {% for incident in patterns %}
+  <div style="padding:10px 12px;margin-bottom:8px;border-radius:8px;border:1px solid var(--border-soft);{{ 'border-left:4px solid var(--danger)' if incident.coordinated }}">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+      <div class="small" style="font-weight:600">
+        {{ incident.start.strftime('%H:%M:%S') }}{% if incident.end != incident.start %} – {{ incident.end.strftime('%H:%M:%S') }}{% endif %}
+        {% if incident.coordinated %}<span class="badge risk-high" style="margin-left:6px">Coordinated pattern</span>{% endif %}
+      </div>
+      <div class="small muted">{{ incident.categories|join(', ') }}</div>
+    </div>
+    <div class="small" style="margin-top:4px">{{ incident.narrative }}</div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
 {% if timeline.entries %}
 <div class="card" style="margin-bottom:16px">
   <h2>Behavior Timeline</h2>
   <div class="small muted" style="margin-bottom:10px">
-    Every violation, flagged snapshot, and recording segment from this attempt, in one chronological feed.
-    Click an entry to jump the recording (if available) to that moment and highlight the matching detail below.
+    Every violation, warning, flagged snapshot, answer change, and recording segment from this attempt, in one
+    chronological feed — the backbone of Complete Exam Replay below. Click an entry to jump both the webcam and
+    screen recordings (if available) to that moment and highlight the matching detail on the page.
   </div>
   <ul id="behaviorTimeline" class="events-list" style="padding-left:18px;max-height:360px;overflow-y:auto">
     {% for item in timeline.entries %}
-    <li class="{{ item.severity or '' }}" data-offset="{{ item.offset }}" data-anchor="{{ item.anchor }}"
+    <li class="{{ item.severity or (item.type if item.type == 'answer' else '') }}" data-offset="{{ item.offset }}" data-anchor="{{ item.anchor }}"
         style="cursor:pointer" tabindex="0" role="button">
       [{{ '%02d:%02d:%02d'|format((item.offset // 3600)|int, ((item.offset % 3600) // 60)|int, (item.offset % 60)|int) }}]
       {{ item.label }}
@@ -134,23 +187,37 @@
 </div>
 
 <div class="card" style="margin-top:16px">
-  <h2>Session Recording</h2>
-  {% if attempt.recordings %}
+  <h2>Complete Exam Replay</h2>
+  {% set webcam_recs = attempt.recordings|selectattr('kind', 'equalto', 'webcam')|list %}
+  {% set screen_recs = attempt.recordings|selectattr('kind', 'equalto', 'screen')|list %}
+  {% if webcam_recs or screen_recs %}
   <div class="small muted" style="margin-bottom:10px">
-    {{ attempt.recordings|length }} chunk(s), recorded in ~30s segments during the attempt.
+    Webcam and screen recordings, synchronized to the Behavior Timeline above — click any timeline entry to jump
+    both tracks to that moment. Screen recording is best-effort (the student may have declined the browser
+    permission, or their browser may not support it), so a webcam-only attempt is expected, not a bug.
   </div>
-  <div class="wrap" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr));display:grid;gap:12px">
-    {% for rec in attempt.recordings|sort(attribute='chunk_index') %}
-    {% set seg = (timeline.segments|selectattr('recording_id', 'equalto', rec.id)|first) if timeline else none %}
-    <div id="rec-{{ rec.id }}">
-      <video controls preload="none" class="timeline-video" style="width:100%;border-radius:8px;background:#000"
-             src="{{ url_for('proctoring.serve_recording', recording_id=rec.id) }}"
-             data-start="{{ seg.start if seg else 0 }}" data-end="{{ seg.end if seg else 0 }}"></video>
-      <div class="small muted" style="margin-top:4px">
-        Segment {{ rec.chunk_index + 1 }} · {{ rec.created_at.strftime('%H:%M:%S') }} · {{ (rec.file_size / 1024)|round(1) }} KB
-      </div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px">
+    <div>
+      <div class="small" style="font-weight:600;margin-bottom:6px">Webcam</div>
+      {% if webcam_recs %}
+      <video id="replayVideo-webcam" controls preload="metadata" class="timeline-video" data-kind="webcam"
+             style="width:100%;border-radius:8px;background:#000"></video>
+      <div class="small muted" style="margin-top:4px">{{ webcam_recs|length }} segment(s), ~30s each.</div>
+      {% else %}
+      <div class="small muted">No webcam recording available.</div>
+      {% endif %}
     </div>
-    {% endfor %}
+    <div>
+      <div class="small" style="font-weight:600;margin-bottom:6px">Screen</div>
+      {% if screen_recs %}
+      <video id="replayVideo-screen" controls preload="metadata" class="timeline-video" data-kind="screen"
+             style="width:100%;border-radius:8px;background:#000"></video>
+      <div class="small muted" style="margin-top:4px">{{ screen_recs|length }} segment(s), ~30s each.</div>
+      {% else %}
+      <div class="small muted">No screen recording available for this attempt (declined, unsupported, or predates
+        this feature).</div>
+      {% endif %}
+    </div>
   </div>
   {% else %}
   <div class="small">No recording available for this attempt.</div>
@@ -167,7 +234,7 @@
   {% for a in attempt.answers %}
   {% set q = a.question %}
   {% set correct = a.selected_option and not q.needs_manual_grading and q.is_correct(a.selected_option) %}
-  <div class="qcard">
+  <div class="qcard" id="answer-q-{{ q.id }}">
     <div><strong>{{ q.question_text }}</strong> <span class="badge draft">{{ q.question_type|replace('_',' ')|capitalize }}</span></div>
     {% if q.media_type == 'image' and q.media_url %}
     <div style="margin:8px 0"><img src="{{ q.media_url }}" alt="" style="max-width:260px;border-radius:8px"></div>
@@ -223,11 +290,20 @@
 </div>
 
 <script>
+  // Complete Exam Replay: each [start, end) segment window per recording
+  // kind, keyed by kind — used below to pick which chunk file a given
+  // timeline offset falls in and seek within it. See
+  // app.proctoring.build_timeline's segments_by_kind.
+  window.REPLAY_SEGMENTS = {{ (timeline.segments_by_kind if timeline else {}) | tojson }};
+</script>
+<script>
 (function () {
   var list = document.getElementById('behaviorTimeline');
-  if (!list) return;
-
-  var videos = Array.prototype.slice.call(document.querySelectorAll('.timeline-video'));
+  var segmentsByKind = window.REPLAY_SEGMENTS || {};
+  var videosByKind = {};
+  Array.prototype.slice.call(document.querySelectorAll('.timeline-video[data-kind]')).forEach(function (v) {
+    videosByKind[v.dataset.kind] = v;
+  });
 
   function highlight(el) {
     if (!el) return;
@@ -236,36 +312,58 @@
     setTimeout(function () { el.classList.remove('timeline-highlight'); }, 2000);
   }
 
-  function jumpTo(offsetSeconds, anchorId) {
-    // Find the recording segment whose [start, end) window contains this
-    // moment — falls back to the last segment if the offset is past the
-    // final chunk (e.g. an event logged right as the exam ended).
-    var target = null;
-    for (var i = 0; i < videos.length; i++) {
-      var start = parseFloat(videos[i].dataset.start || '0');
-      var end = parseFloat(videos[i].dataset.end || '0');
-      if (offsetSeconds >= start && offsetSeconds < end) { target = videos[i]; break; }
-    }
-    if (!target && videos.length) target = videos[videos.length - 1];
+  // Seek one <video> element (for one recording kind) to `offsetSeconds`
+  // into the overall attempt — finding which of that kind's chunk files
+  // covers this moment, swapping the <video>'s src to that chunk if it
+  // isn't already loaded, and seeking within it once ready.
+  function seekTrack(kind, offsetSeconds) {
+    var video = videosByKind[kind];
+    var segments = segmentsByKind[kind];
+    if (!video || !segments || !segments.length) return;
 
-    if (target) {
-      var seekTo = Math.max(offsetSeconds - parseFloat(target.dataset.start || '0'), 0);
-      var doSeek = function () {
-        try { target.currentTime = seekTo; } catch (e) { /* not seekable yet */ }
-        target.play().catch(function () {});
-      };
-      if (target.readyState >= 1) {
+    var target = null;
+    for (var i = 0; i < segments.length; i++) {
+      if (offsetSeconds >= segments[i].start && offsetSeconds < segments[i].end) { target = segments[i]; break; }
+    }
+    if (!target) target = segments[segments.length - 1];
+
+    var seekTo = Math.max(offsetSeconds - target.start, 0);
+    var doSeek = function () {
+      try { video.currentTime = seekTo; } catch (e) { /* not seekable yet */ }
+      video.play().catch(function () {});
+    };
+
+    if (video.dataset.loadedUrl === target.url) {
+      if (video.readyState >= 1) {
         doSeek();
       } else {
-        target.addEventListener('loadedmetadata', doSeek, { once: true });
-        target.load();
+        video.addEventListener('loadedmetadata', doSeek, { once: true });
       }
-      highlight(target.closest('div'));
+    } else {
+      video.dataset.loadedUrl = target.url;
+      video.src = target.url;
+      video.addEventListener('loadedmetadata', doSeek, { once: true });
+      video.load();
+    }
+  }
+
+  function jumpTo(offsetSeconds, anchorId) {
+    Object.keys(videosByKind).forEach(function (kind) { seekTrack(kind, offsetSeconds); });
+    if (Object.keys(videosByKind).length) {
+      highlight(document.querySelector('.timeline-video'));
     }
 
     var anchorEl = anchorId && document.getElementById(anchorId);
-    if (anchorEl && anchorEl !== (target && target.closest('div'))) highlight(anchorEl);
+    if (anchorEl) highlight(anchorEl);
   }
+
+  // Load each track's first segment at page load so the player isn't
+  // blank before the first timeline click.
+  Object.keys(videosByKind).forEach(function (kind) {
+    if (segmentsByKind[kind] && segmentsByKind[kind].length) seekTrack(kind, 0);
+  });
+
+  if (!list) return;
 
   list.addEventListener('click', function (evt) {
     var li = evt.target.closest('li[data-offset]');

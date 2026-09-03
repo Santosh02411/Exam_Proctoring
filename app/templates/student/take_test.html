@@ -7,17 +7,102 @@
 {% endblock %}
 {% block content %}
 
+<div id="precheckOverlay" role="dialog" aria-modal="true">
+  <div id="precheckBox">
+    <h2>Technical Pre-Check</h2>
+    <p class="muted">Before starting, let's confirm your webcam, microphone, speakers, browser, and internet
+      connection are all working — this takes about a minute.</p>
+    <div style="display:flex;gap:16px;margin-top:14px;flex-wrap:wrap">
+      <video id="precheckCamPreview" class="precheck-preview" autoplay muted playsinline></video>
+      <div style="flex:1;min-width:260px">
+        <div class="check-row">
+          <div class="check-icon pending" id="pcIconCamera">•</div>
+          <div style="flex:1"><div class="check-label">Webcam</div><div class="check-detail" id="pcCameraDetail">Waiting for permission…</div></div>
+        </div>
+        <div class="check-row">
+          <div class="check-icon pending" id="pcIconMic">•</div>
+          <div style="flex:1">
+            <div class="check-label">Microphone</div>
+            <div class="check-detail" id="pcMicDetail">Waiting for permission…</div>
+            <div class="level-meter"><div class="level-meter-fill" id="pcMicLevel"></div></div>
+          </div>
+        </div>
+        <div class="check-row">
+          <div class="check-icon pending" id="pcIconSpeaker">•</div>
+          <div style="flex:1">
+            <div class="check-label">Speakers</div>
+            <div class="check-detail">
+              <button type="button" class="btn ghost small" id="pcPlaySound">Play Test Sound</button>
+              <span id="pcSpeakerDetail" class="small muted">Click to test — then confirm below</span>
+            </div>
+            <div id="pcSpeakerConfirm" style="display:none;margin-top:6px">
+              <button type="button" class="btn small" id="pcHeardYes">I heard it</button>
+              <button type="button" class="btn ghost small" id="pcHeardNo">I didn't hear anything</button>
+            </div>
+          </div>
+        </div>
+        <div class="check-row">
+          <div class="check-icon pending" id="pcIconBrowser">•</div>
+          <div style="flex:1"><div class="check-label">Browser compatibility</div><div class="check-detail" id="pcBrowserDetail">Checking…</div></div>
+        </div>
+        <div class="check-row">
+          <div class="check-icon pending" id="pcIconNetwork">•</div>
+          <div style="flex:1"><div class="check-label">Internet speed</div><div class="check-detail" id="pcNetworkDetail">Not tested yet</div></div>
+        </div>
+        <div class="check-row">
+          <div class="check-icon pending" id="pcIconDisplay">•</div>
+          <div style="flex:1"><div class="check-label">Screen / display</div><div class="check-detail" id="pcDisplayDetail">Checking…</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="small muted" style="margin-top:14px" id="pcOverallHint">
+      Camera, microphone, and browser compatibility must pass to continue. Speaker and network results are shown
+      for your information — you can continue even if your connection looks slow.
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">
+      <a href="{{ url_for('student.dashboard') }}" class="btn ghost">Cancel</a>
+      <button id="precheckContinue" class="btn" type="button" disabled>Continue</button>
+    </div>
+  </div>
+</div>
+
+<div id="environmentOverlay" role="dialog" aria-modal="true">
+  <div id="environmentBox">
+    <h2>Exam Environment Verification</h2>
+    <p class="muted" id="envInstructions">
+      Please slowly show your desk and the area around you to the camera — pick up the camera or turn it if you
+      can, or turn your head/device to show what's around you. This helps confirm your workspace is clear of
+      unauthorized material before you begin.
+    </p>
+    <div style="display:flex;gap:16px;align-items:center;margin-top:10px;flex-wrap:wrap">
+      <video id="envCamPreview" class="precheck-preview" autoplay muted playsinline></video>
+      <div style="flex:1;min-width:220px">
+        <div id="envStatus" class="small" style="font-weight:600">Ready to scan</div>
+        <div class="level-meter" style="margin-top:8px"><div class="level-meter-fill" id="envProgress" style="background:var(--primary)"></div></div>
+        <div id="envResult" class="small" style="margin-top:10px"></div>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">
+      <button id="envStartScan" class="btn ghost" type="button">Start Scan</button>
+      <button id="envContinue" class="btn" type="button" disabled>Continue</button>
+    </div>
+  </div>
+</div>
+
 <div id="consentOverlay" role="dialog" aria-modal="true">
   <div id="consentBox">
     <h2>Start proctored test</h2>
     <p class="muted">
       This test is proctored. Your camera and microphone will be monitored throughout the exam —
       video and audio are analyzed locally in your browser, and the session is also recorded for
-      admin review. Your identity will be verified against your enrolled reference photo before you
-      begin and periodically throughout. You must stay in fullscreen; leaving fullscreen, switching
-      tabs, having no face / multiple faces visible, sustained looking-away from the screen, a
-      phone/book/extra person detected in frame, or an identity mismatch will be logged and can end
-      your attempt after repeated warnings.
+      admin review. When you click "Start exam" your browser will also ask permission to record
+      your screen for the same review purpose (Complete Exam Replay) — if you decline or your
+      browser doesn't support it, the exam still proceeds on the camera/microphone recording and
+      every other check below exactly as normal. Your identity will be verified against your
+      enrolled reference photo before you begin and periodically throughout. You must stay in
+      fullscreen; leaving fullscreen, switching tabs, having no face / multiple faces visible,
+      sustained looking-away from the screen, a phone/book/extra person detected in frame, or an
+      identity mismatch will be logged and can end your attempt after repeated warnings.
     </p>
     {% if test.instructions %}
     <div class="opt" style="margin-top:10px">
@@ -183,6 +268,7 @@
     sessionToken: {{ attempt.session_token | tojson }},
     eventUrl: "{{ url_for('proctoring.log_event') }}",
     snapshotUrl: "{{ url_for('proctoring.check_snapshot') }}",
+    speedtestUrl: "{{ url_for('proctoring.speedtest_blob') }}",
     submitUrl: "{{ url_for('student.submit_answers', attempt_id=attempt.id) }}",
     autosaveUrl: "{{ url_for('student.autosave_answers', attempt_id=attempt.id) }}",
     heartbeatUrl: "{{ url_for('student.heartbeat', attempt_id=attempt.id) }}",

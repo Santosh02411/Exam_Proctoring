@@ -6,7 +6,7 @@ from datetime import datetime
 
 import cv2
 import numpy as np
-from flask import Blueprint, request, jsonify, current_app, send_file, abort, url_for
+from flask import Blueprint, request, jsonify, current_app, send_file, abort, url_for, Response
 from flask_login import current_user
 from werkzeug.utils import secure_filename
 
@@ -60,6 +60,21 @@ VALID_EVENT_TYPES = {
     # challenge failures (e.g. a static photo held up to the camera never
     # produces a blink). See proctor.js's spot-check scheduler.
     "identity_spotcheck_passed", "identity_spotcheck_failed", "liveness_check_failed",
+    # Candidate Technical Pre-Check & Exam Environment Verification (see
+    # proctor.js's pre-check/environment-scan wizard, run before the exam
+    # itself starts) — all informational/setup-stage, never exam-time
+    # violations: precheck_completed carries a JSON summary of the
+    # webcam/mic/speaker/browser/network checks; environment_check_clear
+    # and environment_check_flagged report the pre-exam room scan's
+    # outcome (see EVENT_WEIGHTS/severity below — these deliberately never
+    # carry violation weight, since they happen before the exam is even
+    # underway and shouldn't count against a student the same way an
+    # in-exam detection does).
+    "precheck_completed", "environment_check_clear", "environment_check_flagged",
+    # Proctoring Quality Score (see app.proctoring.compute_quality_score):
+    # a periodic, lightweight technical sample (audio level, resolution) —
+    # not a violation signal at all, purely evidence-quality bookkeeping.
+    "quality_sample",
 }
 
 
@@ -99,6 +114,37 @@ EVENT_WEIGHTS = {
 }
 DEFAULT_EVENT_WEIGHT = 5
 
+# AI-Based Behavioral Pattern Analysis: which underlying signal source
+# each event type comes from. The point of this categorization is to tell
+# apart "the same sensor fired several times" (e.g. three tab_hidden
+# events — plausibly a flaky window manager, or one indecisive moment)
+# from "several *different* sensors fired together" (e.g. a phone
+# appearing on camera at the same moment the tab was switched away and
+# audio picked up talking — much harder to explain as anything but
+# coordinated, deliberate behavior). See _cluster_incidents/
+# detect_behavioral_patterns below for where this is actually used.
+SIGNAL_CATEGORIES = {
+    "no_face": "face", "multiple_faces": "face", "identity_mismatch": "face",
+    "identity_spotcheck_failed": "face", "liveness_check_failed": "face",
+    "looking_away": "gaze", "gaze_away": "gaze", "repeated_head_movement": "gaze",
+    "audio_violation": "audio",
+    "tab_hidden": "window", "fullscreen_exit": "window", "window_blur": "window",
+    "copy_paste_attempt": "window", "dev_tools": "window",
+    "phone_detected": "object", "book_detected": "object", "laptop_detected": "object",
+    "unauthorized_object_detected": "object", "extra_person_detected": "object",
+    "connection_lost": "network", "concurrent_session_blocked": "network",
+}
+SIGNAL_CATEGORY_LABELS = {
+    "face": "Face/Identity", "gaze": "Gaze/Attention", "audio": "Audio",
+    "window": "Tab/Window", "object": "Object Detection", "network": "Network/Session",
+}
+# How close together (in seconds) two violations need to land to be
+# considered part of the same "incident" for pattern-clustering purposes
+# — deliberately more generous than the 60s burst window above, since a
+# coordinated attempt (glance at a phone, switch tabs, talk to someone)
+# plausibly unfolds over slightly longer than a single minute.
+INCIDENT_WINDOW_SECONDS = 90
+
 # Human-readable label for each violation type, used by explain_reasons()
 # below to build the "why was this flagged" explanation — not just a bare
 # score. Falls back to a prettified version of the raw event_type for
@@ -127,6 +173,10 @@ EVENT_TYPE_LABELS = {
     "audio_violation": "unusual audio or talking was detected",
     "fullscreen_exit": "fullscreen mode was exited",
     "window_blur": "the browser window lost focus",
+    "precheck_completed": "completed the pre-exam technical check",
+    "environment_check_clear": "pre-exam room scan found nothing of concern",
+    "environment_check_flagged": "pre-exam room scan flagged something",
+    "quality_sample": "periodic technical quality sample",
 }
 
 # Low/Medium/High/Critical thresholds against the 0-100 score, checked
@@ -199,6 +249,174 @@ def _explain_reasons(violations):
     return reasons
 
 
+def _cluster_incidents(violations):
+    """Group an already-time-ordered list of violation events into
+    "incidents" — runs of violations where consecutive events land within
+    INCIDENT_WINDOW_SECONDS of each other — and describe each one: which
+    signal categories it touches, whether it's "coordinated" (2+ distinct
+    categories, not just one sensor repeating), and a plain-language
+    narrative. Pure function over an already-fetched list (no DB access)
+    so compute_suspicion_score can reuse it for scoring without a second
+    query, and detect_behavioral_patterns (used by the UI) can reuse it
+    for display."""
+    if not violations:
+        return []
+
+    groups = [[violations[0]]]
+    for e in violations[1:]:
+        if (e.created_at - groups[-1][-1].created_at).total_seconds() <= INCIDENT_WINDOW_SECONDS:
+            groups[-1].append(e)
+        else:
+            groups.append([e])
+
+    incidents = []
+    for group in groups:
+        categories = sorted({SIGNAL_CATEGORIES.get(e.event_type, "other") for e in group})
+        coordinated = len(categories) >= 2 and len(group) >= 2
+        span_seconds = int((group[-1].created_at - group[0].created_at).total_seconds())
+        labels = list(dict.fromkeys(
+            EVENT_TYPE_LABELS.get(e.event_type, e.event_type.replace("_", " ")) for e in group
+        ))
+        if len(categories) >= 2:
+            narrative = (
+                f"{len(group)} events across {len(categories)} different signal types within "
+                f"{span_seconds}s — {'; '.join(labels[:4])}"
+            )
+        else:
+            narrative = f"{len(group)} event(s) within {span_seconds}s — {'; '.join(labels[:4])}"
+
+        incidents.append({
+            "start": group[0].created_at, "end": group[-1].created_at,
+            "event_count": len(group),
+            "category_count": len(categories),
+            "categories": [SIGNAL_CATEGORY_LABELS.get(c, c.capitalize()) for c in categories],
+            "coordinated": coordinated,
+            "narrative": narrative,
+        })
+
+    return sorted(incidents, key=lambda i: (i["coordinated"], i["category_count"], i["event_count"]), reverse=True)
+
+
+def detect_behavioral_patterns(attempt):
+    """AI-Based Behavioral Pattern Analysis, for display: this attempt's
+    violations clustered into incidents (see _cluster_incidents), worst
+    (most coordinated, most signal categories, most events) first — the
+    "Behavioral Pattern Analysis" section on the attempt review page. This
+    is the same clustering compute_suspicion_score uses internally for its
+    coordination bonus, just returned in full for a human to read rather
+    than reduced to a number."""
+    violations = (
+        ProctoringEvent.query.filter_by(attempt_id=attempt.id, severity="violation")
+        .order_by(ProctoringEvent.created_at).all()
+    )
+    return _cluster_incidents(violations)
+
+
+def compute_quality_score(attempt):
+    """Proctoring Quality Score: how *reliable* the recorded evidence for
+    this attempt is, as distinct from compute_suspicion_score's "how
+    suspicious is this attempt" — a poorly-lit, silent-mic, choppy-network
+    attempt can still be perfectly honest, but it's evidence an admin
+    should trust less (or ask the student to retake with better setup),
+    which is exactly the kind of thing this score exists to surface
+    rather than silently fold into the suspicion number.
+
+    Combines five dimensions, each scored 0-100 and averaged (missing
+    dimensions — e.g. no quality_sample events were ever reported — are
+    left out of the average rather than penalized, so a short/aborted
+    attempt doesn't automatically read as "poor quality"):
+      - lighting: from Attempt.avg_brightness/min_brightness (see
+        check_snapshot, which samples this on every periodic frame it
+        already decodes for face-count checking — no extra client work).
+      - face_visibility: how much of the attempt had no_face/
+        multiple_faces trouble, from the existing violation log.
+      - audio: average mic input level from quality_sample events.
+      - network: how many connection_lost events occurred, from the
+        existing violation log.
+      - resolution: the webcam capture resolution reported in
+        quality_sample/precheck_completed events.
+    """
+    dimensions = {}
+
+    # Lighting
+    if attempt.avg_brightness is not None:
+        avg_b = attempt.avg_brightness
+        if 90 <= avg_b <= 170:
+            lighting_score = 100
+        elif 60 <= avg_b < 90 or 170 < avg_b <= 200:
+            lighting_score = 70
+        else:
+            lighting_score = 35
+        if attempt.min_brightness is not None and attempt.min_brightness < 40:
+            lighting_score = min(lighting_score, 50)  # at least one period was quite dark, even if the average looks fine
+        dimensions["lighting"] = round(lighting_score, 1)
+
+    events = ProctoringEvent.query.filter_by(attempt_id=attempt.id).order_by(ProctoringEvent.created_at).all()
+    end_time = attempt.submitted_at or datetime.utcnow()
+    duration_minutes = max((end_time - attempt.started_at).total_seconds() / 60, 1) if attempt.started_at else 1
+
+    # Face visibility
+    face_issues = sum(1 for e in events if e.event_type in ("no_face", "multiple_faces"))
+    face_rate = face_issues / duration_minutes
+    dimensions["face_visibility"] = round(max(100 - min(face_rate * 15, 100), 0), 1)
+
+    # Audio, from periodic quality_sample events
+    audio_levels = []
+    resolutions = []
+    for e in events:
+        if e.event_type != "quality_sample" or not e.details:
+            continue
+        try:
+            sample = json.loads(e.details)
+        except (TypeError, ValueError):
+            continue
+        if isinstance(sample.get("audio_rms"), (int, float)):
+            audio_levels.append(sample["audio_rms"])
+        if sample.get("resolution"):
+            resolutions.append(sample["resolution"])
+
+    if audio_levels:
+        avg_rms = sum(audio_levels) / len(audio_levels)
+        if 0.015 <= avg_rms <= 0.35:
+            audio_score = 100
+        elif avg_rms < 0.015:
+            audio_score = 40  # mic picking up next to nothing — hard to verify audio evidence either way
+        else:
+            audio_score = 55  # frequently loud/near-clipping
+        dimensions["audio"] = round(audio_score, 1)
+
+    # Network stability
+    lost_count = sum(1 for e in events if e.event_type == "connection_lost")
+    dimensions["network"] = round(max(100 - min(lost_count * 15, 100), 0), 1)
+
+    # Resolution (informational-leaning, light penalty only for genuinely low capture)
+    if resolutions:
+        last_res = resolutions[-1]
+        try:
+            w, h = (int(v) for v in str(last_res).lower().split("x"))
+            dimensions["resolution"] = 100 if w * h >= 640 * 480 else (70 if w * h >= 320 * 240 else 40)
+        except (ValueError, AttributeError):
+            pass
+
+    if not dimensions:
+        return {"score": None, "level": None, "dimensions": {}, "resolution": None}
+
+    overall = round(sum(dimensions.values()) / len(dimensions))
+    if overall >= 85:
+        level = "excellent"
+    elif overall >= 65:
+        level = "good"
+    elif overall >= 45:
+        level = "fair"
+    else:
+        level = "poor"
+
+    return {
+        "score": overall, "level": level, "dimensions": dimensions,
+        "resolution": resolutions[-1] if resolutions else None,
+    }
+
+
 def compute_suspicion_score(attempt):
     """Combine every violation on this attempt into one 0-100 suspicion
     score and a Low/Medium/High/Critical level — see EVENT_WEIGHTS above
@@ -236,6 +454,18 @@ def compute_suspicion_score(attempt):
     second_half = len(violations) - first_half
     escalating = second_half >= 3 and second_half > first_half * 1.5
 
+    # AI-Based Behavioral Pattern Analysis: does any single incident (a
+    # cluster of violations close together in time — see _cluster_incidents)
+    # combine multiple *different* signal sources, not just one sensor
+    # repeating? This is a materially different (and stronger) signal than
+    # the plain distinct_types bonus below, which only checks "how many
+    # kinds of violation happened anywhere in the whole attempt" with no
+    # regard for timing — three unrelated, far-apart incidents each of a
+    # single type would satisfy that, but wouldn't satisfy this.
+    incidents = _cluster_incidents(violations)
+    worst_incident = incidents[0] if incidents else None
+    coordinated_categories = worst_incident["category_count"] if worst_incident and worst_incident["coordinated"] else 0
+
     base_score = min(sum(EVENT_WEIGHTS.get(e.event_type, DEFAULT_EVENT_WEIGHT) for e in violations), 70)
     bonus = 0
     if burst:
@@ -246,6 +476,10 @@ def compute_suspicion_score(attempt):
         bonus += 10
     if distinct_types >= 5:
         bonus += 5
+    if coordinated_categories >= 2:
+        bonus += 8
+    if coordinated_categories >= 3:
+        bonus += 7
 
     score = min(base_score + bonus, 100)
     if attempt.status == "terminated":
@@ -261,6 +495,9 @@ def compute_suspicion_score(attempt):
         signals.append("violations increased in the second half of the attempt")
     if rate >= 2:
         signals.append(f"averaged {rate} violations per minute")
+    if coordinated_categories >= 2:
+        cats = ", ".join(worst_incident["categories"])
+        signals.append(f"a coordinated pattern combining {coordinated_categories} signal types ({cats}) within {INCIDENT_WINDOW_SECONDS}s")
     if attempt.status == "terminated":
         signals.append("attempt was auto-terminated for repeated violations")
 
@@ -274,22 +511,27 @@ def compute_suspicion_score(attempt):
 
 
 def build_timeline(attempt):
-    """Merge this attempt's proctoring events, flagged snapshots, and
-    recording-chunk uploads into one chronological "Behavior Timeline" —
-    every entry carries offset_seconds (seconds since attempt.started_at)
-    so the UI can render one combined feed and jump a video to the right
-    moment when an entry is clicked.
+    """Merge this attempt's proctoring events, flagged snapshots, answer
+    changes, and recording-chunk uploads into one chronological "Behavior
+    Timeline" powering Complete Exam Replay — every entry carries
+    offset_seconds (seconds since attempt.started_at) so the UI can render
+    one combined feed and jump to the right moment (in both the webcam and
+    screen recordings, and the matching answer) when an entry is clicked.
 
     Recordings are uploaded in short MediaRecorder chunks as they complete
     (see the "video/audio recording" section below), so a chunk's
     Recording.created_at is a good proxy for when that segment of footage
     *ends* — we don't separately store each chunk's actual duration. From
     that, each recording is given an approximate [start, end) playback
-    window: it starts where the previous chunk (or the attempt itself)
-    left off, and ends at its own created_at. That's what jump-to-timestamp
-    uses to pick the right <video> element and seek within it — it's an
-    approximation based on upload timing, not a frame-accurate cut, but
-    it's within a few seconds in practice since chunks upload promptly."""
+    window: it starts where the previous chunk of the *same kind* (or the
+    attempt itself) left off, and ends at its own created_at. Webcam and
+    screen segments are tracked independently (see `segments`, keyed by
+    kind) since the two tracks are recorded and uploaded on entirely
+    separate MediaRecorder instances and can drift slightly out of step
+    with each other. That's what jump-to-timestamp uses to pick the right
+    <video> element for each track and seek within it — an approximation
+    based on upload timing, not a frame-accurate cut, but within a few
+    seconds in practice since chunks upload promptly."""
     base = attempt.started_at or datetime.utcnow()
 
     def offset(ts):
@@ -319,32 +561,70 @@ def build_timeline(attempt):
             "anchor": f"snap-{s.id}",
         })
 
-    recordings = sorted(attempt.recordings, key=lambda r: r.chunk_index)
-    segments = []
-    prev_end = 0.0
-    for rec in recordings:
-        end = offset(rec.created_at)
-        end = max(end, prev_end)  # chunks should upload in order, but never let a clock skew invert a segment
-        segments.append({
-            "recording_id": rec.id, "chunk_index": rec.chunk_index,
-            "start": prev_end, "end": end,
-            "url": url_for("proctoring.serve_recording", recording_id=rec.id),
-            "anchor": f"rec-{rec.id}",
-        })
+    # Complete Exam Replay: answer changes, so the replay's timeline and
+    # per-question panel can show which question was being worked on as
+    # the recording plays. Deliberately no answer *content* here — just
+    # "this question changed" — the actual value lives on Answer.
+    for ae in sorted(attempt.answer_events, key=lambda a: a.created_at):
+        q = ae.question
+        preview = (q.question_text or "").strip().replace("\n", " ")
+        if len(preview) > 70:
+            preview = preview[:70].rstrip() + "…"
+        verb = "Answered" if ae.action == "first_answered" else "Changed answer to"
         items.append({
-            "type": "recording",
-            "id": rec.id,
-            "time": rec.created_at,
-            "offset": end,
+            "type": "answer",
+            "id": ae.id,
+            "time": ae.created_at,
+            "offset": offset(ae.created_at),
             "severity": None,
-            "label": f"Recording segment {rec.chunk_index + 1} saved",
-            "detail": f"{(rec.file_size / 1024):.1f} KB",
-            "anchor": f"rec-{rec.id}",
+            "label": f"{verb}: {preview}",
+            "detail": None,
+            "anchor": f"answer-q-{q.id}",
         })
-        prev_end = end
+
+    # Webcam and screen recordings are separate MediaRecorder streams (see
+    # RECORDING_KINDS) uploaded on their own independent chunk cadence, so
+    # each kind gets its own running [start, end) window rather than
+    # sharing one — otherwise a gap or stall in one track would misalign
+    # the other's segment boundaries.
+    recordings_by_kind = {}
+    for rec in attempt.recordings:
+        recordings_by_kind.setdefault(rec.kind, []).append(rec)
+
+    segments = {}
+    for kind, recordings in recordings_by_kind.items():
+        recordings.sort(key=lambda r: r.chunk_index)
+        kind_segments = []
+        prev_end = 0.0
+        for rec in recordings:
+            end = offset(rec.created_at)
+            end = max(end, prev_end)  # chunks should upload in order, but never let a clock skew invert a segment
+            kind_segments.append({
+                "recording_id": rec.id, "chunk_index": rec.chunk_index,
+                "start": prev_end, "end": end, "kind": kind,
+                "url": url_for("proctoring.serve_recording", recording_id=rec.id),
+                "anchor": f"rec-{rec.id}",
+            })
+            items.append({
+                "type": "recording",
+                "id": rec.id,
+                "time": rec.created_at,
+                "offset": end,
+                "severity": None,
+                "label": f"{kind.capitalize()} segment {rec.chunk_index + 1} saved",
+                "detail": f"{(rec.file_size / 1024):.1f} KB",
+                "anchor": f"rec-{rec.id}",
+            })
+            prev_end = end
+        segments[kind] = kind_segments
 
     items.sort(key=lambda it: it["offset"])
-    return {"entries": items, "segments": segments}
+    # `segments` (flattened, for the legacy single-track view) kept
+    # alongside `segments_by_kind` (for the dual-track replay view) so
+    # existing callers/templates that only know about one recording track
+    # keep working unchanged.
+    flat_segments = [seg for kind_segments in segments.values() for seg in kind_segments]
+    return {"entries": items, "segments": flat_segments, "segments_by_kind": segments}
 
 
 def _get_owned_attempt(attempt_id):
@@ -385,7 +665,202 @@ def _notify_termination(attempt):
         )
 
 
+# Configurable Proctoring Policies: the actions an admin can assign to an
+# event type for a specific test (see Test.proctoring_policy / get_policy
+# below), and what each one means for _record_violation:
+#   ignore    — still logged (severity "info"), but never counted toward
+#               violation_count, the suspicion score, or termination. Use
+#               for a signal this test doesn't consider meaningful at all
+#               (e.g. an org running a low-stakes practice test might
+#               ignore window_blur entirely).
+#   warning   — logged as severity "warning": visible in the log and to
+#               the student's running violation feed, but — like the
+#               existing warning-severity events (window_blur, audio_
+#               violation by default) — doesn't count toward
+#               violation_count/suspicion score/termination either. See
+#               "Customizable Warning System" below for the optional
+#               warning_limit that turns this into "warn the first N
+#               times, then escalate."
+#   flag      — logged as severity "violation": counts toward
+#               violation_count and the suspicion score, and toward
+#               MAX_VIOLATIONS_BEFORE_TERMINATION same as today. This is
+#               what "violation"-severity events already do by default —
+#               explicitly choosing it is how an admin makes a normally-
+#               softer event type (e.g. window_blur) count for real.
+#   terminate — logged as severity "violation" AND ends the attempt
+#               immediately on the very first occurrence, regardless of
+#               MAX_VIOLATIONS_BEFORE_TERMINATION. For the handful of
+#               signals a given exam considers zero-tolerance (e.g. an
+#               org might decide any phone_detected ends a high-stakes
+#               certification exam on the spot).
+POLICY_ACTIONS = ("ignore", "warning", "flag", "terminate")
+
+# Customizable Warning System: what a "warning" action can escalate to
+# once its warning_limit is exceeded (see _resolve_policy_action below).
+# Deliberately a subset of POLICY_ACTIONS — escalating a warning into
+# another warning would be a no-op, and "ignore" doesn't make sense as an
+# escalation outcome.
+ESCALATE_ACTIONS = ("flag", "terminate")
+
+# The event types exposed in the admin policy editor — deliberately just
+# the ones with a hand-set entry in EVENT_WEIGHTS (i.e. the ones that
+# normally carry real scoring weight), since those are the signals a
+# policy override actually changes something meaningful about. A handful
+# of event types exist purely for audit/context (e.g. session_resumed,
+# identity_spotcheck_passed, connection_restored) and are intentionally
+# left out — they were never going to affect scoring either way.
+POLICY_CONFIGURABLE_EVENT_TYPES = list(EVENT_WEIGHTS.keys())
+
+# Default per-event-type entry when a test's policy has nothing configured
+# for that event type at all — every key defaults to "no override, use
+# whatever the caller/normal severity was," matching pre-this-feature
+# behavior exactly.
+_DEFAULT_POLICY_ENTRY = {
+    "action": "default", "warning_limit": None, "escalate_action": None,
+    "message": None, "grace_period_seconds": None,
+}
+
+
+def get_policy(test):
+    """This test's event_type -> policy-entry overrides, parsed from
+    Test.proctoring_policy. Each entry is a dict with keys "action"
+    (POLICY_ACTIONS, or "default" for no override), "warning_limit" (see
+    Customizable Warning System below), "escalate_action", "message" (a
+    custom student-facing message for this event type), and
+    "grace_period_seconds". Any key missing from a stored entry — or the
+    whole event type missing — falls back to _DEFAULT_POLICY_ENTRY, so a
+    test that has never touched its policy (or only set some of these
+    fields) behaves exactly as before for anything it didn't configure.
+
+    Backward compatible with the pre-Customizable-Warning-System format,
+    where a stored entry was just a bare action string (e.g.
+    '"phone_detected": "terminate"') rather than an object — that's
+    normalized into {"action": "terminate", ...defaults} here so callers
+    never need to care which format is on disk."""
+    if not test.proctoring_policy:
+        return {}
+    try:
+        data = json.loads(test.proctoring_policy)
+    except (TypeError, ValueError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+
+    policy = {}
+    for event_type, raw in data.items():
+        if isinstance(raw, str):
+            if raw not in POLICY_ACTIONS:
+                continue
+            entry = dict(_DEFAULT_POLICY_ENTRY, action=raw)
+        elif isinstance(raw, dict):
+            entry = dict(_DEFAULT_POLICY_ENTRY)
+            action = raw.get("action", "default")
+            if action == "default" or action in POLICY_ACTIONS:
+                entry["action"] = action
+            warning_limit = raw.get("warning_limit")
+            if isinstance(warning_limit, int) and warning_limit > 0:
+                entry["warning_limit"] = warning_limit
+            escalate_action = raw.get("escalate_action")
+            if escalate_action in ESCALATE_ACTIONS:
+                entry["escalate_action"] = escalate_action
+            message = raw.get("message")
+            if isinstance(message, str) and message.strip():
+                entry["message"] = message.strip()[:300]
+            grace = raw.get("grace_period_seconds")
+            if isinstance(grace, int) and grace > 0:
+                entry["grace_period_seconds"] = grace
+        else:
+            continue
+        policy[event_type] = entry
+    return policy
+
+
+def _resolve_policy_action(attempt, event_type, entry):
+    """Turn a policy entry into the concrete action to apply *this
+    occurrence* — resolving the Customizable Warning System's warning
+    limit against how many warnings this event type has already used up
+    on this attempt. Returns (action, warnings_used, warnings_remaining)
+    where action is one of POLICY_ACTIONS or None (no override — caller's
+    own severity stands), warnings_used/remaining are None unless the
+    policy actually has a warning_limit configured for this event type
+    (so the UI can tell "this event type isn't warning-limited" from "0
+    remaining")."""
+    action = entry["action"]
+    if action != "warning" or not entry["warning_limit"]:
+        return (None if action == "default" else action), None, None
+
+    counts = json.loads(attempt.warning_counts) if attempt.warning_counts else {}
+    used = counts.get(event_type, 0) + 1  # this occurrence
+    counts[event_type] = used
+    attempt.warning_counts = json.dumps(counts)
+
+    limit = entry["warning_limit"]
+    if used <= limit:
+        return "warning", used, max(limit - used, 0)
+    # Limit exceeded on this occurrence — escalate. No configured
+    # escalate_action defaults to "flag", the least disruptive escalation.
+    return entry["escalate_action"] or "flag", used, 0
+
+
+def _policy_message(entry, event_type, resolved_action, warnings_remaining):
+    """The student-facing message for this occurrence — the admin's
+    custom per-event-type message if one is configured, otherwise a
+    sensible generic fallback that still reflects the resolved action
+    (plain warning vs. "this just used up your last warning")."""
+    label = EVENT_TYPE_LABELS.get(event_type, event_type.replace("_", " "))
+    if entry["message"]:
+        base = entry["message"]
+    elif resolved_action == "terminate":
+        base = f"This exam ends immediately on {label}."
+    else:
+        base = f"Warning: {label}."
+    if warnings_remaining is not None:
+        if warnings_remaining > 0:
+            base += f" ({warnings_remaining} warning{'s' if warnings_remaining != 1 else ''} left before this counts as a violation.)"
+        elif resolved_action == "warning":
+            base += " (Last warning before this counts as a violation.)"
+    return base
+
+
 def _record_violation(attempt, event_type, severity, details="", confidence=None):
+    entry = get_policy(attempt.test).get(event_type, _DEFAULT_POLICY_ENTRY)
+
+    # Customizable Warning System: a grace period suppresses this event
+    # type entirely (logged as "info", never counted, no student-facing
+    # message) for the configured number of seconds from the start of the
+    # attempt — e.g. an admin might give students 30s of tab_hidden grace
+    # while they're still getting the exam window arranged.
+    if entry["grace_period_seconds"] and attempt.started_at:
+        elapsed = (datetime.utcnow() - attempt.started_at).total_seconds()
+        if elapsed < entry["grace_period_seconds"]:
+            event = ProctoringEvent(
+                attempt_id=attempt.id, event_type=event_type, severity="info",
+                details=(details + " (within grace period)").strip(), confidence=confidence,
+            )
+            db.session.add(event)
+            db.session.commit()
+            return False
+
+    resolved_action, warnings_used, warnings_remaining = _resolve_policy_action(attempt, event_type, entry)
+
+    force_terminate = False
+    message = None
+    if resolved_action == "ignore":
+        severity = "info"
+    elif resolved_action == "warning":
+        severity = "warning"
+        message = _policy_message(entry, event_type, resolved_action, warnings_remaining)
+    elif resolved_action == "flag":
+        severity = "violation"
+        if warnings_used is not None:  # this was an escalation from warning -> flag
+            message = _policy_message(entry, event_type, resolved_action, warnings_remaining)
+    elif resolved_action == "terminate":
+        severity = "violation"
+        force_terminate = True
+        message = _policy_message(entry, event_type, resolved_action, warnings_remaining)
+    # resolved_action is None (no override for this event type) — keep
+    # whatever severity the caller passed in, same as before this feature.
+
     event = ProctoringEvent(
         attempt_id=attempt.id, event_type=event_type, severity=severity,
         details=details, confidence=confidence,
@@ -396,9 +871,13 @@ def _record_violation(attempt, event_type, severity, details="", confidence=None
     if severity == "violation":
         attempt.violation_count += 1
         max_v = current_app.config["MAX_VIOLATIONS_BEFORE_TERMINATION"]
-        if attempt.violation_count >= max_v and attempt.status == "in_progress":
+        if attempt.status == "in_progress" and (force_terminate or attempt.violation_count >= max_v):
             attempt.status = "terminated"
-            attempt.termination_reason = f"Exceeded {max_v} proctoring violations."
+            attempt.termination_reason = (
+                f"This exam is configured to terminate immediately on "
+                f"{EVENT_TYPE_LABELS.get(event_type, event_type.replace('_', ' '))}."
+                if force_terminate else f"Exceeded {max_v} proctoring violations."
+            )
             attempt.submitted_at = datetime.utcnow()
             terminated = True
 
@@ -411,6 +890,7 @@ def _record_violation(attempt, event_type, severity, details="", confidence=None
     db.session.commit()
     if terminated:
         _notify_termination(attempt)
+    attempt._last_event_message = message  # read by log_event() below; not persisted
     return terminated
 
 
@@ -421,6 +901,31 @@ def _record_violation(attempt, event_type, severity, details="", confidence=None
 # module poking ProctoringEvent rows in directly and quietly skipping all
 # of that.
 record_violation = _record_violation
+
+
+# ---------------------------------------------------------------------------
+# Candidate Technical Pre-Check: a self-hosted download-speed test blob.
+# Timing a request against a public CDN would be a more realistic
+# real-world speed test, but this app's outbound network access is
+# allow-listed to specific domains (see the sandbox's network config) and
+# a public CDN isn't among them — self-hosting also means the test works
+# the same in any deployment, with no dependency on a third party's
+# availability. A fixed size is generated once at import time and reused
+# for every request (not regenerated per-request — there's no reason to
+# spend CPU on that) with cache-busting headers so the browser can't just
+# serve a cached copy and report a fake instant "download".
+# ---------------------------------------------------------------------------
+SPEEDTEST_BLOB_SIZE = 1_500_000  # ~1.5MB — enough to get a stable timing over a few hundred ms even on a fast link
+_speedtest_blob = os.urandom(SPEEDTEST_BLOB_SIZE)
+
+
+@bp.route("/speedtest-blob")
+@student_required
+def speedtest_blob():
+    return Response(
+        _speedtest_blob, mimetype="application/octet-stream",
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate", "Content-Length": str(SPEEDTEST_BLOB_SIZE)},
+    )
 
 
 @bp.route("/event", methods=["POST"])
@@ -449,7 +954,11 @@ def log_event():
         return jsonify({"ok": True, "terminated": attempt.status == "terminated", "violation_count": attempt.violation_count})
 
     terminated = _record_violation(attempt, event_type, severity, details, confidence=confidence)
-    return jsonify({"ok": True, "terminated": terminated, "violation_count": attempt.violation_count})
+    message = getattr(attempt, "_last_event_message", None)
+    return jsonify({
+        "ok": True, "terminated": terminated, "violation_count": attempt.violation_count,
+        "message": message,
+    })
 
 
 @bp.route("/snapshot", methods=["POST"])
@@ -482,8 +991,18 @@ def check_snapshot():
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         faces = _face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(60, 60))
         count = len(faces)
+        brightness = float(gray.mean())
     except Exception as exc:  # pragma: no cover - defensive
         return jsonify({"ok": False, "error": str(exc)}), 400
+
+    # Proctoring Quality Score: update the running lighting mean/min for
+    # every frame, not just ones that get flagged — the flagged-only
+    # snapshots saved below are a biased sample (already-bad frames), not
+    # representative of typical lighting across the exam.
+    n = attempt.brightness_sample_count
+    attempt.avg_brightness = brightness if n == 0 else (attempt.avg_brightness * n + brightness) / (n + 1)
+    attempt.min_brightness = brightness if attempt.min_brightness is None else min(attempt.min_brightness, brightness)
+    attempt.brightness_sample_count = n + 1
 
     terminated = False
     if count == 0:
@@ -492,6 +1011,11 @@ def check_snapshot():
     elif count > 1:
         terminated = _record_violation(attempt, "multiple_faces", "violation", f"Server check: {count} faces in frame")
         _save_flagged_snapshot(attempt, frame, count)
+    else:
+        # _record_violation (above) commits on the flagged paths; a normal
+        # frame still needs its own commit so the brightness running mean
+        # isn't lost.
+        db.session.commit()
 
     return jsonify({"ok": True, "faces_detected": count, "terminated": terminated})
 
@@ -782,13 +1306,26 @@ def confirm_id_match():
 # Video/audio recording: the browser records the exam session in short webm
 # chunks (via MediaRecorder) and uploads each one here as it becomes
 # available, so a full recording exists even if the browser tab crashes.
+#
+# Complete Exam Replay: the same endpoint also accepts the student's screen
+# share (a second, independent MediaRecorder in proctor.js — see
+# startScreenRecording) as its own "kind" of chunk, indexed separately from
+# the webcam. The two tracks are stored and served identically; only
+# Recording.kind and the on-disk subfolder differ, so a screen-share
+# decline/failure just means no "screen" rows ever get created for this
+# attempt rather than affecting the webcam recording at all.
 # ---------------------------------------------------------------------------
+RECORDING_KINDS = ("webcam", "screen")
+
 
 @bp.route("/recording/chunk", methods=["POST"])
 @student_required
 def upload_recording_chunk():
     attempt_id = request.form.get("attempt_id", type=int)
     chunk_index = request.form.get("chunk_index", type=int, default=0)
+    kind = request.form.get("kind", "webcam")
+    if kind not in RECORDING_KINDS:
+        kind = "webcam"
     blob = request.files.get("chunk")
 
     attempt = _get_owned_attempt(attempt_id)
@@ -797,7 +1334,7 @@ def upload_recording_chunk():
     if not blob:
         return jsonify({"ok": False, "error": "no file uploaded"}), 400
 
-    attempt_dir = os.path.join(current_app.config["RECORDINGS_DIR"], str(attempt.id))
+    attempt_dir = os.path.join(current_app.config["RECORDINGS_DIR"], str(attempt.id), kind)
     os.makedirs(attempt_dir, exist_ok=True)
 
     filename = f"chunk_{chunk_index:05d}.webm"
@@ -807,6 +1344,7 @@ def upload_recording_chunk():
 
     rec = Recording(
         attempt_id=attempt.id,
+        kind=kind,
         chunk_index=chunk_index,
         filename=filename,
         content_type=blob.content_type or "video/webm",
@@ -826,9 +1364,15 @@ def serve_recording(recording_id):
     if attempt.test.created_by != current_user.id:
         abort(403)
 
-    filepath = os.path.join(current_app.config["RECORDINGS_DIR"], str(attempt.id), rec.filename)
+    filepath = os.path.join(current_app.config["RECORDINGS_DIR"], str(attempt.id), rec.kind, rec.filename)
     if not os.path.exists(filepath):
-        abort(404)
+        # Pre-existing recordings from before Complete Exam Replay's
+        # kind-specific subfolders were saved flat under the attempt dir —
+        # fall back so old webcam recordings still play.
+        legacy_path = os.path.join(current_app.config["RECORDINGS_DIR"], str(attempt.id), rec.filename)
+        if not os.path.exists(legacy_path):
+            abort(404)
+        filepath = legacy_path
 
     return send_file(filepath, mimetype=rec.content_type, conditional=True)
 

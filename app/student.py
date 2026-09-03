@@ -7,7 +7,8 @@ from flask_login import current_user
 
 from app import db
 from app.models import (
-    Test, TestEligibility, Attempt, Answer, Question, Section, IdentityDocument, recompute_attempt_score,
+    Test, TestEligibility, Attempt, Answer, Question, Section, IdentityDocument, AnswerEvent,
+    recompute_attempt_score,
 )
 from app.utils import student_required
 from app.randomize import build_attempt_order, ordered_questions, get_option_order
@@ -251,16 +252,36 @@ def autosave_answers(attempt_id):
 
     all_questions = Question.query.filter_by(test_id=attempt.test_id).all()
     questions = ordered_questions(all_questions, attempt.question_order)
+    previous = json.loads(attempt.autosaved_answers) if attempt.autosaved_answers else {}
     answers = {}
     for q in questions:
         value = _extract_submitted_answer(q, request.form)
         if value is not None:
             answers[str(q.id)] = value
 
+    _log_answer_changes(attempt, previous, answers)
     attempt.autosaved_answers = json.dumps(answers)
     _merge_question_time(attempt, request.form)
     db.session.commit()
     return jsonify({"ok": True, "saved": True, "saved_at": datetime.utcnow().isoformat()})
+
+
+def _log_answer_changes(attempt, previous, answers):
+    """Complete Exam Replay: record a lightweight, content-free timestamp
+    (see AnswerEvent) each time this autosave's answers differ from the
+    previous autosave — either a question getting its first value, or an
+    already-answered question's value changing. Skipped entirely when
+    nothing changed (the common case — most autosave ticks fire with no
+    new input since the last one), so this doesn't add a row per
+    autosave, just per actual edit."""
+    for question_id, value in answers.items():
+        old_value = previous.get(question_id)
+        if value == old_value:
+            continue
+        action = "first_answered" if not old_value else "changed"
+        db.session.add(AnswerEvent(
+            attempt_id=attempt.id, question_id=int(question_id), action=action,
+        ))
 
 
 def _extract_submitted_answer(question, form):

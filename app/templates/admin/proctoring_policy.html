@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Proctoring Policy — {{ test.title }}{% endblock %}
+{% block content %}
+<div style="margin-bottom:16px">
+  <a class="small" href="{{ url_for('admin.view_test', test_id=test.id) }}">&larr; {{ test.title }}</a>
+  <h1 style="margin-top:8px">Proctoring Policy</h1>
+  <div class="lead">
+    Choose what happens when each kind of violation is detected during this exam. Anything left on
+    <strong>Default</strong> keeps its normal built-in behavior — most detections count toward the violation total
+    and suspicion score; a few soft signals (like a lost window focus) are logged but don't count on their own.
+  </div>
+  <div class="small muted" style="margin-top:8px">
+    Choosing <strong>Warning</strong> also lets you set a warning limit: the student sees your custom message and
+    it doesn't count against them for the first N occurrences, then automatically escalates to Flag or Terminate on
+    occurrence N+1. A grace period (seconds from the start of the attempt) suppresses a signal entirely while a
+    student is still settling in — it's logged for audit but never shown to the student or counted.
+  </div>
+</div>
+
+<div class="card">
+  <form method="post" novalidate>
+    {{ form.hidden_tag() }}
+    <table class="table responsive-table">
+      <thead>
+        <tr>
+          <th>Signal</th><th>Weight</th><th>Action</th><th>Warning limit</th><th>Escalate to</th>
+          <th>Custom message</th><th>Grace period (s)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr data-event-row="{{ row.event_type }}">
+          <td data-label="Signal">{{ row.label|capitalize }}</td>
+          <td data-label="Weight" class="small muted">{{ row.weight }}</td>
+          <td data-label="Action">
+            <select name="policy_{{ row.event_type }}" class="policy-action-select" data-event-type="{{ row.event_type }}" style="width:100%;max-width:180px">
+              <option value="default" {{ 'selected' if row.current == 'default' }}>Default</option>
+              <option value="ignore" {{ 'selected' if row.current == 'ignore' }}>Ignore (log only)</option>
+              <option value="warning" {{ 'selected' if row.current == 'warning' }}>Warning</option>
+              <option value="flag" {{ 'selected' if row.current == 'flag' }}>Flag (counts)</option>
+              <option value="terminate" {{ 'selected' if row.current == 'terminate' }}>Terminate immediately</option>
+            </select>
+          </td>
+          <td data-label="Warning limit" class="policy-warning-only" style="{{ '' if row.current == 'warning' else 'display:none' }}">
+            <input type="number" min="1" step="1" name="warning_limit_{{ row.event_type }}" value="{{ row.warning_limit }}"
+                   placeholder="e.g. 3" style="width:100%;max-width:90px">
+          </td>
+          <td data-label="Escalate to" class="policy-warning-only" style="{{ '' if row.current == 'warning' else 'display:none' }}">
+            <select name="escalate_{{ row.event_type }}" style="width:100%;max-width:130px">
+              {% for a in escalate_actions %}
+              <option value="{{ a }}" {{ 'selected' if row.escalate_action == a }}>{{ a|capitalize }}</option>
+              {% endfor %}
+            </select>
+          </td>
+          <td data-label="Custom message">
+            <input type="text" name="message_{{ row.event_type }}" value="{{ row.message }}" maxlength="300"
+                   placeholder="Shown to the student instead of the default text" style="width:100%;min-width:200px">
+          </td>
+          <td data-label="Grace period (s)">
+            <input type="number" min="1" step="1" name="grace_{{ row.event_type }}" value="{{ row.grace_period_seconds }}"
+                   placeholder="e.g. 30" style="width:100%;max-width:90px">
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="small muted" style="margin-top:12px">
+      "Terminate immediately" ends the exam the very first time that signal is detected, regardless of the usual
+      violation-count threshold or any warning limit. Use it sparingly — for a high-stakes exam's true
+      zero-tolerance signals only.
+    </div>
+    <button type="submit" class="btn" style="margin-top:14px">Save Policy</button>
+  </form>
+</div>
+
+<script>
+(function () {
+  document.querySelectorAll('.policy-action-select').forEach(function (sel) {
+    sel.addEventListener('change', function () {
+      var row = sel.closest('tr');
+      var show = sel.value === 'warning';
+      row.querySelectorAll('.policy-warning-only').forEach(function (cell) {
+        cell.style.display = show ? '' : 'none';
+      });
+    });
+  });
+})();
+</script>
+{% endblock %}
