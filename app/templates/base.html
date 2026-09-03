@@ -56,13 +56,18 @@
           {% if current_user.role == 'admin' %}
             <a href="{{ url_for('admin.manage_users') }}">Manage Users</a>
             <a href="{{ url_for('admin.id_verification_queue') }}">ID Verification</a>
-            <a href="{{ url_for('admin.notification_history') }}">Notifications</a>
-            <a href="{{ url_for('admin.activity_log') }}">Activity Log</a>
-            <a href="{{ url_for('admin.security_log') }}">Security</a>
-            <a href="{{ url_for('admin.retention_settings') }}">Retention</a>
-            <a href="{{ url_for('admin.org_report') }}">Org Report</a>
-            <a href="{{ url_for('admin.branding_settings') }}">Branding</a>
-            <a href="{{ url_for('admin.api_keys') }}">API Access</a>
+            <div class="nav-dropdown">
+              <button type="button" class="nav-dropdown-toggle" aria-haspopup="true" aria-expanded="false">Admin ▾</button>
+              <div class="nav-dropdown-panel">
+                <a href="{{ url_for('admin.notification_history') }}">Notifications</a>
+                <a href="{{ url_for('admin.activity_log') }}">Activity Log</a>
+                <a href="{{ url_for('admin.security_log') }}">Security</a>
+                <a href="{{ url_for('admin.retention_settings') }}">Retention</a>
+                <a href="{{ url_for('admin.org_report') }}">Org Report</a>
+                <a href="{{ url_for('admin.branding_settings') }}">Branding</a>
+                <a href="{{ url_for('admin.api_keys') }}">API Access</a>
+              </div>
+            </div>
           {% endif %}
         {% elif current_user.role == 'proctor' %}
           <a href="{{ url_for('admin.proctor_queue') }}">Review Queue</a>
@@ -128,6 +133,35 @@
     <span aria-hidden="true">·</span>
     <a href="{{ url_for('legal.privacy') }}">Privacy Policy</a>
   </footer>
+
+  <script>
+    (function () {
+      // The "Admin ▾" group in the topnav (see base.html) — collapses the
+      // long tail of admin-only pages (Activity Log, Security, Retention,
+      // etc.) behind one toggle instead of them all sitting as flat links,
+      // which is what was wrapping the nav into a multi-row wall of text
+      // on anything narrower than a very wide desktop. Same open/toggle/
+      // close-on-outside-click pattern as the proctor alert bell below.
+      // Below the mobile nav-toggle breakpoint this is CSS-overridden to
+      // always render flat (see .nav-dropdown-panel in style.css), so
+      // this only matters on desktop.
+      document.querySelectorAll('.nav-dropdown-toggle').forEach(function (toggle) {
+        var panel = toggle.nextElementSibling;
+        if (!panel) return;
+        toggle.addEventListener('click', function (evt) {
+          evt.stopPropagation();
+          var open = panel.classList.toggle('open');
+          toggle.setAttribute('aria-expanded', String(open));
+        });
+        document.addEventListener('click', function (evt) {
+          if (!panel.classList.contains('open')) return;
+          if (toggle.contains(evt.target) || panel.contains(evt.target)) return;
+          panel.classList.remove('open');
+          toggle.setAttribute('aria-expanded', 'false');
+        });
+      });
+    })();
+  </script>
 
   <script>
     (function () {

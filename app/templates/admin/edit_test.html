@@ -18,13 +18,26 @@
   <div class="card">
     <form method="post" novalidate onsubmit="return validateForm();">
       {{ form.hidden_tag() }}
+      {% set rendered_fields = ['test_code', 'title', 'duration_minutes', 'total_questions', 'passing_marks',
+                                 'status', 'start_time', 'end_time', 'max_attempts', 'negative_marks_per_wrong',
+                                 'question_pool_size'] %}
+      {% if form.errors %}
+      <div class="flash flash-error" style="margin-bottom:16px">
+        Couldn't save changes — please fix the highlighted field(s) below.
+        {% for field_name, errs in form.errors.items() if field_name not in rendered_fields %}
+          {% for e in errs %}<div>{{ e }}</div>{% endfor %}
+        {% endfor %}
+      </div>
+      {% endif %}
       <div class="field">
         <label for="{{ form.test_code.id }}">Test Code</label>
         {{ form.test_code() }}
+        {% for e in form.test_code.errors %}<div class="errors">{{ e }}</div>{% endfor %}
       </div>
       <div class="field">
         <label for="{{ form.title.id }}">Title</label>
         {{ form.title() }}
+        {% for e in form.title.errors %}<div class="errors">{{ e }}</div>{% endfor %}
       </div>
       <div class="field">
         <label for="{{ form.description.id }}">Description</label>
@@ -38,40 +51,48 @@
         <div class="col field">
           <label for="{{ form.duration_minutes.id }}">Duration (minutes)</label>
           {{ form.duration_minutes() }}
+          {% for e in form.duration_minutes.errors %}<div class="errors">{{ e }}</div>{% endfor %}
         </div>
         <div class="col field">
           <label for="{{ form.total_questions.id }}">Total questions</label>
           {{ form.total_questions() }}
+          {% for e in form.total_questions.errors %}<div class="errors">{{ e }}</div>{% endfor %}
         </div>
       </div>
       <div class="row">
         <div class="col field">
           <label for="{{ form.passing_marks.id }}">Passing marks</label>
           {{ form.passing_marks() }}
+          {% for e in form.passing_marks.errors %}<div class="errors">{{ e }}</div>{% endfor %}
         </div>
         <div class="col field">
           <label for="{{ form.status.id }}">Status</label>
           {{ form.status() }}
+          {% for e in form.status.errors %}<div class="errors">{{ e }}</div>{% endfor %}
         </div>
       </div>
       <div class="row">
         <div class="col field">
           <label for="{{ form.start_time.id }}">Start time (optional)</label>
           {{ form.start_time() }}
+          {% for e in form.start_time.errors %}<div class="errors">{{ e }}</div>{% endfor %}
         </div>
         <div class="col field">
           <label for="{{ form.end_time.id }}">End time (optional)</label>
           {{ form.end_time() }}
+          {% for e in form.end_time.errors %}<div class="errors">{{ e }}</div>{% endfor %}
         </div>
       </div>
       <div class="row">
         <div class="col field">
           <label for="{{ form.max_attempts.id }}">Max attempts per student</label>
           {{ form.max_attempts() }}
+          {% for e in form.max_attempts.errors %}<div class="errors">{{ e }}</div>{% endfor %}
         </div>
         <div class="col field">
           <label for="{{ form.negative_marks_per_wrong.id }}">Negative marks per wrong answer</label>
           {{ form.negative_marks_per_wrong() }}
+          {% for e in form.negative_marks_per_wrong.errors %}<div class="errors">{{ e }}</div>{% endfor %}
         </div>
       </div>
       <div class="field">
