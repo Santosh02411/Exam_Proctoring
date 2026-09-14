@@ -157,6 +157,32 @@
 </div>
 
 <div id="examArea">
+  {% if test.enable_watermark %}
+  <!-- Exam Watermarking: doesn't stop a screenshot (nothing browser-side
+       can), but makes any leaked copy traceable back to whoever took it —
+       the same deterrence model as a visible watermark on a proof/PDF.
+       pointer-events:none so it never interferes with clicking through
+       to the actual exam content underneath it. -->
+  <div id="examWatermark" aria-hidden="true" style="position:fixed;inset:0;z-index:40;pointer-events:none;overflow:hidden;opacity:0.10">
+    <div style="position:absolute;inset:-50%;display:flex;flex-wrap:wrap;align-content:space-around;justify-content:space-around;transform:rotate(-30deg);gap:60px">
+      {% for _ in range(40) %}
+      <div class="watermark-tile" style="font-size:14px;font-weight:700;white-space:nowrap;color:var(--text)">
+        {{ current_user.name }} &middot; {{ current_user.email }} &middot; <span class="watermark-time"></span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  <script>
+    (function () {
+      function updateWatermarkTime() {
+        var stamp = new Date().toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
+        document.querySelectorAll('.watermark-time').forEach(function (el) { el.textContent = stamp; });
+      }
+      updateWatermarkTime();
+      setInterval(updateWatermarkTime, 60000);
+    })();
+  </script>
+  {% endif %}
   <div class="sticky-exam-header">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
       <div>

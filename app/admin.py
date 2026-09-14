@@ -19,12 +19,12 @@ from app import db
 from app.forms import (
     TestForm, QuestionForm, QuestionImportForm, UserImportForm, QuestionBankForm, SectionForm,
     RetentionPolicyForm, BrandingForm, ApiKeyForm, LmsWebhookForm, CertificateSettingsForm, ProctoringPolicyForm,
-    AccessControlForm,
+    AccessControlForm, AccommodationApproveForm, AccommodationDenyForm,
 )
 from app.models import (
     Test, Question, User, TestEligibility, Attempt, Answer, ProctoringEvent, AdminActivityLog,
     QuestionBankItem, Section, IdentityDocument, NotificationLog, AnswerSimilarityFlag,
-    LoginSession, LoginSecurityEvent, ApiKey, Organization, gen_user_id, recompute_attempt_score,
+    LoginSession, LoginSecurityEvent, ApiKey, Organization, AccommodationRequest, gen_user_id, recompute_attempt_score,
 )
 from app.proctoring import compute_suspicion_score, build_timeline, get_live_alerts_since, EVENT_TYPE_LABELS
 from app.utils import (
@@ -35,6 +35,7 @@ from app.activity_log import log_activity
 from app.email_utils import send_email
 from app.notifications import (
     notify_exam_scheduled, notify_result_published_if_now_complete, send_starting_soon_reminders,
+    notify_accommodation_resolved,
 )
 from app import analytics
 from app import proctoring
@@ -128,6 +129,7 @@ def _apply_test_form(test, form):
     test.geofence_lng = form.geofence_lng.data
     test.geofence_radius_km = form.geofence_radius_km.data
     test.require_seb = form.require_seb.data
+    test.enable_watermark = form.enable_watermark.data
 
 
 @bp.route("/dashboard")
@@ -1768,6 +1770,84 @@ def access_control_settings():
 
     tests_enforcing = Test.query.filter_by(org_id=org.id, enforce_ip_allowlist=True).count()
     return render_template("admin/access_control_settings.html", form=form, org=org, tests_enforcing=tests_enforcing)
+
+
+@bp.route("/accommodation-requests")
+@admin_required
+def accommodation_requests():
+    org_id = current_user.organization.id
+    pending = (
+        AccommodationRequest.query.join(Test, AccommodationRequest.test_id == Test.id)
+        .filter(Test.org_id == org_id, AccommodationRequest.status == "pending")
+        .order_by(AccommodationRequest.created_at)
+        .all()
+    )
+    resolved = (
+        AccommodationRequest.query.join(Test, AccommodationRequest.test_id == Test.id)
+        .filter(Test.org_id == org_id, AccommodationRequest.status != "pending")
+        .order_by(AccommodationRequest.resolved_at.desc())
+        .limit(30)
+        .all()
+    )
+    return render_template(
+        "admin/accommodation_requests.html", pending=pending, resolved=resolved,
+        approve_form=AccommodationApproveForm(), deny_form=AccommodationDenyForm(),
+    )
+
+
+@bp.route("/accommodation-requests/<int:request_id>/approve", methods=["POST"])
+@admin_required
+def approve_accommodation_request(request_id):
+    req = AccommodationRequest.query.get_or_404(request_id)
+    ensure_same_org(req.test)
+    if req.status != "pending":
+        flash("This request has already been resolved.", "error")
+        return redirect(url_for("admin.accommodation_requests"))
+
+    form = AccommodationApproveForm()
+    if not form.validate_on_submit():
+        flash("Something went wrong — please try again.", "error")
+        return redirect(url_for("admin.accommodation_requests"))
+
+    eligibility = TestEligibility.query.filter_by(test_id=req.test_id, student_id=req.student_id).first()
+    if not eligibility:
+        eligibility = TestEligibility(test_id=req.test_id, student_id=req.student_id)
+        db.session.add(eligibility)
+    eligibility.extra_time_minutes = max(eligibility.extra_time_minutes, req.requested_extra_minutes)
+
+    req.status = "approved"
+    req.resolved_by_id = current_user.id
+    req.resolved_at = datetime.utcnow()
+    db.session.commit()
+    notify_accommodation_resolved(req)
+    log_activity("approved_accommodation", f"Approved {req.requested_extra_minutes} extra minute(s) for {req.student.name} on '{req.test.title}'")
+    flash(f"Approved — {req.student.name} now has {eligibility.extra_time_minutes} extra minute(s) on this test.", "success")
+    return redirect(url_for("admin.accommodation_requests"))
+
+
+@bp.route("/accommodation-requests/<int:request_id>/deny", methods=["POST"])
+@admin_required
+def deny_accommodation_request(request_id):
+    req = AccommodationRequest.query.get_or_404(request_id)
+    ensure_same_org(req.test)
+    if req.status != "pending":
+        flash("This request has already been resolved.", "error")
+        return redirect(url_for("admin.accommodation_requests"))
+
+    form = AccommodationDenyForm()
+    if not form.validate_on_submit():
+        flash("Something went wrong — please try again.", "error")
+        return redirect(url_for("admin.accommodation_requests"))
+
+    req.status = "denied"
+    req.admin_note = (form.admin_note.data or "").strip() or None
+    req.resolved_by_id = current_user.id
+    req.resolved_at = datetime.utcnow()
+    db.session.commit()
+    notify_accommodation_resolved(req)
+    log_activity("denied_accommodation", f"Denied an accommodation request from {req.student.name} on '{req.test.title}'")
+    flash("Request denied — the student has been notified.", "success")
+    return redirect(url_for("admin.accommodation_requests"))
 
 
 @bp.route("/org-backup")

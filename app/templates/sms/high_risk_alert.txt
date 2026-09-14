@@ -1,0 +1,1 @@
+Exam Proctoring: {{ student_name }}'s attempt on "{{ test_title }}" just hit {{ risk_level|upper }} risk (score {{ suspicion_score }}/100). Review: {{ view_url }}

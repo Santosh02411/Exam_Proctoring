@@ -21,7 +21,7 @@
       {% set rendered_fields = ['test_code', 'title', 'duration_minutes', 'total_questions', 'passing_marks',
                                  'status', 'start_time', 'end_time', 'max_attempts', 'negative_marks_per_wrong',
                                  'question_pool_size', 'enforce_ip_allowlist', 'geofence_lat', 'geofence_lng',
-                                 'geofence_radius_km', 'require_seb'] %}
+                                 'geofence_radius_km', 'require_seb', 'enable_watermark'] %}
       {% if form.errors %}
       <div class="flash flash-error" style="margin-bottom:16px">
         Couldn't save changes — please fix the highlighted field(s) below.
@@ -164,6 +164,13 @@
         </label>
         <div class="hint">Download the SEB config file for this test from its View Test page.</div>
         {% for e in form.require_seb.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+      </div>
+      <div class="field">
+        <label class="opt" style="display:flex;align-items:center;gap:8px">
+          {{ form.enable_watermark() }} <span>Overlay the student's name and a timestamp across the exam screen</span>
+        </label>
+        <div class="hint">Doesn't stop a screenshot, but makes any leaked copy traceable to who took it.</div>
+        {% for e in form.enable_watermark.errors %}<div class="errors">{{ e }}</div>{% endfor %}
       </div>
       <button type="submit" class="btn">Save Changes</button>
       <a href="{{ url_for('admin.view_test', test_id=test.id) }}" class="btn ghost">Cancel</a>

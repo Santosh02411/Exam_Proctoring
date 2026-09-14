@@ -194,3 +194,16 @@ class Config:
     # tenant; set this to a specific tenant id to restrict sign-in to one
     # organization's Microsoft 365 directory only.
     MICROSOFT_TENANT = os.environ.get("MICROSOFT_TENANT", "common")
+
+    # SMS/WhatsApp notifications (see app.sms_utils, app.notifications) —
+    # optional, via Twilio. Leaving these blank just means SMS-eligible
+    # notifications (exam starting soon, high-risk alerts, terminations —
+    # see the sms/ email-template-equivalent files for exactly which
+    # notif_types are SMS-eligible) log to instance/sms_outbox.log instead
+    # of actually sending, same dev-mode fallback as email/MAIL_SERVER.
+    # Get these from https://console.twilio.com.
+    TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID")
+    TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
+    # A Twilio phone number, or a WhatsApp-enabled sender written as
+    # "whatsapp:+14155238886" to send via WhatsApp instead of SMS.
+    TWILIO_FROM_NUMBER = os.environ.get("TWILIO_FROM_NUMBER")

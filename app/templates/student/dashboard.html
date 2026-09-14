@@ -57,6 +57,11 @@
           {% if not attempt and not (test.status == 'published' and test.is_open_now()) %}
             <button class="btn small" disabled>Unavailable</button>
           {% endif %}
+          {% if row.accommodation_pending %}
+            <span class="badge draft" style="margin-left:4px">Accommodation pending</span>
+          {% elif not attempt or attempt.status == 'in_progress' %}
+            <a class="btn ghost small" href="{{ url_for('student.request_accommodation', test_id=test.id) }}">Request extra time</a>
+          {% endif %}
         </td>
       </tr>
       {% endfor %}

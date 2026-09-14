@@ -1,0 +1,1 @@
+Exam Proctoring: "{{ test_title }}" opens at {{ start_time }} (~{{ minutes_until }} min). Log in when ready: {{ dashboard_url }}

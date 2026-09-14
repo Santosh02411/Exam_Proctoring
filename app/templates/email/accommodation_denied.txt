@@ -1,0 +1,8 @@
+Hi {{ student_name }},
+
+Your request for {{ requested_extra_minutes }} extra minute(s) on "{{ test_title }}" was not approved.
+{% if admin_note %}
+Note from your administrator:
+{{ admin_note }}
+{% endif %}
+If you have questions, please contact your test administrator directly. Log in here: {{ dashboard_url }}

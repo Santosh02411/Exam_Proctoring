@@ -232,6 +232,13 @@ class Test(db.Model):
     # itself uses for that.
     require_seb = db.Column(db.Boolean, nullable=False, default=False)
 
+    # Exam Watermarking: overlays the student's name/ID and a live
+    # timestamp across the exam screen when enabled — doesn't stop a
+    # screenshot or photo from being taken (nothing browser-side can),
+    # but makes any leaked copy traceable back to whoever took it, which
+    # is the same deterrence model as a visible watermark on a proof/PDF.
+    enable_watermark = db.Column(db.Boolean, nullable=False, default=False)
+
     # Partial credit for multi-select questions: award proportional marks based on
     # how many correct options were picked minus how many incorrect ones were,
     # instead of all-or-nothing. Doesn't affect single-choice or short-answer grading.
@@ -467,6 +474,36 @@ class TestEligibility(db.Model):
     extra_attempts = db.Column(db.Integer, nullable=False, default=0)
 
     __table_args__ = (db.UniqueConstraint("test_id", "student_id", name="uq_test_student"),)
+
+
+class AccommodationRequest(db.Model):
+    """A student's self-service request for extra time on a specific test
+    — the missing half of the existing admin-sets-it-directly
+    TestEligibility.extra_time_minutes: that field is still what actually
+    grants the time (see admin.resolve_accommodation_request), this is
+    just how a student can ask for it instead of needing to already know
+    to email their administrator. One pending request per student per
+    test at a time (see the partial-unique-ish check in
+    student.request_accommodation — enforced in code rather than a DB
+    constraint, since "pending" is a value, not a structural uniqueness)."""
+
+    __tablename__ = "accommodation_requests"
+
+    id = db.Column(db.Integer, primary_key=True)
+    test_id = db.Column(db.Integer, db.ForeignKey("tests.id"), nullable=False)
+    student_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    requested_extra_minutes = db.Column(db.Integer, nullable=False)
+    reason = db.Column(db.Text, nullable=False)
+    # pending | approved | denied
+    status = db.Column(db.String(20), nullable=False, default="pending")
+    admin_note = db.Column(db.Text, nullable=True)
+    resolved_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    resolved_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    test = db.relationship("Test")
+    student = db.relationship("User", foreign_keys=[student_id])
+    resolved_by = db.relationship("User", foreign_keys=[resolved_by_id])
 
 
 class Attempt(db.Model):
@@ -855,6 +892,7 @@ class NotificationLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
     # exam_scheduled | exam_starting_soon | exam_completed | result_published | high_risk_alert | exam_warning
+    # | accommodation_requested | accommodation_approved | accommodation_denied
     notif_type = db.Column(db.String(40), nullable=False)
     subject = db.Column(db.String(255), nullable=False)
     body_preview = db.Column(db.String(1000), nullable=False)

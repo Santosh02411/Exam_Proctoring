@@ -698,7 +698,12 @@ def _notify_termination(attempt):
     attempt is auto-terminated for proctoring violations — previously the
     only automated notification in the app was the assignment email, so a
     terminated student had no way to find out short of trying to log back
-    in, and the admin had no prompt to go review it."""
+    in, and the admin had no prompt to go review it. Also texts the
+    student if they have a phone number on file (see app.sms_utils) —
+    unlike the routed-through-notify() types, this one bypasses that
+    framework entirely (matching how this function was already handling
+    email before SMS existed), so it's a direct best-effort send rather
+    than a NotificationLog-tracked one."""
     test = attempt.test
     student = attempt.student
     admin = test.creator
@@ -711,6 +716,12 @@ def _notify_termination(attempt):
         f"Reason: {attempt.termination_reason}\n\n"
         f"If you believe this was a mistake, contact your test administrator.",
     )
+    if student.phone:
+        try:
+            from app.sms_utils import send_sms
+            send_sms(student.phone, f"Exam Proctoring: your attempt on \"{test.title}\" was ended — {attempt.termination_reason}")
+        except Exception:
+            current_app.logger.exception("termination SMS send failed for attempt %s", attempt.id)
 
     if admin and admin.email:
         send_email(

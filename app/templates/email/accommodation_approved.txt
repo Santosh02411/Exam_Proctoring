@@ -1,0 +1,8 @@
+Hi {{ student_name }},
+
+Good news — your request for {{ requested_extra_minutes }} extra minute(s) on "{{ test_title }}" has been approved.
+{% if admin_note %}
+Note from your administrator:
+{{ admin_note }}
+{% endif %}
+The extra time is already applied — you don't need to do anything else. Log in here: {{ dashboard_url }}

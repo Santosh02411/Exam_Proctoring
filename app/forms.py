@@ -95,6 +95,27 @@ class TwoFactorRegenerateForm(FlaskForm):
     pass
 
 
+class AccommodationRequestForm(FlaskForm):
+    requested_extra_minutes = IntegerField(
+        "Extra time requested, minutes", validators=[DataRequired(), NumberRange(min=1, max=480)]
+    )
+    reason = TextAreaField("Reason for your request", validators=[DataRequired(), Length(max=1000)])
+
+
+class AccommodationDenyForm(FlaskForm):
+    """CSRF + an optional note — approving needs no note field of its own
+    (see AccommodationApproveForm), but a denial without an explanation is
+    a much worse experience for the student on the other end of it."""
+    admin_note = TextAreaField("Note to the student (optional)", validators=[Optional(), Length(max=1000)])
+
+
+class AccommodationApproveForm(FlaskForm):
+    """CSRF-only — approving just grants exactly what was requested; an
+    admin who wants a different amount can still edit the student's
+    eligibility directly afterward from Assign Students."""
+    pass
+
+
 class OrganizationForm(FlaskForm):
     name = StringField("Organization Name", validators=[DataRequired(), Length(max=150)])
     status = SelectField("Status", choices=[("active", "Active"), ("inactive", "Inactive")], validators=[DataRequired()])
@@ -244,6 +265,9 @@ class TestForm(FlaskForm):
     geofence_radius_km = FloatField("Allowed radius, km (optional)", validators=[Optional(), NumberRange(min=0.1)])
     require_seb = BooleanField(
         "Require Safe Exam Browser to take this exam", default=False
+    )
+    enable_watermark = BooleanField(
+        "Overlay the student's name and a timestamp across the exam screen", default=False
     )
 
 

@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Request Extra Time — {{ test.title }}{% endblock %}
+{% block content %}
+<div style="margin-bottom:16px">
+  <a class="small" href="{{ url_for('student.dashboard') }}">&larr; My Tests</a>
+  <h1 style="margin-top:8px">Request Extra Time</h1>
+  <div class="lead">{{ test.title }} — currently {{ test.duration_minutes }} minute(s){% if eligibility.extra_time_minutes %} (+{{ eligibility.extra_time_minutes }} already granted){% endif %}.</div>
+</div>
+
+{% if existing_pending %}
+<div class="card" style="max-width:520px">
+  <div class="flash flash-info" style="margin-bottom:0">
+    You have a pending request for {{ existing_pending.requested_extra_minutes }} extra minute(s), submitted
+    {{ existing_pending.created_at.strftime('%Y-%m-%d %H:%M') }}. Your administrator hasn't responded yet.
+  </div>
+</div>
+{% else %}
+<div class="card" style="max-width:520px">
+  <form method="post" novalidate>
+    {{ form.hidden_tag() }}
+    <div class="field">
+      <label for="{{ form.requested_extra_minutes.id }}">Extra time requested, minutes</label>
+      {{ form.requested_extra_minutes(placeholder="e.g. 15") }}
+      {% for e in form.requested_extra_minutes.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+    </div>
+    <div class="field">
+      <label for="{{ form.reason.id }}">Reason for your request</label>
+      {{ form.reason(rows=4, placeholder="Let your administrator know why you need additional time.") }}
+      {% for e in form.reason.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+    </div>
+    <button type="submit" class="btn">Send Request</button>
+  </form>
+</div>
+{% endif %}
+
+{% if past_requests %}
+<div class="card" style="max-width:520px;margin-top:16px">
+  <h3 style="margin-top:0">Past requests for this test</h3>
+  <table class="table">
+    <thead><tr><th>Requested</th><th>Minutes</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for r in past_requests %}
+      <tr>
+        <td class="small">{{ r.created_at.strftime('%Y-%m-%d') }}</td>
+        <td class="small">{{ r.requested_extra_minutes }}</td>
+        <td>
+          <span class="badge {{ 'published' if r.status == 'approved' else ('inactive' if r.status == 'denied' else 'draft') }}">
+            {{ r.status|capitalize }}
+          </span>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

@@ -6,13 +6,14 @@ from flask import Blueprint, render_template, redirect, url_for, flash, request,
 from flask_login import current_user
 
 from app import db
+from app.forms import AccommodationRequestForm
 from app.models import (
     Test, TestEligibility, Attempt, Answer, Question, Section, IdentityDocument, AnswerEvent,
-    recompute_attempt_score,
+    AccommodationRequest, recompute_attempt_score,
 )
 from app.utils import student_required
 from app.randomize import build_attempt_order, ordered_questions, get_option_order
-from app.notifications import notify_exam_completed_and_maybe_published
+from app.notifications import notify_exam_completed_and_maybe_published, notify_accommodation_requested
 from app.exam_sessions import claim_session, record_blocked_concurrent_session, validate_session_token
 from app import certificates
 from app import access_control
@@ -26,6 +27,11 @@ bp = Blueprint("student", __name__, url_prefix="/student")
 @student_required
 def dashboard():
     eligibilities = TestEligibility.query.filter_by(student_id=current_user.id).all()
+    pending_by_test = {
+        r.test_id for r in AccommodationRequest.query.filter_by(
+            student_id=current_user.id, status="pending",
+        ).all()
+    }
     rows = []
     for e in eligibilities:
         test = e.test
@@ -39,8 +45,46 @@ def dashboard():
             "test": test, "attempt": latest, "eligibility": e,
             "completed_count": completed_count,
             "attempts_left": max(allowed_attempts - completed_count, 0),
+            "accommodation_pending": test.id in pending_by_test,
         })
     return render_template("student/dashboard.html", rows=rows)
+
+
+@bp.route("/tests/<int:test_id>/request-accommodation", methods=["GET", "POST"])
+@student_required
+def request_accommodation(test_id):
+    """In-Exam Accommodation Requests: lets a student ask for extra time
+    on a specific test themselves, instead of the only path being "email
+    your administrator and hope they think to set
+    TestEligibility.extra_time_minutes." Approving still goes through
+    that exact same field (see admin.resolve_accommodation_request) — this
+    is purely the front door onto it, not a parallel mechanism."""
+    eligibility = TestEligibility.query.filter_by(test_id=test_id, student_id=current_user.id).first_or_404()
+    test = eligibility.test
+
+    existing_pending = AccommodationRequest.query.filter_by(
+        test_id=test_id, student_id=current_user.id, status="pending",
+    ).first()
+
+    form = AccommodationRequestForm()
+    if not existing_pending and form.validate_on_submit():
+        req = AccommodationRequest(
+            test_id=test_id, student_id=current_user.id,
+            requested_extra_minutes=form.requested_extra_minutes.data, reason=form.reason.data.strip(),
+        )
+        db.session.add(req)
+        db.session.commit()
+        notify_accommodation_requested(req)
+        flash("Your request has been sent to your test administrator.", "success")
+        return redirect(url_for("student.dashboard"))
+
+    past_requests = AccommodationRequest.query.filter_by(
+        test_id=test_id, student_id=current_user.id,
+    ).order_by(AccommodationRequest.created_at.desc()).all()
+    return render_template(
+        "student/request_accommodation.html", form=form, test=test, eligibility=eligibility,
+        existing_pending=existing_pending, past_requests=past_requests,
+    )
 
 
 @bp.route("/enroll-face")

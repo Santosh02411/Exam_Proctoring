@@ -10,10 +10,12 @@ history entry format.
 from datetime import datetime, timedelta
 
 from flask import render_template, current_app, url_for
+from jinja2 import TemplateNotFound
 
 from app import db
 from app.models import NotificationLog, Test, Attempt, User
 from app.email_utils import send_email
+from app.sms_utils import send_sms
 
 # Kept in sync with the .txt templates under app/templates/email/ and with
 # NotificationLog.notif_type's comment in app.models.
@@ -24,6 +26,9 @@ NOTIFICATION_SUBJECTS = {
     "result_published": "Your result is ready: {test_title}",
     "high_risk_alert": "High-risk activity flagged — {student_name} on {test_title}",
     "exam_warning": "Proctoring warning — {test_title}",
+    "accommodation_requested": "Accommodation request — {student_name} on {test_title}",
+    "accommodation_approved": "Accommodation request approved — {test_title}",
+    "accommodation_denied": "Accommodation request update — {test_title}",
 }
 
 
@@ -32,7 +37,19 @@ def notify(user, notif_type, context, test=None, attempt=None):
     log the attempt regardless of outcome. Never raises — a notification
     failure shouldn't break the request that triggered it (a submission, a
     grading save, an assignment) — logging the failed send_status is enough
-    for someone to notice and retry later."""
+    for someone to notice and retry later.
+
+    SMS/WhatsApp (see app.sms_utils): also sent, as a second independent
+    notification, whenever BOTH an sms/<notif_type>.txt template exists
+    AND the user has a phone number on file — template existence is what
+    makes a notif_type "SMS-eligible" (mirrors how email templates work),
+    so only genuinely time-critical, short types (exam_starting_soon,
+    high_risk_alert) have one; a chatty type like exam_warning
+    deliberately doesn't, since SMS is billed per message and firing one
+    per warning would be both spammy and expensive. Logged as its own
+    NotificationLog row (channel="sms") rather than folded into the email
+    row above, since the two channels can succeed/fail independently and
+    a shared row could only record one outcome."""
     subject = NOTIFICATION_SUBJECTS[notif_type].format(**context)
     body = render_template(f"email/{notif_type}.txt", **context)
 
@@ -54,7 +71,36 @@ def notify(user, notif_type, context, test=None, attempt=None):
         current_app.logger.exception("failed to record notification history: type=%s to=%s", notif_type, user.email)
         db.session.rollback()
 
+    if user.phone:
+        _maybe_send_sms(user, notif_type, context, test, attempt)
+
     return status
+
+
+def _maybe_send_sms(user, notif_type, context, test, attempt):
+    try:
+        sms_body = render_template(f"sms/{notif_type}.txt", **context).strip()
+    except TemplateNotFound:
+        return  # this notif_type isn't SMS-eligible — nothing to do
+
+    sms_status = "sent"
+    try:
+        mode = send_sms(user.phone, sms_body)
+        sms_status = "sent" if mode == "twilio" else "logged"
+    except Exception:
+        current_app.logger.exception("SMS notification send failed: type=%s to=%s", notif_type, user.phone)
+        sms_status = "failed"
+
+    try:
+        db.session.add(NotificationLog(
+            user_id=user.id, notif_type=notif_type, subject=sms_body[:80], body_preview=sms_body[:1000],
+            channel="sms", send_status=sms_status,
+            test_id=test.id if test else None, attempt_id=attempt.id if attempt else None,
+        ))
+        db.session.commit()
+    except Exception:
+        current_app.logger.exception("failed to record SMS notification history: type=%s to=%s", notif_type, user.phone)
+        db.session.rollback()
 
 
 def notify_exam_scheduled(student, test):
@@ -82,6 +128,36 @@ def notify_exam_warning(attempt, warning_message, warnings_remaining=None):
         "student_name": student.name, "test_title": test.title,
         "warning_message": warning_message, "warnings_remaining": warnings_remaining,
     }, test=test, attempt=attempt)
+
+
+def notify_accommodation_requested(request_row):
+    """Tell the test's owning admin a student has asked for extra time
+    (see student.request_accommodation) — the whole point of a
+    self-service request workflow is that it doesn't just sit invisible
+    in a database until an admin happens to check a queue."""
+    test = request_row.test
+    admin = test.creator
+    if not admin or not admin.email:
+        return
+    notify(admin, "accommodation_requested", {
+        "student_name": request_row.student.name, "test_title": test.title,
+        "requested_extra_minutes": request_row.requested_extra_minutes, "reason": request_row.reason,
+        "review_url": url_for("admin.accommodation_requests", _external=True),
+    }, test=test)
+
+
+def notify_accommodation_resolved(request_row):
+    """Tell the student their request was approved or denied — resolved
+    silently (no notification at all) would leave them checking back
+    with no idea whether/when a decision was made."""
+    test = request_row.test
+    student = request_row.student
+    notif_type = "accommodation_approved" if request_row.status == "approved" else "accommodation_denied"
+    notify(student, notif_type, {
+        "student_name": student.name, "test_title": test.title,
+        "requested_extra_minutes": request_row.requested_extra_minutes,
+        "admin_note": request_row.admin_note, "dashboard_url": url_for("student.dashboard", _external=True),
+    }, test=test)
 
 
 def send_starting_soon_reminders(window_minutes=None, org_id=None):

@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Accommodation Requests{% endblock %}
+{% block content %}
+<div style="margin-bottom:16px">
+  <h1>Accommodation Requests</h1>
+  <div class="lead">Students' self-service requests for extra time — approving grants it immediately via the test's eligibility.</div>
+</div>
+
+<div class="card" style="margin-bottom:16px">
+  <h2>Pending ({{ pending|length }})</h2>
+  {% if pending %}
+  <table class="table responsive-table">
+    <thead><tr><th>Student</th><th>Test</th><th>Requested</th><th>Reason</th><th>Submitted</th><th>Action</th></tr></thead>
+    <tbody>
+      {% for r in pending %}
+      <tr>
+        <td data-label="Student">{{ r.student.name }}</td>
+        <td data-label="Test">{{ r.test.title }}</td>
+        <td data-label="Requested">{{ r.requested_extra_minutes }} min</td>
+        <td data-label="Reason" class="small">{{ r.reason }}</td>
+        <td data-label="Submitted" class="small">{{ r.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td data-label="Action" class="actions">
+          <form class="inline" method="post" action="{{ url_for('admin.approve_accommodation_request', request_id=r.id) }}">
+            {{ approve_form.hidden_tag() }}
+            <button type="submit" class="btn small">Approve</button>
+          </form>
+          <button type="button" class="btn ghost small" onclick="document.getElementById('deny-{{ r.id }}').style.display='flex'">Deny</button>
+          <div id="deny-{{ r.id }}" style="display:none;margin-top:8px">
+            <form method="post" action="{{ url_for('admin.deny_accommodation_request', request_id=r.id) }}">
+              {{ deny_form.hidden_tag() }}
+              <textarea name="admin_note" rows="2" placeholder="Optional note to the student" style="width:100%;margin-bottom:6px"></textarea>
+              <button type="submit" class="btn danger ghost small">Confirm Deny</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="small">No pending requests.</div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Recently Resolved</h2>
+  {% if resolved %}
+  <table class="table responsive-table">
+    <thead><tr><th>Student</th><th>Test</th><th>Requested</th><th>Status</th><th>Resolved</th><th>Note</th></tr></thead>
+    <tbody>
+      {% for r in resolved %}
+      <tr>
+        <td data-label="Student">{{ r.student.name }}</td>
+        <td data-label="Test">{{ r.test.title }}</td>
+        <td data-label="Requested">{{ r.requested_extra_minutes }} min</td>
+        <td data-label="Status"><span class="badge {{ 'published' if r.status == 'approved' else 'inactive' }}">{{ r.status|capitalize }}</span></td>
+        <td data-label="Resolved" class="small">{{ r.resolved_at.strftime('%Y-%m-%d %H:%M') if r.resolved_at }} by {{ r.resolved_by.name if r.resolved_by }}</td>
+        <td data-label="Note" class="small">{{ r.admin_note or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="small">Nothing resolved yet.</div>
+  {% endif %}
+</div>
+{% endblock %}
