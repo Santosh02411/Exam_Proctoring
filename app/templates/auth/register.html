@@ -31,6 +31,7 @@
       <div class="field">
         <label for="{{ form.role.id }}">Register as</label>
         {{ form.role() }}
+        {% for e in form.role.errors %}<div class="errors">{{ e }}</div>{% endfor %}
       </div>
       <div class="field">
         <label for="{{ form.org_choice.id }}">Organization</label>

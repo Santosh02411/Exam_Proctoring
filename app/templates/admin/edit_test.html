@@ -20,7 +20,8 @@
       {{ form.hidden_tag() }}
       {% set rendered_fields = ['test_code', 'title', 'duration_minutes', 'total_questions', 'passing_marks',
                                  'status', 'start_time', 'end_time', 'max_attempts', 'negative_marks_per_wrong',
-                                 'question_pool_size'] %}
+                                 'question_pool_size', 'enforce_ip_allowlist', 'geofence_lat', 'geofence_lng',
+                                 'geofence_radius_km', 'require_seb'] %}
       {% if form.errors %}
       <div class="flash flash-error" style="margin-bottom:16px">
         Couldn't save changes — please fix the highlighted field(s) below.
@@ -130,6 +131,39 @@
           {{ form.certificate_enabled() }} <span>Issue a downloadable certificate to students who pass</span>
         </label>
         <div class="hint">Set your organization's certificate signatory under Admin &rarr; Branding.</div>
+      </div>
+
+      <div class="field">
+        <label class="opt" style="display:flex;align-items:center;gap:8px">
+          {{ form.enforce_ip_allowlist() }} <span>Restrict this exam to your organization's allowed IP ranges</span>
+        </label>
+        <div class="hint">Set your organization's allowed IP ranges under Admin &rarr; Access Control. Does nothing if none are configured.</div>
+        {% for e in form.enforce_ip_allowlist.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+      </div>
+      <div class="field">
+        <label>Geofence (optional)</label>
+        <div class="hint">Flags — but doesn't block — attempts whose device location falls outside this radius. Leave all three blank to disable.</div>
+        <div class="row" style="margin-top:6px">
+          <div class="col">
+            {{ form.geofence_lat(placeholder="Latitude, e.g. 12.9716") }}
+            {% for e in form.geofence_lat.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+          </div>
+          <div class="col">
+            {{ form.geofence_lng(placeholder="Longitude, e.g. 77.5946") }}
+            {% for e in form.geofence_lng.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+          </div>
+          <div class="col">
+            {{ form.geofence_radius_km(placeholder="Radius, km") }}
+            {% for e in form.geofence_radius_km.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+          </div>
+        </div>
+      </div>
+      <div class="field">
+        <label class="opt" style="display:flex;align-items:center;gap:8px">
+          {{ form.require_seb() }} <span>Require Safe Exam Browser to take this exam</span>
+        </label>
+        <div class="hint">Download the SEB config file for this test from its View Test page.</div>
+        {% for e in form.require_seb.errors %}<div class="errors">{{ e }}</div>{% endfor %}
       </div>
       <button type="submit" class="btn">Save Changes</button>
       <a href="{{ url_for('admin.view_test', test_id=test.id) }}" class="btn ghost">Cancel</a>

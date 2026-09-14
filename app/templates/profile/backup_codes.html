@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Your Backup Codes{% endblock %}
+{% block content %}
+<div style="margin-bottom:16px">
+  <h1>Save your backup codes</h1>
+  <div class="lead">
+    Each code can be used once to log in if you lose access to your authenticator app. Save them somewhere safe —
+    <strong>this is the only time they'll be shown.</strong>
+  </div>
+</div>
+
+<div class="card" style="max-width:420px">
+  <div class="mono" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:16px;margin-bottom:20px">
+    {% for code in codes %}
+    <div style="background:var(--bg2);border-radius:var(--radius-sm);padding:8px 12px;text-align:center">{{ code }}</div>
+    {% endfor %}
+  </div>
+  <a href="{{ url_for('profile.view_profile') }}" class="btn" style="width:100%;text-align:center;display:block">I've saved these — continue</a>
+</div>
+{% endblock %}

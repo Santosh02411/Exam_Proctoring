@@ -18,7 +18,12 @@
   const violationBanner = document.getElementById('violationBanner');
   const answersForm = document.getElementById('answersForm');
   const spotCheckOverlay = document.getElementById('spotCheckOverlay');
-  const spotCheckPrompt = document.getElementById('spotCheckPrompt');
+  const reportIssueBtn = document.getElementById('reportIssueBtn');
+  const reportIssueOverlay = document.getElementById('reportIssueOverlay');
+  const reportIssueText = document.getElementById('reportIssueText');
+  const reportIssueSubmit = document.getElementById('reportIssueSubmit');
+  const reportIssueCancel = document.getElementById('reportIssueCancel');
+  const reportIssueConfirm = document.getElementById('reportIssueConfirm');  const spotCheckPrompt = document.getElementById('spotCheckPrompt');
   const sessionConflictOverlay = document.getElementById('sessionConflictOverlay');
 
   // Candidate Technical Pre-Check / Exam Environment Verification elements
@@ -881,6 +886,7 @@
     initQuestionTimeTracking();
     startRecording();
     startScreenRecording();
+    startGeoCheck();
     startPerQuestionTimers();
     startSectionTimers();
     startAutosave();
@@ -1769,6 +1775,32 @@
     screenMediaRecorder.start(30000);
   }
 
+  // IP Allowlisting / Geofencing (see app.access_control.check_geofence):
+  // a one-time GPS position check at exam start, entirely permission-
+  // gated like screen recording above — a denial or an unsupported
+  // browser just means this signal is skipped, never a reason to block
+  // the exam. Only actually does anything server-side if the test has a
+  // geofence configured at all (see Test.geofence_lat/lng/radius_km);
+  // otherwise the position is fetched but the check is a no-op.
+  function startGeoCheck() {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        fetch(cfg.geoCheckUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            attempt_id: cfg.attemptId,
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+          }),
+        }).catch((e) => console.warn('geo-check request failed', e));
+      },
+      (err) => console.warn('Location permission denied or unavailable — skipping geofence check.', err),
+      { maximumAge: 60000, timeout: 10000 },
+    );
+  }
+
   function uploadRecordingChunk(blob, index, kind) {
     const fd = new FormData();
     fd.append('attempt_id', cfg.attemptId);
@@ -1863,6 +1895,46 @@
       submitExam(null);
     }
   });
+
+  // In-Exam Issue Reporting — see report_issue in proctoring.py. Never
+  // routed through reportEvent()/the violation pipeline: this is the
+  // student's own voice, not a proctoring signal.
+  if (reportIssueBtn) {
+    reportIssueBtn.addEventListener('click', () => {
+      reportIssueConfirm.style.display = 'none';
+      reportIssueText.value = '';
+      reportIssueOverlay.style.display = 'flex';
+      reportIssueText.focus();
+    });
+    reportIssueCancel.addEventListener('click', () => {
+      reportIssueOverlay.style.display = 'none';
+    });
+    reportIssueSubmit.addEventListener('click', () => {
+      const message = reportIssueText.value.trim();
+      if (!message) { reportIssueText.focus(); return; }
+      reportIssueSubmit.disabled = true;
+      fetch(cfg.reportIssueUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ attempt_id: cfg.attemptId, message: message }),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          reportIssueSubmit.disabled = false;
+          if (data.ok) {
+            reportIssueConfirm.style.display = 'block';
+            reportIssueText.value = '';
+            setTimeout(() => { reportIssueOverlay.style.display = 'none'; }, 1500);
+          } else {
+            alert('Could not send report — please try again.');
+          }
+        })
+        .catch(() => {
+          reportIssueSubmit.disabled = false;
+          alert('Could not send report — please check your connection and try again.');
+        });
+    });
+  }
 
   document.addEventListener('visibilitychange', () => {
     if (examActive && !examEnded && document.hidden) {

@@ -1,0 +1,10 @@
+Hi {{ student_name }},
+
+A proctoring warning was recorded during your attempt on {{ test_title }}:
+
+{{ warning_message }}
+
+{% if warnings_remaining is not none %}{% if warnings_remaining > 0 %}You have {{ warnings_remaining }} warning{{ 's' if warnings_remaining != 1 else '' }} remaining before this counts as a violation.
+{% else %}Any further occurrence of this will count as a violation.
+{% endif %}{% endif %}
+This is an automated notice — no action is needed unless you believe this was a mistake, in which case contact your test administrator.

@@ -78,6 +78,7 @@ def create_app(config_object="config.Config"):
     from app.system_ops import bp as system_ops_bp
     from app.legal import bp as legal_bp
     from app.api_v1 import bp as api_v1_bp
+    from app.sso import bp as sso_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(admin_bp)
@@ -88,6 +89,10 @@ def create_app(config_object="config.Config"):
     app.register_blueprint(system_ops_bp)
     app.register_blueprint(legal_bp)
     app.register_blueprint(api_v1_bp)
+    app.register_blueprint(sso_bp)
+
+    from app.sso import init_oauth
+    init_oauth(app)
 
     from app import security
 
@@ -123,6 +128,12 @@ def create_app(config_object="config.Config"):
     @app.context_processor
     def _inject_org_branding():
         return {"org_branding": current_org_branding()}
+
+    from app import sso as sso_module
+
+    @app.context_processor
+    def _inject_sso_flags():
+        return {"google_sso_enabled": sso_module.google_enabled(), "microsoft_sso_enabled": sso_module.microsoft_enabled()}
 
     @app.route("/branding/logo/<int:org_id>")
     def branding_logo(org_id):

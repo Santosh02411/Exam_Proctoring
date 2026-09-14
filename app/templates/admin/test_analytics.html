@@ -75,6 +75,41 @@
 </div>
 
 <div class="card" style="margin-bottom:20px">
+  <h3 style="margin-top:0">Question Discrimination Index</h3>
+  <div class="small muted" style="margin-bottom:10px">
+    How well each question tells strong students from weak ones — the classic upper/lower 27% method: students are
+    ranked by total score, and this compares the top 27%'s success rate on the question against the bottom 27%'s.
+    <strong>Excellent</strong> (&ge;0.4) and <strong>good</strong> (0.2&ndash;0.39) mean the question is doing its job.
+    <strong>Poor</strong> (0&ndash;0.19) means it barely distinguishes anyone. <strong>Negative</strong> is a real red
+    flag — weaker students are somehow scoring better on it than stronger ones, often a sign of an ambiguous
+    question or a wrong answer key. This is independent of difficulty above — a question can be a perfectly
+    reasonable difficulty and still discriminate terribly, or vice versa.
+  </div>
+  {% if discrimination %}
+  <table class="table">
+    <thead><tr><th>Question</th><th>Top 27%</th><th>Bottom 27%</th><th>Index</th><th>Quality</th></tr></thead>
+    <tbody>
+      {% for row in discrimination %}
+      <tr>
+        <td class="small">{{ row.question_text[:80] }}{{ '…' if row.question_text|length > 80 }}</td>
+        <td>{{ row.top_group_pct }}%</td>
+        <td>{{ row.bottom_group_pct }}%</td>
+        <td class="mono">{{ row.discrimination_index }}</td>
+        <td>
+          <span class="badge {{ 'active' if row.quality in ('excellent', 'good') else ('inactive' if row.quality == 'negative' else 'draft') }}">
+            {{ row.quality|capitalize }}
+          </span>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="small">Needs at least a handful of finished attempts with a computed score to split into meaningful top/bottom groups.</div>
+  {% endif %}
+</div>
+
+<div class="card" style="margin-bottom:20px">
   <h3 style="margin-top:0">Time-per-Question Analysis</h3>
   <div class="small muted" style="margin-bottom:10px">
     Average time-on-screen compared against the rest of the test, cross-referenced with success rate to tell

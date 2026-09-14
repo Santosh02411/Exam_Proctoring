@@ -1,16 +1,17 @@
 import re
 from datetime import datetime, timedelta
 
-from flask import Blueprint, render_template, redirect, url_for, flash, request, current_app
+from flask import Blueprint, render_template, redirect, url_for, flash, request, current_app, session
 from flask_login import login_user, logout_user, login_required, current_user
 
 from app import db
-from app.forms import RegisterForm, LoginForm, ForgotPasswordForm, ResetPasswordForm
+from app.forms import RegisterForm, LoginForm, ForgotPasswordForm, ResetPasswordForm, TwoFactorLoginForm
 from app.models import User, Organization, gen_user_id
 from app.email_utils import generate_token, verify_token, send_email
 from app.captcha import generate_captcha, verify_captcha
 from app.utils import is_rate_limited
 from app import security
+from app import twofa
 
 bp = Blueprint("auth", __name__)
 
@@ -238,6 +239,15 @@ def login():
             user.failed_login_attempts = 0
             user.locked_until = None
             db.session.commit()
+            if twofa.requires_2fa(user):
+                # Don't call login_user() yet — the password alone isn't
+                # enough for this account. Stash just the user id (not
+                # "logged in" in any Flask-Login sense) and send them to
+                # the second step; nothing about this session is
+                # authenticated until verify_login_code succeeds.
+                session[twofa.PENDING_2FA_SESSION_KEY] = user.id
+                session["pending_2fa_next"] = request.args.get("next")
+                return redirect(url_for("auth.login_verify_2fa"))
             login_user(user)
             security.register_login(user)
             flash(f"Welcome back, {user.name}!", "success")
@@ -248,6 +258,37 @@ def login():
 
     captcha_question = generate_captcha()
     return render_template("auth/login.html", form=form, captcha_question=captcha_question)
+
+
+@bp.route("/login/verify-2fa", methods=["GET", "POST"])
+def login_verify_2fa():
+    """The second step of login for an account with 2FA enabled — reached
+    only after auth.login's password+captcha check already succeeded and
+    stashed a pending user id in the session (see twofa.PENDING_2FA_SESSION_KEY).
+    Accepts either a live 6-digit authenticator code or a one-time backup
+    code in the same field."""
+    user_id = session.get(twofa.PENDING_2FA_SESSION_KEY)
+    if not user_id:
+        return redirect(url_for("auth.login"))
+    user = User.query.get(user_id)
+    if not user or not twofa.requires_2fa(user):
+        session.pop(twofa.PENDING_2FA_SESSION_KEY, None)
+        return redirect(url_for("auth.login"))
+
+    form = TwoFactorLoginForm()
+    if form.validate_on_submit():
+        code = form.code.data.strip()
+        ok = twofa.verify_code(user.totp_secret, code) or twofa.consume_backup_code(user, code)
+        if ok:
+            session.pop(twofa.PENDING_2FA_SESSION_KEY, None)
+            next_url = session.pop("pending_2fa_next", None)
+            login_user(user)
+            security.register_login(user)
+            flash(f"Welcome back, {user.name}!", "success")
+            return redirect(next_url or url_for("index"))
+        flash("Invalid or expired code. Please try again.", "error")
+
+    return render_template("auth/verify_2fa.html", form=form)
 
 
 @bp.route("/logout")

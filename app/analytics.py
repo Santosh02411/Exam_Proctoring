@@ -88,6 +88,75 @@ def question_difficulty(test):
     return sorted(rows, key=lambda r: r["success_rate"])
 
 
+def question_discrimination(test):
+    """Discrimination index per auto-graded question — the classic
+    upper-lower 27% method: rank finished attempts by total score, split
+    into the top and bottom 27%, and compare each group's success rate on
+    this specific question. A well-designed question should see the top
+    group do noticeably better than the bottom group on it (positive,
+    ideally 0.3+); near zero means the question isn't actually
+    distinguishing strong students from weak ones; negative means weaker
+    students are somehow doing BETTER on it than strong ones — usually a
+    sign of an ambiguous question, a wrong answer key, or a lucky-guess-
+    friendly design, worth a second look regardless of how "hard" it
+    looked in question_difficulty above (those two numbers measure
+    different things — a question can be at a perfectly reasonable
+    difficulty and still discriminate terribly, or vice versa).
+
+    27% is the traditional split size from classical test theory — small
+    enough to isolate the genuinely-strong/genuinely-weak tails, large
+    enough to not be single-student noise in a reasonably sized cohort.
+    Manually-graded questions are excluded, same reasoning as
+    question_difficulty — "correct" isn't binary for an essay."""
+    attempts = [a for a in _finished_attempts(test) if a.score is not None]
+    if len(attempts) < 4:  # too few finished attempts for a meaningful split
+        return []
+
+    ranked = sorted(attempts, key=lambda a: a.score, reverse=True)
+    group_size = max(1, round(len(ranked) * 0.27))
+    top_group = ranked[:group_size]
+    bottom_group = ranked[-group_size:]
+
+    def _pct_correct(group, question):
+        answered = 0
+        correct = 0
+        for att in group:
+            ans = next((a for a in att.answers if a.question_id == question.id), None)
+            if ans and ans.selected_option:
+                answered += 1
+                if question.is_correct(ans.selected_option):
+                    correct += 1
+        return (correct / answered) if answered else None
+
+    rows = []
+    for q in sorted(test.questions, key=lambda q: q.id):
+        if q.needs_manual_grading:
+            continue
+
+        top_pct = _pct_correct(top_group, q)
+        bottom_pct = _pct_correct(bottom_group, q)
+        if top_pct is None or bottom_pct is None:
+            continue
+
+        index = round(top_pct - bottom_pct, 2)
+        if index >= 0.4:
+            quality = "excellent"
+        elif index >= 0.2:
+            quality = "good"
+        elif index >= 0.0:
+            quality = "poor"
+        else:
+            quality = "negative"  # red flag — investigate this question
+
+        rows.append({
+            "question_id": q.id, "question_text": q.question_text,
+            "discrimination_index": index, "quality": quality,
+            "top_group_pct": round(top_pct * 100, 1), "bottom_group_pct": round(bottom_pct * 100, 1),
+            "group_size": group_size,
+        })
+    return sorted(rows, key=lambda r: r["discrimination_index"])
+
+
 def most_skipped_questions(test, limit=10):
     rows = [r for r in question_stats(test) if r["skip_rate"]]
     return sorted(rows, key=lambda r: r["skip_rate"], reverse=True)[:limit]

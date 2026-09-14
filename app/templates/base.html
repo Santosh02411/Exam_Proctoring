@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <title>{% block title %}Exam Proctoring{% endblock %}</title>
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
   {% if org_branding and org_branding.primary_color %}
   <style>
@@ -66,6 +66,7 @@
                 <a href="{{ url_for('admin.org_report') }}">Org Report</a>
                 <a href="{{ url_for('admin.branding_settings') }}">Branding</a>
                 <a href="{{ url_for('admin.api_keys') }}">API Access</a>
+                <a href="{{ url_for('admin.access_control_settings') }}">Access Control</a>
               </div>
             </div>
           {% endif %}

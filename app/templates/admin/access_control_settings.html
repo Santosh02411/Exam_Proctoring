@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Access Control — {{ org.name }}{% endblock %}
+{% block content %}
+<div style="margin-bottom:16px">
+  <h1>Access Control — {{ org.name }}</h1>
+  <div class="lead">
+    Restrict where your exams can be taken from. Neither setting below does anything until a specific test
+    opts in — the IP allowlist is enforced only by tests with "Restrict this exam to your organization's
+    allowed IP ranges" checked (see a test's Edit page), and geofencing is configured per test.
+  </div>
+</div>
+
+<div class="card" style="max-width:640px">
+  <form method="post" novalidate>
+    {{ form.hidden_tag() }}
+    <div class="field">
+      <label for="{{ form.ip_ranges.id }}">Allowed IP ranges</label>
+      {{ form.ip_ranges(rows=6, placeholder="203.0.113.0/24\n198.51.100.42/32", style="font-family:monospace") }}
+      <div class="hint">One CIDR range per line. A single address is fine too — write it as "/32", e.g. 198.51.100.42/32.</div>
+      {% for e in form.ip_ranges.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+    </div>
+    {% if tests_enforcing %}
+    <div class="small muted" style="margin-bottom:14px">{{ tests_enforcing }} test(s) currently enforce this allowlist.</div>
+    {% endif %}
+
+    <div class="field">
+      <label for="{{ form.sso_domain.id }}">Self-service SSO domain (optional)</label>
+      {{ form.sso_domain(placeholder="myschool.edu") }}
+      <div class="hint">
+        A Google or Microsoft sign-in whose verified email ends in this domain automatically creates a
+        student account under your organization, instead of requiring separate registration. Leave blank
+        to require normal registration for everyone.
+      </div>
+      {% for e in form.sso_domain.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+    </div>
+    <button type="submit" class="btn">Save Settings</button>
+  </form>
+</div>
+{% endblock %}

@@ -10,6 +10,17 @@
 <div class="card" style="max-width:640px">
   <form method="post" novalidate id="qForm" enctype="multipart/form-data" onsubmit="return validateAndSubmit();">
     {{ form.hidden_tag() }}
+    {% set rendered_fields = ['question_text', 'marks', 'time_limit_seconds', 'short_answer_text',
+                               'blank_answer', 'category', 'option_a', 'option_b', 'option_c', 'option_d',
+                               'code_language', 'media_url', 'media_file'] %}
+    {% if form.errors %}
+    <div class="flash flash-error" style="margin-bottom:16px">
+      Couldn't save the question — please fix the highlighted field(s) below.
+      {% for field_name, errs in form.errors.items() if field_name not in rendered_fields %}
+        {% for e in errs %}<div>{{ e }}</div>{% endfor %}
+      {% endfor %}
+    </div>
+    {% endif %}
     <div class="row">
       <div class="col field">
         <label for="{{ form.category.id }}">Category / topic (optional)</label>
@@ -29,6 +40,7 @@
       <label for="{{ form.question_text.id }}">Question text</label>
       {{ form.question_text(placeholder="Write the question here...") }}
       <div class="hint" id="blankHint" style="display:none">For fill-in-the-blank, mark the blank with three or more underscores, e.g. "The capital of France is ____."</div>
+      {% for e in form.question_text.errors %}<div class="errors">{{ e }}</div>{% endfor %}
     </div>
 
     <div id="optionsSection">
@@ -36,20 +48,24 @@
         <div class="col field">
           <label for="{{ form.option_a.id }}">Option A</label>
           {{ form.option_a() }}
+          {% for e in form.option_a.errors %}<div class="errors">{{ e }}</div>{% endfor %}
         </div>
         <div class="col field">
           <label for="{{ form.option_b.id }}">Option B</label>
           {{ form.option_b() }}
+          {% for e in form.option_b.errors %}<div class="errors">{{ e }}</div>{% endfor %}
         </div>
       </div>
       <div class="row">
         <div class="col field">
           <label for="{{ form.option_c.id }}">Option C</label>
           {{ form.option_c() }}
+          {% for e in form.option_c.errors %}<div class="errors">{{ e }}</div>{% endfor %}
         </div>
         <div class="col field">
           <label for="{{ form.option_d.id }}">Option D</label>
           {{ form.option_d() }}
+          {% for e in form.option_d.errors %}<div class="errors">{{ e }}</div>{% endfor %}
         </div>
       </div>
 
@@ -92,11 +108,13 @@
       <label for="{{ form.short_answer_text.id }}">Expected correct answer</label>
       {{ form.short_answer_text(placeholder="e.g. Paris") }}
       <div class="hint">Graded automatically, case-insensitive, trimmed whitespace.</div>
+      {% for e in form.short_answer_text.errors %}<div class="errors">{{ e }}</div>{% endfor %}
     </div>
 
     <div class="field" id="blankAnswerField" style="display:none">
       <label for="{{ form.blank_answer.id }}">Accepted answer(s) for the blank</label>
       {{ form.blank_answer(placeholder="Separate multiple with ';'") }}
+      {% for e in form.blank_answer.errors %}<div class="errors">{{ e }}</div>{% endfor %}
     </div>
 
     <div class="field" id="modelAnswerField" style="display:none">
@@ -108,6 +126,7 @@
       <div class="field">
         <label for="{{ form.code_language.id }}">Language (optional)</label>
         {{ form.code_language(placeholder="e.g. python") }}
+        {% for e in form.code_language.errors %}<div class="errors">{{ e }}</div>{% endfor %}
       </div>
       <div class="field">
         <label for="{{ form.starter_code.id }}">Starter code (optional)</label>
@@ -119,10 +138,12 @@
       <div class="col field">
         <label for="{{ form.marks.id }}">Marks</label>
         {{ form.marks() }}
+        {% for e in form.marks.errors %}<div class="errors">{{ e }}</div>{% endfor %}
       </div>
       <div class="col field">
         <label for="{{ form.time_limit_seconds.id }}">Time limit, seconds (optional)</label>
         {{ form.time_limit_seconds(placeholder="e.g. 60") }}
+        {% for e in form.time_limit_seconds.errors %}<div class="errors">{{ e }}</div>{% endfor %}
       </div>
     </div>
 
@@ -134,6 +155,8 @@
       </div>
       {{ form.media_url(placeholder="…or paste an image/video URL instead of uploading") }}
       {% if item and item.media_url %}<div class="hint">Currently has a {{ item.media_type }} attached — leave both blank to keep it.</div>{% endif %}
+      {% for e in form.media_url.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+      {% for e in form.media_file.errors %}<div class="errors">{{ e }}</div>{% endfor %}
     </div>
 
     <div class="actions">

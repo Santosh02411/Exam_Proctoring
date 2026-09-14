@@ -167,6 +167,7 @@
         <div class="status-pill"><span id="connDot" class="status-dot"></span> <span id="connStatusText">Online</span></div>
         <div class="status-pill"><span id="proctorDot" class="status-dot"></span> <span id="proctorStatusText">Monitoring</span></div>
         <div>Time left: <span id="timer" class="timer">--:--</span></div>
+        <button type="button" id="reportIssueBtn" class="btn ghost small">Report a problem</button>
         <button id="submitBtn" class="btn">Submit Test</button>
       </div>
     </div>
@@ -175,6 +176,28 @@
     {% endif %}
     <div id="connectionBanner" class="connection-banner" style="display:none;margin-top:10px"></div>
     <div id="violationBanner" class="violation-banner" style="display:none;margin-top:10px"></div>
+  </div>
+
+  <!-- In-Exam Issue Reporting: a lightweight self-report channel — "my
+       webcam disconnected", "I think this was flagged by mistake" — that
+       reaches admins live (see ALWAYS_ALERT_EVENT_TYPES) without needing
+       a separate support email/channel the student has to already know
+       about. Never a proctoring violation itself (see report_issue in
+       proctoring.py); this is the student's own voice. -->
+  <div id="reportIssueOverlay" style="position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(10,10,10,0.72);z-index:9999">
+    <div style="width:92%;max-width:480px;background:var(--card);border-radius:14px;padding:24px;box-shadow:var(--shadow-elevated)">
+      <h3 style="margin-top:0">Report a problem</h3>
+      <div class="small muted" style="margin-bottom:12px">
+        Describe what's happening — a proctor or admin can see this right away. This never counts against you or
+        affects your proctoring record.
+      </div>
+      <textarea id="reportIssueText" rows="4" maxlength="500" placeholder="e.g. My webcam keeps disconnecting, or I think I was flagged by mistake..."></textarea>
+      <div class="actions" style="margin-top:12px">
+        <button type="button" id="reportIssueSubmit" class="btn">Send report</button>
+        <button type="button" id="reportIssueCancel" class="btn ghost">Cancel</button>
+      </div>
+      <div id="reportIssueConfirm" class="small" style="display:none;margin-top:10px;color:var(--success)">Report sent — an admin has been notified.</div>
+    </div>
   </div>
 
   <form id="answersForm">
@@ -278,6 +301,8 @@
     identitySpotcheckMinSeconds: {{ config.IDENTITY_SPOTCHECK_MIN_SECONDS }},
     identitySpotcheckMaxSeconds: {{ config.IDENTITY_SPOTCHECK_MAX_SECONDS }},
     recordingChunkUrl: "{{ url_for('proctoring.upload_recording_chunk') }}",
+    geoCheckUrl: "{{ url_for('proctoring.geo_check') }}",
+    reportIssueUrl: "{{ url_for('proctoring.report_issue') }}",
     modelsUrl: "{{ url_for('static', filename='models') }}",
     referenceDescriptor: {{ reference_descriptor | tojson }},
     faceMatchThreshold: {{ config.FACE_MATCH_THRESHOLD }}

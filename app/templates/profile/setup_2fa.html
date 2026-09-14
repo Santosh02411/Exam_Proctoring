@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Set up Two-Factor Authentication{% endblock %}
+{% block content %}
+<div style="margin-bottom:16px">
+  <a class="small" href="{{ url_for('profile.view_profile') }}">&larr; Profile</a>
+  <h1 style="margin-top:8px">Set up Two-Factor Authentication</h1>
+  <div class="lead">Scan this QR code with an authenticator app (Google Authenticator, Authy, 1Password, etc.), then enter the 6-digit code it shows you.</div>
+</div>
+
+<div class="card" style="max-width:480px">
+  <div style="text-align:center;margin-bottom:18px">
+    <img src="{{ qr_data_uri }}" alt="Scan with your authenticator app" style="width:220px;height:220px;background:#fff;padding:8px;border-radius:8px">
+  </div>
+  <div class="small muted" style="text-align:center;margin-bottom:18px">
+    Can't scan it? Enter this key manually: <code class="mono">{{ secret }}</code>
+  </div>
+  <form method="post" novalidate>
+    {{ form.hidden_tag() }}
+    <div class="field">
+      <label for="{{ form.code.id }}">Enter the 6-digit code from your app</label>
+      {{ form.code(placeholder="123456", autocomplete="one-time-code", autofocus=true) }}
+      {% for e in form.code.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+    </div>
+    <button type="submit" class="btn" style="width:100%">Verify and enable</button>
+  </form>
+</div>
+{% endblock %}

@@ -15,6 +15,9 @@ from app.randomize import build_attempt_order, ordered_questions, get_option_ord
 from app.notifications import notify_exam_completed_and_maybe_published
 from app.exam_sessions import claim_session, record_blocked_concurrent_session, validate_session_token
 from app import certificates
+from app import access_control
+from app import seb as seb_module
+from app.proctoring import _record_violation as record_proctoring_violation
 
 bp = Blueprint("student", __name__, url_prefix="/student")
 
@@ -182,6 +185,17 @@ def start_test(test_id):
 
     attempt, is_resume = _get_or_create_attempt(test, eligibility)
 
+    if attempt.status == "in_progress" and access_control.check_ip_allowlist(attempt):
+        flash("This exam could not be accessed from your current network — the attempt has been ended.", "error")
+        return redirect(url_for("student.result", attempt_id=attempt.id))
+
+    if attempt.status == "in_progress" and test.require_seb and not seb_module.looks_like_seb(request):
+        record_proctoring_violation(
+            attempt, "seb_not_detected", "violation",
+            details="This test requires Safe Exam Browser; the request didn't look like it came from it.",
+            default_action="flag",
+        )
+
     if attempt.status == "in_progress" and _remaining_seconds(attempt, test, eligibility) <= 0:
         # The allotted time ran out while nobody was actively submitting —
         # most commonly because the student was disconnected (or had
@@ -346,6 +360,7 @@ def heartbeat(attempt_id):
     if attempt.status == "in_progress":
         if validate_session_token(attempt, request.args.get("session_token")):
             db.session.commit()  # persist the session_last_seen_at refresh from validate_session_token
+            access_control.check_ip_allowlist(attempt)
         else:
             session_conflict = True
 

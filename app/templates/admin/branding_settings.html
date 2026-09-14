@@ -50,7 +50,7 @@
     {{ form.hidden_tag() }}
     <div class="field">
       <label for="{{ form.primary_color.id }}">Choose a color</label>
-      {{ form.primary_color(value=org.primary_color or '#0b6ef6') }}
+      {{ form.primary_color(value=org.primary_color or '#0B7A6B') }}
       {% for e in form.primary_color.errors %}<div class="errors">{{ e }}</div>{% endfor %}
     </div>
     <button type="submit" class="btn">Save Color</button>

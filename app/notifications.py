@@ -23,6 +23,7 @@ NOTIFICATION_SUBJECTS = {
     "exam_completed": "Submitted: {test_title}",
     "result_published": "Your result is ready: {test_title}",
     "high_risk_alert": "High-risk activity flagged — {student_name} on {test_title}",
+    "exam_warning": "Proctoring warning — {test_title}",
 }
 
 
@@ -63,6 +64,24 @@ def notify_exam_scheduled(student, test):
         "start_time": test.start_time.strftime("%Y-%m-%d %H:%M UTC") if test.start_time else None,
         "dashboard_url": url_for("student.dashboard", _external=True),
     }, test=test)
+
+
+def notify_exam_warning(attempt, warning_message, warnings_remaining=None):
+    """Email the student the moment a proctoring warning is recorded on
+    their attempt (see app.proctoring._record_violation's "warning"
+    branch) — the same message shown live in the in-exam banner, so a
+    student who doesn't have the tab focused (or is checking a second
+    device/inbox) still has a record of it, and so does the assignment's
+    notification history either way. Fires once per warning occurrence,
+    same as the in-app banner — not deduped or throttled, since each
+    occurrence can carry a different "N warnings left" count that matters
+    to the student in the moment."""
+    test = attempt.test
+    student = attempt.student
+    notify(student, "exam_warning", {
+        "student_name": student.name, "test_title": test.title,
+        "warning_message": warning_message, "warnings_remaining": warnings_remaining,
+    }, test=test, attempt=attempt)
 
 
 def send_starting_soon_reminders(window_minutes=None, org_id=None):

@@ -66,5 +66,28 @@
       <button type="submit" class="btn">Change Password</button>
     </form>
   </div>
+
+  <div class="card">
+    <h2>Two-Factor Authentication</h2>
+    {% if current_user.totp_confirmed %}
+      <div class="flash flash-success" style="margin-bottom:14px">Enabled — your account requires an authenticator code at login.</div>
+      <form method="post" action="{{ url_for('profile.regenerate_backup_codes') }}" class="inline" style="display:block;margin-bottom:10px">
+        {{ regenerate_2fa_form.hidden_tag() }}
+        <button type="submit" class="btn ghost small">Generate new backup codes</button>
+      </form>
+      <form method="post" action="{{ url_for('profile.disable_2fa') }}" novalidate>
+        {{ disable_2fa_form.hidden_tag() }}
+        <div class="field">
+          <label for="{{ disable_2fa_form.password.id }}">Confirm your password to disable</label>
+          {{ disable_2fa_form.password(placeholder="Current password") }}
+          {% for e in disable_2fa_form.password.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+        </div>
+        <button type="submit" class="btn danger ghost small">Disable two-factor authentication</button>
+      </form>
+    {% else %}
+      <p class="small">Add an authenticator app (Google Authenticator, Authy, 1Password, etc.) as a second login step — recommended for admin and proctor accounts especially.</p>
+      <a href="{{ url_for('profile.setup_2fa') }}" class="btn">Set up two-factor authentication</a>
+    {% endif %}
+  </div>
 </div>
 {% endblock %}

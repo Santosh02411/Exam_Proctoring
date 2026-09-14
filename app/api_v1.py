@@ -36,7 +36,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 from app import db
 from app.models import ApiKey, Test, TestEligibility, User, Attempt, gen_user_id
-from app.notifications import pending_grading
+from app.notifications import pending_grading, notify_exam_scheduled
 
 bp = Blueprint("api_v1", __name__, url_prefix="/api/v1")
 
@@ -147,6 +147,12 @@ def enroll_students(test_code):
 
     extra_time = int(body.get("extra_time_minutes") or 0)
     extra_attempts = int(body.get("extra_attempts") or 0)
+    # Matches the UI's Assign Students checkbox (checked by default) —
+    # an LMS sync can pass "notify": false to suppress the assignment
+    # email for a silent/bulk roster import, but the default mirrors the
+    # UI so a caller who doesn't think about this flag at all still gets
+    # the same "student gets emailed" behavior an admin would.
+    should_notify = body.get("notify", True)
 
     created, enrolled, skipped = 0, 0, []
     for entry in students:
@@ -176,6 +182,8 @@ def enroll_students(test_code):
                 extra_time_minutes=extra_time, extra_attempts=extra_attempts,
             ))
             enrolled += 1
+            if should_notify:
+                notify_exam_scheduled(user, test)
 
     db.session.commit()
     return jsonify({

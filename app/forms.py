@@ -69,6 +69,32 @@ class LoginForm(FlaskForm):
     captcha_answer = StringField("Verification", validators=[DataRequired()])
 
 
+class TwoFactorLoginForm(FlaskForm):
+    """The second step of login for an account with 2FA enabled (see
+    app.twofa) — a 6-digit authenticator code, or a backup code typed
+    into the same field (app.auth.verify_login_code tries both)."""
+    code = StringField("Authentication code", validators=[DataRequired(), Length(max=20)])
+
+
+class TwoFactorSetupForm(FlaskForm):
+    """CSRF-only for the QR-code setup screen; the actual verification
+    code field is rendered by hand in app/templates/profile/setup_2fa.html
+    since it's the one field that matters and doesn't need WTForms
+    validators beyond "not empty" (app.twofa.verify_code does the real
+    check)."""
+    code = StringField("Enter the 6-digit code from your app", validators=[DataRequired(), Length(max=10)])
+
+
+class TwoFactorDisableForm(FlaskForm):
+    password = PasswordField("Confirm your password", validators=[DataRequired()])
+
+
+class TwoFactorRegenerateForm(FlaskForm):
+    """CSRF-only — regenerating backup codes needs no input beyond
+    confirming this was actually the account owner's own click."""
+    pass
+
+
 class OrganizationForm(FlaskForm):
     name = StringField("Organization Name", validators=[DataRequired(), Length(max=150)])
     status = SelectField("Status", choices=[("active", "Active"), ("inactive", "Inactive")], validators=[DataRequired()])
@@ -126,6 +152,19 @@ class ProctoringPolicyForm(FlaskForm):
     dynamically from that list rather than being fixed at class-definition
     time."""
     pass
+
+
+class AccessControlForm(FlaskForm):
+    """IP Allowlisting / Geofencing + SSO domain claiming (see
+    app.access_control, app.sso) — org-level settings, edited by this
+    org's own admin same as retention/branding/API access."""
+    ip_ranges = TextAreaField(
+        "Allowed IP ranges (one CIDR per line, e.g. 203.0.113.0/24)", validators=[Optional()]
+    )
+    sso_domain = StringField(
+        "Email domain for self-service Google/Microsoft sign-in (e.g. myschool.edu)",
+        validators=[Optional(), Length(max=120)],
+    )
 
 
 class RetentionPolicyForm(FlaskForm):
@@ -196,6 +235,15 @@ class TestForm(FlaskForm):
     )
     certificate_enabled = BooleanField(
         "Issue a downloadable certificate to students who pass this test", default=False
+    )
+    enforce_ip_allowlist = BooleanField(
+        "Only allow this exam to be taken from this organization's allowed IP ranges", default=False
+    )
+    geofence_lat = FloatField("Allowed area center — latitude (optional)", validators=[Optional()])
+    geofence_lng = FloatField("Allowed area center — longitude (optional)", validators=[Optional()])
+    geofence_radius_km = FloatField("Allowed radius, km (optional)", validators=[Optional(), NumberRange(min=0.1)])
+    require_seb = BooleanField(
+        "Require Safe Exam Browser to take this exam", default=False
     )
 
 

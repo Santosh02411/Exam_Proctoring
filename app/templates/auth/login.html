@@ -28,6 +28,18 @@
       <button type="submit" class="btn" style="width:100%">Login</button>
     </form>
 
+    {% if google_sso_enabled or microsoft_sso_enabled %}
+    <div class="small muted" style="text-align:center;margin:16px 0 12px">or</div>
+    <div style="display:grid;gap:8px">
+      {% if google_sso_enabled %}
+      <a href="{{ url_for('sso.google_login') }}" class="btn ghost" style="text-align:center">Sign in with Google</a>
+      {% endif %}
+      {% if microsoft_sso_enabled %}
+      <a href="{{ url_for('sso.microsoft_login') }}" class="btn ghost" style="text-align:center">Sign in with Microsoft</a>
+      {% endif %}
+    </div>
+    {% endif %}
+
     {% if unverified_email %}
     <form method="post" action="{{ url_for('auth.resend_verification') }}" style="margin-top:12px;text-align:center">
       <input type="hidden" name="email" value="{{ unverified_email }}">

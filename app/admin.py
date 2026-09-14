@@ -19,11 +19,12 @@ from app import db
 from app.forms import (
     TestForm, QuestionForm, QuestionImportForm, UserImportForm, QuestionBankForm, SectionForm,
     RetentionPolicyForm, BrandingForm, ApiKeyForm, LmsWebhookForm, CertificateSettingsForm, ProctoringPolicyForm,
+    AccessControlForm,
 )
 from app.models import (
     Test, Question, User, TestEligibility, Attempt, Answer, ProctoringEvent, AdminActivityLog,
     QuestionBankItem, Section, IdentityDocument, NotificationLog, AnswerSimilarityFlag,
-    LoginSession, LoginSecurityEvent, ApiKey, gen_user_id, recompute_attempt_score,
+    LoginSession, LoginSecurityEvent, ApiKey, Organization, gen_user_id, recompute_attempt_score,
 )
 from app.proctoring import compute_suspicion_score, build_timeline, get_live_alerts_since, EVENT_TYPE_LABELS
 from app.utils import (
@@ -38,6 +39,8 @@ from app.notifications import (
 from app import analytics
 from app import proctoring
 from app import similarity as similarity_module
+from app import access_control
+from app import seb as seb_module
 from app import retention as retention_module
 from app import org_export
 from app import org_reports
@@ -120,6 +123,11 @@ def _apply_test_form(test, form):
     test.partial_credit_multi = form.partial_credit_multi.data
     test.question_pool_size = form.question_pool_size.data or None
     test.certificate_enabled = form.certificate_enabled.data
+    test.enforce_ip_allowlist = form.enforce_ip_allowlist.data
+    test.geofence_lat = form.geofence_lat.data
+    test.geofence_lng = form.geofence_lng.data
+    test.geofence_radius_km = form.geofence_radius_km.data
+    test.require_seb = form.require_seb.data
 
 
 @bp.route("/dashboard")
@@ -364,12 +372,103 @@ def _build_question_from_form(test, form):
     return Question(test_id=test.id, section_id=section_id, **fields), None
 
 
+def _regrade_question(question):
+    """Bulk Regrade: recompute every already-scored attempt that answered
+    this question, using its CURRENT correct_answer/marks — for the "the
+    answer key was wrong" case, where fixing the question alone doesn't
+    retroactively fix scores already computed with the old key. Skips
+    attempts still in_progress (their score gets computed fresh at
+    submission anyway, using whatever the question looks like at that
+    point) and pending manual grades (descriptive/coding scores come from
+    Answer.manual_score, which this doesn't touch — regrading those means
+    re-grading the answer itself, not just recomputing a total).
+    Returns how many attempts were actually rescored."""
+    attempt_ids = {
+        row[0] for row in
+        db.session.query(Answer.attempt_id).filter_by(question_id=question.id).distinct()
+    }
+    count = 0
+    for attempt_id in attempt_ids:
+        attempt = Attempt.query.get(attempt_id)
+        if not attempt or attempt.status == "in_progress":
+            continue
+        attempt.score = recompute_attempt_score(attempt)
+        count += 1
+    db.session.commit()
+    return count
+
+
+@bp.route("/tests/<int:test_id>/questions/<int:question_id>/edit", methods=["GET", "POST"])
+@content_access
+def edit_question(test_id, question_id):
+    test = Test.query.get_or_404(test_id)
+    ensure_same_org(test)
+    question = Question.query.filter_by(id=question_id, test_id=test.id).first_or_404()
+    form = QuestionForm(obj=question)
+
+    if request.method == "GET":
+        # QuestionForm's per-type answer fields (short_answer_text,
+        # blank_answer, model_answer) don't share a name with
+        # Question.correct_answer, so obj=question above didn't already
+        # populate them — the WTForms/model field-name mismatch is
+        # deliberate (see _parse_question_fields), just needs doing by
+        # hand here for the edit case add_question never had to.
+        if question.question_type == "short":
+            form.short_answer_text.data = question.correct_answer
+        elif question.question_type == "fill_blank":
+            form.blank_answer.data = question.correct_answer
+        elif question.question_type in ("descriptive", "coding"):
+            form.model_answer.data = question.correct_answer
+
+    answered_count = db.session.query(Answer.id).filter_by(question_id=question.id).count()
+
+    if form.validate_on_submit():
+        fields, error = _parse_question_fields(form, existing=question)
+        if error:
+            flash(error, "error")
+        else:
+            scoring_changed = (
+                fields["correct_answer"] != question.correct_answer or fields["marks"] != question.marks
+            )
+            for key, value in fields.items():
+                setattr(question, key, value)
+            section_id = request.form.get("section_id", type=int)
+            question.section_id = section_id if section_id and Section.query.filter_by(id=section_id, test_id=test.id).first() else None
+            db.session.commit()
+
+            regraded = 0
+            if scoring_changed and request.form.get("regrade") == "on":
+                regraded = _regrade_question(question)
+
+            log_activity("edited_question", f"Edited a question on '{test.title}'")
+            msg = "Question updated."
+            if regraded:
+                msg += f" Rescored {regraded} existing attempt(s)."
+            elif scoring_changed and answered_count:
+                msg += f" {answered_count} existing attempt(s) were NOT rescored — check \"Regrade\" to update them too."
+            flash(msg, "success")
+            return redirect(url_for("admin.add_question", test_id=test.id))
+
+    return render_template(
+        "admin/edit_question.html", form=form, test=test, question=question, answered_count=answered_count,
+        sections=Section.query.filter_by(test_id=test.id).order_by(Section.order_index).all(),
+    )
+
+
 @bp.route("/tests/<int:test_id>/questions/add", methods=["GET", "POST"])
 @content_access
 def add_question(test_id):
     test = Test.query.get_or_404(test_id)
     ensure_same_org(test)
     form = QuestionForm()
+    if request.method == "GET":
+        # Marks is a required field with no WTForms-level default — leaving
+        # it unset here (rather than pre-filling like the "Tips" panel's
+        # "Marks default to 1" text implies) meant a student^Wadmin who
+        # trusted that hint and left it blank got a silent, invisible
+        # validation failure on submit. Pre-filling it here makes the UI
+        # match what it already claims.
+        form.marks.data = 1
     import_form = QuestionImportForm()
     if form.validate_on_submit():
         question, error = _build_question_from_form(test, form)
@@ -586,6 +685,28 @@ def view_test(test_id):
     test = Test.query.get_or_404(test_id)
     ensure_same_org(test)
     return render_template("admin/view_test.html", test=test)
+
+
+@bp.route("/tests/<int:test_id>/seb-config")
+@content_access
+def download_seb_config(test_id):
+    """Safe Exam Browser config export (see app.seb.generate_seb_config)
+    — a real, working .seb file an admin can hand to students (or publish
+    on an LMS) so SEB opens directly into this exam, locked down. Doesn't
+    require Test.require_seb to be set — an admin might want the locked-
+    down browser experience without the soft not-detected proctoring
+    signal, and generating the file has no bearing on whether that flag
+    is even set."""
+    test = Test.query.get_or_404(test_id)
+    ensure_same_org(test)
+    start_url = url_for("student.start_test", test_id=test.id, _external=True)
+    quit_url = url_for("student.dashboard", _external=True)
+    config_bytes = seb_module.generate_seb_config(test, start_url, quit_url=quit_url)
+    return Response(
+        config_bytes,
+        mimetype="application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{seb_module.config_filename(test)}"'},
+    )
 
 
 @bp.route("/tests/<int:test_id>/proctoring-policy", methods=["GET", "POST"])
@@ -1209,13 +1330,15 @@ def test_analytics(test_id):
     topics = analytics.performance_by_topic(test)
     questions = analytics.question_stats(test)
     difficulty = analytics.question_difficulty(test)
+    discrimination = analytics.question_discrimination(test)
     skipped = analytics.most_skipped_questions(test)
     weak = analytics.weak_areas(test)
     time_analysis = analytics.time_per_question_analysis(test)
     trends = analytics.violation_trends(attempts=test.attempts, days=30)
     return render_template(
         "admin/test_analytics.html", test=test, topics=topics, questions=questions,
-        difficulty=difficulty, skipped=skipped, weak=weak, time_analysis=time_analysis, trends=trends,
+        difficulty=difficulty, discrimination=discrimination, skipped=skipped, weak=weak,
+        time_analysis=time_analysis, trends=trends,
     )
 
 
@@ -1265,6 +1388,11 @@ def manage_bank():
 @content_access
 def add_bank_item():
     form = QuestionBankForm()
+    if request.method == "GET":
+        # See add_question's identical fix — marks is required but has no
+        # WTForms default, so an admin who trusts the "Marks default to 1"
+        # UI hint and leaves it blank got a silent validation failure.
+        form.marks.data = 1
     if form.validate_on_submit():
         fields, error = _parse_question_fields(form)
         if error:
@@ -1598,6 +1726,48 @@ def retention_settings():
         "admin/retention_settings.html", form=form, org=org,
         effective=effective, labels=retention_module.CATEGORY_LABELS,
     )
+
+
+@bp.route("/access-control", methods=["GET", "POST"])
+@admin_required
+def access_control_settings():
+    """IP Allowlisting / Geofencing + SSO domain claiming — org-level
+    settings edited by this org's own admin. The IP allowlist here is what
+    Test.enforce_ip_allowlist (set per test, see admin.create_test/
+    edit_test) actually checks against; this page is where it's populated,
+    same "org sets a default, individual tests opt in" split as
+    retention_settings above."""
+    org = current_user.organization
+    form = AccessControlForm()
+
+    if form.validate_on_submit():
+        lines = [line.strip() for line in form.ip_ranges.data.splitlines() if line.strip()]
+        invalid = [line for line in lines if not access_control._parse_allowlist(json.dumps([line]))]
+        if invalid:
+            flash(f"These don't look like valid IP ranges (CIDR notation, e.g. 203.0.113.0/24): {', '.join(invalid)}", "error")
+        else:
+            org.ip_allowlist = json.dumps(lines) if lines else None
+            new_domain = (form.sso_domain.data or "").strip().lower() or None
+            if new_domain:
+                taken = Organization.query.filter(
+                    Organization.sso_domain == new_domain, Organization.id != org.id
+                ).first()
+                if taken:
+                    flash(f"The domain '{new_domain}' is already claimed by another organization.", "error")
+                    return render_template("admin/access_control_settings.html", form=form, org=org)
+            org.sso_domain = new_domain
+            db.session.commit()
+            log_activity("updated_access_control", f"Updated IP allowlist / SSO domain for '{org.name}'")
+            flash("Access control settings updated.", "success")
+            return redirect(url_for("admin.access_control_settings"))
+
+    if request.method == "GET":
+        ranges = json.loads(org.ip_allowlist) if org.ip_allowlist else []
+        form.ip_ranges.data = "\n".join(ranges)
+        form.sso_domain.data = org.sso_domain or ""
+
+    tests_enforcing = Test.query.filter_by(org_id=org.id, enforce_ip_allowlist=True).count()
+    return render_template("admin/access_control_settings.html", form=form, org=org, tests_enforcing=tests_enforcing)
 
 
 @bp.route("/org-backup")

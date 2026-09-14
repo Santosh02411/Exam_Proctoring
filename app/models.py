@@ -55,6 +55,23 @@ class Organization(db.Model):
     certificate_signatory_name = db.Column(db.String(120), nullable=True)
     certificate_signatory_title = db.Column(db.String(120), nullable=True)
 
+    # Single Sign-On (see app.sso): an email domain this org has claimed
+    # for self-service SSO signup — e.g. "myschool.edu". A Google/Microsoft
+    # login whose verified email ends in this domain auto-creates a
+    # student account under this org rather than being rejected for
+    # having no matching account. NULL/blank means this org doesn't accept
+    # self-service SSO signups; existing accounts can still link SSO
+    # regardless of this setting (see app.sso.find_or_create_sso_user).
+    # Enforced unique so two orgs can't both claim the same domain.
+    sso_domain = db.Column(db.String(120), nullable=True, unique=True)
+
+    # IP Allowlisting / Geofencing (see app.access_control): CIDR ranges
+    # ("10.0.0.0/8", "203.0.113.4/32", etc.), one per line, stored as
+    # JSON text. Org-wide default — a Test can enforce this (see
+    # Test.enforce_ip_allowlist) or ignore it entirely; blank/NULL here
+    # means "no IP restriction," same as before this feature existed.
+    ip_allowlist = db.Column(db.Text, nullable=True)
+
     users = db.relationship("User", backref="organization", lazy=True)
     tests = db.relationship("Test", backref="organization", lazy=True)
 
@@ -96,6 +113,26 @@ class User(UserMixin, db.Model):
     # which version if the policy text is later updated.
     terms_accepted_at = db.Column(db.DateTime, nullable=True)
     terms_version_accepted = db.Column(db.String(20), nullable=True)
+
+    # Two-Factor Authentication (see app.twofa) — a TOTP secret is only
+    # meaningful once totp_confirmed is True (set the moment the user
+    # proves they can generate a valid code during setup, so a secret
+    # that was issued but never actually confirmed can't silently gate
+    # login). backup_codes is a JSON list of salted-hashed one-time
+    # recovery codes, each removed from the list the moment it's used.
+    totp_secret = db.Column(db.String(64), nullable=True)
+    totp_confirmed = db.Column(db.Boolean, nullable=False, default=False)
+    backup_codes = db.Column(db.Text, nullable=True)
+
+    # Single Sign-On (see app.sso) — set the first time this account logs
+    # in via an identity provider. A password-created account can still
+    # have these be NULL and log in with a password as normal; they're
+    # only used to look up/link an account on a subsequent SSO login.
+    # sso_subject is the provider's own stable user id (Google's "sub" /
+    # Microsoft's "oid") — kept separate from email since an IdP account's
+    # email can change but its subject id doesn't.
+    sso_provider = db.Column(db.String(20), nullable=True)  # google | microsoft
+    sso_subject = db.Column(db.String(255), nullable=True)
 
     tests_created = db.relationship("Test", backref="creator", lazy=True)
     attempts = db.relationship("Attempt", backref="student", lazy=True)
@@ -160,6 +197,41 @@ class Test(db.Model):
     # so a future new event type is automatically sensible without this
     # test needing to be touched.
     proctoring_policy = db.Column(db.Text, nullable=True)
+
+    # IP Allowlisting / Geofencing (see app.access_control). When True,
+    # a student must be starting/continuing this attempt from an IP
+    # address inside the organization's ip_allowlist — checked at exam
+    # start and on every heartbeat, going through the exact same
+    # violation/warning pipeline (_record_violation) as every other
+    # proctoring signal, via the "ip_out_of_range" event type, so the
+    # existing Customizable Warning System (grace periods, warning
+    # limits, custom messages) already applies to it for free. Does
+    # nothing if the org's ip_allowlist is empty.
+    enforce_ip_allowlist = db.Column(db.Boolean, nullable=False, default=False)
+
+    # Optional geofence: if all three are set, a student's browser-
+    # reported GPS location (captured once at exam start, permission-
+    # gated — see startGeoCheck in proctor.js) is compared against a
+    # circle of this radius around (lat, lng). Outside it — or location
+    # permission denied/unsupported — is logged via the same
+    # "location_out_of_range" event type; like screen recording, this
+    # is a proctoring signal, not a hard block, since GPS accuracy and
+    # permission prompts are too unreliable to gate exam access on
+    # outright.
+    geofence_lat = db.Column(db.Float, nullable=True)
+    geofence_lng = db.Column(db.Float, nullable=True)
+    geofence_radius_km = db.Column(db.Float, nullable=True)
+
+    # Safe Exam Browser (see app.seb): when True, a student starting this
+    # test whose request doesn't look like it came from the SEB client
+    # (see app.seb.looks_like_seb) gets a "seb_not_detected" proctoring
+    # event — informational by default (an admin can escalate it via the
+    # normal Customizable Warning System like any other event type), not
+    # a hard block, since the detection itself is just a User-Agent/
+    # header check, not the cryptographic Browser Exam Key validation SEB
+    # itself uses for that.
+    require_seb = db.Column(db.Boolean, nullable=False, default=False)
+
     # Partial credit for multi-select questions: award proportional marks based on
     # how many correct options were picked minus how many incorrect ones were,
     # instead of all-or-nothing. Doesn't affect single-choice or short-answer grading.
@@ -782,7 +854,7 @@ class NotificationLog(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
-    # exam_scheduled | exam_starting_soon | exam_completed | result_published | high_risk_alert
+    # exam_scheduled | exam_starting_soon | exam_completed | result_published | high_risk_alert | exam_warning
     notif_type = db.Column(db.String(40), nullable=False)
     subject = db.Column(db.String(255), nullable=False)
     body_preview = db.Column(db.String(1000), nullable=False)

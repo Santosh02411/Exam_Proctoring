@@ -14,7 +14,8 @@ from app import db
 from app.models import Attempt, ProctoringEvent, Recording, Snapshot, IdentityDocument, Test
 from app.utils import student_required, admin_required
 from app.email_utils import send_email
-from app.notifications import maybe_send_high_risk_alert
+from app.notifications import maybe_send_high_risk_alert, notify_exam_warning
+from app import access_control
 
 bp = Blueprint("proctoring", __name__, url_prefix="/api/proctor")
 
@@ -40,6 +41,11 @@ VALID_EVENT_TYPES = {
     # never submitted via the client-facing /event endpoint below (hence
     # not needed in VALID_EVENT_TYPES), listed here for documentation.
     # session_resumed | concurrent_session_blocked
+    # In-Exam Issue Reporting (see report_issue below) — client-submitted,
+    # but through its own dedicated /report-issue endpoint rather than the
+    # generic /event one below, so severity is always hardcoded to "info"
+    # server-side rather than trusting whatever the client sends.
+    # student_reported_issue
     # AI gaze tracking & advanced head-pose (see proctor.js's gaze/head-pose
     # monitors) — distinct from the existing "looking_away" (a coarse,
     # sustained one-direction head-yaw proxy): "gaze_away" is an eye/iris-
@@ -77,6 +83,21 @@ VALID_EVENT_TYPES = {
     "quality_sample",
 }
 
+# IP Allowlisting / Geofencing (see app.access_control) — like
+# session_resumed/concurrent_session_blocked above, these are recorded
+# only via direct server-side _record_violation() calls (app.access_control
+# checks the request's IP/the browser's reported GPS position against the
+# test's configured allowlist/geofence), never accepted through the public
+# client-facing /event endpoint — a browser claiming "my IP is fine,
+# trust me" would defeat the entire point. Deliberately NOT added to
+# VALID_EVENT_TYPES for that reason.
+# ip_out_of_range | location_out_of_range
+
+# Safe Exam Browser (see app.seb) — same reasoning: recorded only from
+# app.student.start_test's own server-side check of the request's
+# headers/User-Agent (app.seb.looks_like_seb), never client-submitted.
+# seb_not_detected
+
 
 # Suspicion score: a deterministic, explainable weighted formula over the
 # violation log — NOT a trained ML risk model. Each event type carries a
@@ -111,6 +132,9 @@ EVENT_WEIGHTS = {
     "audio_violation": 5,
     "fullscreen_exit": 5,
     "window_blur": 4,
+    "ip_out_of_range": 12,
+    "location_out_of_range": 9,
+    "seb_not_detected": 6,
 }
 DEFAULT_EVENT_WEIGHT = 5
 
@@ -133,10 +157,18 @@ SIGNAL_CATEGORIES = {
     "phone_detected": "object", "book_detected": "object", "laptop_detected": "object",
     "unauthorized_object_detected": "object", "extra_person_detected": "object",
     "connection_lost": "network", "concurrent_session_blocked": "network",
+    "ip_out_of_range": "network", "location_out_of_range": "network",
+    "seb_not_detected": "window",
+    # In-Exam Issue Reporting: not a violation category at all (this is a
+    # student communication channel, not a suspicion signal) — its own
+    # bucket so it's never visually lumped in with an actual proctoring
+    # concern in the Behavior Timeline / signal breakdown.
+    "student_reported_issue": "support",
 }
 SIGNAL_CATEGORY_LABELS = {
     "face": "Face/Identity", "gaze": "Gaze/Attention", "audio": "Audio",
     "window": "Tab/Window", "object": "Object Detection", "network": "Network/Session",
+    "support": "Student-Reported",
 }
 # How close together (in seconds) two violations need to land to be
 # considered part of the same "incident" for pattern-clustering purposes
@@ -177,6 +209,10 @@ EVENT_TYPE_LABELS = {
     "environment_check_clear": "pre-exam room scan found nothing of concern",
     "environment_check_flagged": "pre-exam room scan flagged something",
     "quality_sample": "periodic technical quality sample",
+    "ip_out_of_range": "the exam was accessed from an IP address outside this organization's allowed range",
+    "location_out_of_range": "the device's reported location was outside this test's allowed area",
+    "seb_not_detected": "this test requires Safe Exam Browser, but the request didn't look like it came from it",
+    "student_reported_issue": "the student reported a problem during the exam",
 }
 
 # Low/Medium/High/Critical thresholds against the 0-100 score, checked
@@ -203,21 +239,36 @@ HIGH_SEVERITY_ALERT_EVENT_TYPES = {
     "phone_detected", "liveness_check_failed", "multiple_faces", "laptop_detected",
 }
 
+# In-Exam Issue Reporting (see student_report_issue below): a student
+# flagging their own technical problem is inherently something a proctor
+# should see promptly — unlike the violation-severity events above, it's
+# never a suspicion signal (severity is always "info"), so it needs its
+# own always-alert set rather than joining HIGH_SEVERITY_ALERT_EVENT_TYPES,
+# whose query specifically requires severity == "violation".
+ALWAYS_ALERT_EVENT_TYPES = {"student_reported_issue"}
+
 
 def get_live_alerts_since(last_id, org_id):
     """Every high-severity violation (see HIGH_SEVERITY_ALERT_EVENT_TYPES)
-    logged after `last_id`, on an attempt that's still in_progress, scoped
-    to `org_id` — the query behind the live proctor-alerts SSE stream. Only
-    in_progress attempts are considered since there's no one left to alert
-    a proctor to intervene with once an attempt has ended."""
+    — or a student's own self-reported issue (see ALWAYS_ALERT_EVENT_TYPES,
+    student_report_issue), regardless of severity — logged after
+    `last_id`, on an attempt that's still in_progress, scoped to `org_id`.
+    The query behind the live proctor-alerts SSE stream. Only in_progress
+    attempts are considered since there's no one left to alert a proctor
+    to intervene with once an attempt has ended."""
     return (
         ProctoringEvent.query
         .join(Attempt, ProctoringEvent.attempt_id == Attempt.id)
         .join(Test, Attempt.test_id == Test.id)
         .filter(
             ProctoringEvent.id > last_id,
-            ProctoringEvent.event_type.in_(HIGH_SEVERITY_ALERT_EVENT_TYPES),
-            ProctoringEvent.severity == "violation",
+            db.or_(
+                db.and_(
+                    ProctoringEvent.event_type.in_(HIGH_SEVERITY_ALERT_EVENT_TYPES),
+                    ProctoringEvent.severity == "violation",
+                ),
+                ProctoringEvent.event_type.in_(ALWAYS_ALERT_EVENT_TYPES),
+            ),
             Attempt.status == "in_progress",
             Test.org_id == org_id,
         )
@@ -539,12 +590,20 @@ def build_timeline(attempt):
 
     items = []
     for e in attempt.events:
+        # A student's own self-report (see report_issue) is severity
+        # "info" by design — never a suspicion signal — but it's exactly
+        # the opposite of routine background noise from an admin's point
+        # of view, so it gets its own timeline styling (see the "report"
+        # class in style.css) instead of blending into muted grey like
+        # every other info-severity entry (grace-period-suppressed
+        # events, etc.).
+        css_severity = "report" if e.event_type == "student_reported_issue" else e.severity
         items.append({
             "type": "event",
             "id": e.id,
             "time": e.created_at,
             "offset": offset(e.created_at),
-            "severity": e.severity,
+            "severity": css_severity,
             "label": EVENT_TYPE_LABELS.get(e.event_type, e.event_type.replace("_", " ")).capitalize(),
             "detail": e.details,
             "anchor": f"event-{e.id}",
@@ -822,7 +881,19 @@ def _policy_message(entry, event_type, resolved_action, warnings_remaining):
     return base
 
 
-def _record_violation(attempt, event_type, severity, details="", confidence=None):
+def _record_violation(attempt, event_type, severity, details="", confidence=None, default_action=None):
+    """default_action lets a caller supply a sensible built-in action for
+    an event type that has no explicit per-test policy configured (entry
+    stays "default") — instead of the plain "keep whatever severity the
+    caller passed in" fallback every other event type gets. Used by
+    app.access_control for "ip_out_of_range" (default: terminate — a
+    campus-network restriction should actually restrict access, not just
+    count toward the same shared violation budget as a copy/paste
+    attempt) and "location_out_of_range" (default: flag — GPS is far
+    less reliable evidence than a server-verified IP, so it counts as a
+    real violation but never force-terminates on its own). An admin can
+    still override either via the normal Customizable Warning System —
+    this only fills in what happens when they haven't."""
     entry = get_policy(attempt.test).get(event_type, _DEFAULT_POLICY_ENTRY)
 
     # Customizable Warning System: a grace period suppresses this event
@@ -842,6 +913,8 @@ def _record_violation(attempt, event_type, severity, details="", confidence=None
             return False
 
     resolved_action, warnings_used, warnings_remaining = _resolve_policy_action(attempt, event_type, entry)
+    if resolved_action is None and default_action is not None:
+        resolved_action = default_action
 
     force_terminate = False
     message = None
@@ -858,8 +931,9 @@ def _record_violation(attempt, event_type, severity, details="", confidence=None
         severity = "violation"
         force_terminate = True
         message = _policy_message(entry, event_type, resolved_action, warnings_remaining)
-    # resolved_action is None (no override for this event type) — keep
-    # whatever severity the caller passed in, same as before this feature.
+    # resolved_action is None (no override for this event type, and no
+    # default_action given either) — keep whatever severity the caller
+    # passed in, same as before this feature.
 
     event = ProctoringEvent(
         attempt_id=attempt.id, event_type=event_type, severity=severity,
@@ -890,6 +964,18 @@ def _record_violation(attempt, event_type, severity, details="", confidence=None
     db.session.commit()
     if terminated:
         _notify_termination(attempt)
+    elif severity == "warning":
+        # Every warning-severity event gets emailed to the student, not
+        # just ones with an explicit Customizable Warning System message —
+        # `message` is only set when a per-test policy resolved this
+        # occurrence (see _policy_message above); event types that are
+        # warning-severity by their own default (e.g. window_blur,
+        # audio_violation with no policy override configured) still need
+        # a message here, so this falls back to the same plain
+        # "Warning: <label>." shape _policy_message uses for its own
+        # no-custom-message case.
+        warning_text = message or f"Warning: {EVENT_TYPE_LABELS.get(event_type, event_type.replace('_', ' '))}."
+        notify_exam_warning(attempt, warning_text, warnings_remaining)
     attempt._last_event_message = message  # read by log_event() below; not persisted
     return terminated
 
@@ -959,6 +1045,74 @@ def log_event():
         "ok": True, "terminated": terminated, "violation_count": attempt.violation_count,
         "message": message,
     })
+
+
+@bp.route("/geo-check", methods=["POST"])
+@student_required
+def geo_check():
+    """IP Allowlisting / Geofencing (see app.access_control.check_geofence)
+    — called once at exam start with the browser's self-reported GPS
+    position, if the student granted location permission (see
+    startGeoCheck in proctor.js). A denied/unavailable permission never
+    calls this at all, which is fine: like screen recording, this is an
+    additional signal, not a requirement to sit the exam."""
+    data = request.get_json(silent=True) or {}
+    attempt_id = data.get("attempt_id")
+    lat, lng = data.get("lat"), data.get("lng")
+
+    attempt = _get_owned_attempt(attempt_id)
+    if not attempt:
+        return jsonify({"ok": False, "error": "attempt not found"}), 404
+    if attempt.status != "in_progress":
+        return jsonify({"ok": True, "terminated": attempt.status == "terminated"})
+    if lat is None or lng is None:
+        return jsonify({"ok": False, "error": "lat/lng required"}), 400
+
+    terminated = access_control.check_geofence(attempt, lat, lng)
+    return jsonify({"ok": True, "terminated": terminated})
+
+
+# In-Exam Issue Reporting: how long a student's own free-text note can be —
+# generous enough for a real description, capped so this can't become an
+# arbitrary-data-storage channel through the proctoring log.
+MAX_ISSUE_REPORT_LENGTH = 500
+
+
+@bp.route("/report-issue", methods=["POST"])
+@student_required
+def report_issue():
+    """In-Exam Issue Reporting: lets a student flag a problem — "my webcam
+    keeps disconnecting", "I think I was flagged by mistake", "the timer
+    looks wrong" — directly from the exam screen, without needing to
+    already know who to email or find some out-of-band support channel.
+    Deliberately NOT routed through _record_violation: this is the
+    student's own voice, not a proctoring signal, so it always logs as
+    severity "info" — it can never itself count toward the violation
+    total or suspicion score, regardless of what a test's policy might
+    say about other event types. It still reaches admins the same way a
+    genuine violation would: shown on the Behavior Timeline, and pushed
+    to the live proctor alert stream (see ALWAYS_ALERT_EVENT_TYPES) so
+    someone actually monitoring the queue sees it promptly rather than
+    only on a later review."""
+    data = request.get_json(silent=True) or {}
+    attempt_id = data.get("attempt_id")
+    message = (data.get("message") or "").strip()
+
+    attempt = _get_owned_attempt(attempt_id)
+    if not attempt:
+        return jsonify({"ok": False, "error": "attempt not found"}), 404
+    if not message:
+        return jsonify({"ok": False, "error": "message required"}), 400
+    if attempt.status != "in_progress":
+        return jsonify({"ok": False, "error": "attempt is no longer in progress"}), 400
+
+    event = ProctoringEvent(
+        attempt_id=attempt.id, event_type="student_reported_issue", severity="info",
+        details=message[:MAX_ISSUE_REPORT_LENGTH],
+    )
+    db.session.add(event)
+    db.session.commit()
+    return jsonify({"ok": True})
 
 
 @bp.route("/snapshot", methods=["POST"])
