@@ -176,3 +176,21 @@ class Config:
     ORG_BRANDING_DIR = _env_or("ORG_BRANDING_DIR", os.path.join(BASE_DIR, "instance", "org_branding"))
     ORG_LOGO_MAX_BYTES = 2 * 1024 * 1024  # 2 MB is plenty for a logo
     ORG_LOGO_ALLOWED_EXTS = {"png", "jpg", "jpeg", "svg", "webp"}
+
+    # Single Sign-On (see app.sso) — Google and Microsoft OAuth2/OIDC.
+    # Both are entirely optional: app.sso.google_enabled()/
+    # microsoft_enabled() (and the login page, which only shows a
+    # provider's button when its client id/secret are actually set) check
+    # these directly, so leaving them blank just means SSO isn't offered
+    # and password login works exactly as it always has. Get these from
+    # https://console.cloud.google.com/apis/credentials (Google) and
+    # https://portal.azure.com App registrations (Microsoft) — the
+    # redirect URI to register there is <your domain>/auth/sso/<provider>/callback.
+    GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
+    GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
+    MICROSOFT_CLIENT_ID = os.environ.get("MICROSOFT_CLIENT_ID")
+    MICROSOFT_CLIENT_SECRET = os.environ.get("MICROSOFT_CLIENT_SECRET")
+    # "common" accepts both personal Microsoft accounts and any work/school
+    # tenant; set this to a specific tenant id to restrict sign-in to one
+    # organization's Microsoft 365 directory only.
+    MICROSOFT_TENANT = os.environ.get("MICROSOFT_TENANT", "common")

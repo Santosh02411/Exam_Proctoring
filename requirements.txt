@@ -12,3 +12,6 @@ pytesseract==0.3.10
 gunicorn==22.0.0
 pytest==8.2.2
 reportlab==4.2.5
+pyotp==2.10.0
+qrcode[pil]==8.2
+Authlib==1.8.0
