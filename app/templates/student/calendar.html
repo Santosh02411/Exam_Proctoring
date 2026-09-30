@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Calendar{% endblock %}
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+  <div>
+    <h1>Calendar</h1>
+    <div class="lead">Your assigned tests that have a start time set. See <a href="{{ url_for('student.dashboard') }}">My Tests</a> for everything else.</div>
+  </div>
+  <div class="actions">
+    <a class="btn ghost small" href="{{ url_for('student.calendar_view', year=prev_year, month=prev_month) }}">&larr; Prev</a>
+    <a class="btn ghost small" href="{{ url_for('student.calendar_view', year=today.year, month=today.month) }}">Today</a>
+    <a class="btn ghost small" href="{{ url_for('student.calendar_view', year=next_year, month=next_month) }}">Next &rarr;</a>
+  </div>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">{{ ['January','February','March','April','May','June','July','August','September','October','November','December'][month - 1] }} {{ year }}</h2>
+  <table class="table calendar-grid">
+    <thead>
+      <tr><th>Sun</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Sat</th></tr>
+    </thead>
+    <tbody>
+      {% for week in weeks %}
+      <tr>
+        {% for day in week %}
+        <td class="calendar-day {{ '' if day.in_month else 'calendar-day-outside' }} {{ 'calendar-day-today' if day.date == today }}">
+          <div class="calendar-day-num">{{ day.date.day }}</div>
+          {% for t in day.tests %}
+          <a class="calendar-event" href="{{ url_for('student.dashboard') }}" title="{{ t.title }} — {{ t.start_time.strftime('%H:%M') }}">
+            <span class="mono">{{ t.start_time.strftime('%H:%M') }}</span> {{ t.title }}
+          </a>
+          {% endfor %}
+        </td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

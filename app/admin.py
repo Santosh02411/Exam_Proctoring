@@ -6,7 +6,7 @@ import random
 import string
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, date
 
 from flask import (
     Blueprint, render_template, redirect, url_for, flash, request, abort, Response, current_app,
@@ -42,6 +42,8 @@ from app import proctoring
 from app import similarity as similarity_module
 from app import access_control
 from app import seb as seb_module
+from app import calendar_view as calendar_view_module
+from app import qti as qti_module
 from app import retention as retention_module
 from app import org_export
 from app import org_reports
@@ -208,6 +210,39 @@ def manage_tests():
 
     pagination = query.paginate(page=page, per_page=PER_PAGE, error_out=False)
     return render_template("admin/manage_tests.html", pagination=pagination, tests=pagination.items, mine_only=mine_only)
+
+
+@bp.route("/calendar")
+@content_access
+def calendar_view():
+    """Calendar View: a month grid of every scheduled test in this org
+    (or just this admin's own, mirroring Manage Tests' "mine" filter) —
+    the list views already show start_time as a column, this is the same
+    data laid out so a month's worth of exam scheduling is visible at a
+    glance instead of scrolled through row by row."""
+    today = date.today()
+    year = request.args.get("year", today.year, type=int)
+    month = request.args.get("month", today.month, type=int)
+    mine_only = request.args.get("mine") == "1"
+    if month < 1 or month > 12:
+        month = today.month
+        year = today.year
+
+    first_day, last_day = calendar_view_module.month_bounds(year, month)
+    query = org_scope(Test.query, Test).filter(
+        Test.start_time.isnot(None),
+        Test.start_time >= datetime.combine(first_day, datetime.min.time()),
+        Test.start_time <= datetime.combine(last_day, datetime.max.time()),
+    )
+    if mine_only:
+        query = query.filter_by(created_by=current_user.id)
+
+    weeks = calendar_view_module.build_month_grid(year, month, query.all())
+    prev_year, prev_month, next_year, next_month = calendar_view_module.prev_next_month(year, month)
+    return render_template(
+        "admin/calendar.html", weeks=weeks, year=year, month=month, today=today, mine_only=mine_only,
+        prev_year=prev_year, prev_month=prev_month, next_year=next_year, next_month=next_month,
+    )
 
 
 @bp.route("/tests/<int:test_id>/delete", methods=["POST"])
@@ -708,6 +743,29 @@ def download_seb_config(test_id):
         config_bytes,
         mimetype="application/octet-stream",
         headers={"Content-Disposition": f'attachment; filename="{seb_module.config_filename(test)}"'},
+    )
+
+
+@bp.route("/tests/<int:test_id>/export-qti")
+@content_access
+def export_qti(test_id):
+    """QTI Export (see app.qti) — packages this test's auto-graded
+    questions as an IMS QTI 2.1 item package, importable into Canvas,
+    Moodle, Blackboard, and most other LMSes' question/item banks.
+    Descriptive/coding questions can't be represented in QTI (no
+    standard "a human grades this" interaction) and are silently
+    skipped in the file itself — flagged to the admin ahead of time in
+    the View Test page's own text rather than via flash here, since a
+    flash on a raw file-download response never actually gets seen (the
+    browser saves the file without rendering the next page the flash
+    would show on)."""
+    test = Test.query.get_or_404(test_id)
+    ensure_same_org(test)
+    zip_bytes, exported_count, skipped_count = qti_module.generate_qti_package(test)
+    return Response(
+        zip_bytes,
+        mimetype="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{qti_module.package_filename(test)}"'},
     )
 
 

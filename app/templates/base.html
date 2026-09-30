@@ -49,6 +49,7 @@
         {% elif current_user.role in ('admin', 'examiner') or (current_user.role == 'super_admin' and session.get('impersonate_org_id')) %}
           <a href="{{ url_for('admin.dashboard') }}">Dashboard</a>
           <a href="{{ url_for('admin.manage_tests') }}">Manage Tests</a>
+          <a href="{{ url_for('admin.calendar_view') }}">Calendar</a>
           {% if not session.get('impersonate_org_id') %}<a href="{{ url_for('admin.create_test') }}">+ New Test</a>{% endif %}
           <a href="{{ url_for('admin.manage_bank') }}">Question Bank</a>
           <a href="{{ url_for('admin.proctor_queue') }}">Review Queue</a>
@@ -76,6 +77,7 @@
           <a href="{{ url_for('admin.analytics_overview') }}">Analytics</a>
         {% else %}
           <a href="{{ url_for('student.dashboard') }}">My Tests</a>
+          <a href="{{ url_for('student.calendar_view') }}">Calendar</a>
           <a href="{{ url_for('student.enroll_face') }}">Identity Verification</a>
         {% endif %}
         {% if current_user.role in ('admin', 'examiner', 'proctor') %}

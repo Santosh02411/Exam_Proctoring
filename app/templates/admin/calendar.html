@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Calendar{% endblock %}
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+  <div>
+    <h1>Calendar</h1>
+    <div class="lead">Every test with a start time set{{ ' (yours only)' if mine_only else ' across your organization' }}. Tests without a start time aren't tied to a specific day — see <a href="{{ url_for('admin.manage_tests') }}">Manage Tests</a> for those.</div>
+  </div>
+  <div class="actions">
+    <a class="btn ghost small" href="{{ url_for('admin.calendar_view', year=prev_year, month=prev_month, mine=1 if mine_only else None) }}">&larr; Prev</a>
+    <a class="btn ghost small" href="{{ url_for('admin.calendar_view', year=today.year, month=today.month, mine=1 if mine_only else None) }}">Today</a>
+    <a class="btn ghost small" href="{{ url_for('admin.calendar_view', year=next_year, month=next_month, mine=1 if mine_only else None) }}">Next &rarr;</a>
+    <a class="btn ghost small" href="{{ url_for('admin.calendar_view', year=year, month=month, mine=None if mine_only else 1) }}">{{ 'Show all' if mine_only else 'Show only mine' }}</a>
+  </div>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">{{ ['January','February','March','April','May','June','July','August','September','October','November','December'][month - 1] }} {{ year }}</h2>
+  <table class="table calendar-grid">
+    <thead>
+      <tr><th>Sun</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Sat</th></tr>
+    </thead>
+    <tbody>
+      {% for week in weeks %}
+      <tr>
+        {% for day in week %}
+        <td class="calendar-day {{ '' if day.in_month else 'calendar-day-outside' }} {{ 'calendar-day-today' if day.date == today }}">
+          <div class="calendar-day-num">{{ day.date.day }}</div>
+          {% for t in day.tests %}
+          <a class="calendar-event" href="{{ url_for('admin.view_test', test_id=t.id) }}" title="{{ t.title }} — {{ t.start_time.strftime('%H:%M') }}">
+            <span class="mono">{{ t.start_time.strftime('%H:%M') }}</span> {{ t.title }}
+          </a>
+          {% endfor %}
+        </td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
