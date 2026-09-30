@@ -1,24 +1,3 @@
-"""Real-time system health alerts — disk usage and error-rate spikes,
-notified by email (every super_admin, or ALERT_EMAIL_OVERRIDE if set) and
-an optional Slack webhook. See app.system_ops's health dashboard for the
-pull-based view of the same underlying numbers; this module is what turns
-"someone would have to go look" into "someone gets told".
-
-Error-rate checks run inline, right after every error is logged (see
-app.error_monitoring.log_error), so a spike is caught the moment it
-crosses the threshold rather than waiting for a periodic job. Disk usage
-can't be triggered by an app-level event the same way — nothing "happens"
-when a disk fills up — so it's checked whenever the health dashboard loads
-and via the `flask check-health-alerts` CLI command, meant to be run
-periodically by an external cron/Task Scheduler entry (the same
-"bring your own scheduler" pattern as backup-db/apply-retention/
-send-reminders).
-
-Each alert type is deduplicated by "is there already an unresolved alert
-of this type": once one exists, no new one is created (or notified) until
-a human resolves it from /ops/alerts — a sustained problem raises one
-notification, not one per check.
-"""
 
 import json
 import urllib.error
