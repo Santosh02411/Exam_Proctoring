@@ -1,6 +1,6 @@
 import json
 import secrets
-from datetime import datetime, date
+from datetime import datetime
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, abort, jsonify, current_app, Response
 from flask_login import current_user
@@ -18,7 +18,6 @@ from app.exam_sessions import claim_session, record_blocked_concurrent_session, 
 from app import certificates
 from app import access_control
 from app import seb as seb_module
-from app import calendar_view as calendar_view_module
 from app.proctoring import _record_violation as record_proctoring_violation
 
 bp = Blueprint("student", __name__, url_prefix="/student")
@@ -49,39 +48,6 @@ def dashboard():
             "accommodation_pending": test.id in pending_by_test,
         })
     return render_template("student/dashboard.html", rows=rows)
-
-
-@bp.route("/calendar")
-@student_required
-def calendar_view():
-    """Calendar View: a month grid of this student's own assigned tests
-    that have a start_time set — the dashboard list already shows this
-    same information, this is just laid out by day for anyone who thinks
-    in terms of "what do I have this week" rather than a flat list."""
-    today = date.today()
-    year = request.args.get("year", today.year, type=int)
-    month = request.args.get("month", today.month, type=int)
-    if month < 1 or month > 12:
-        month = today.month
-        year = today.year
-
-    first_day, last_day = calendar_view_module.month_bounds(year, month)
-    tests = (
-        Test.query.join(TestEligibility, TestEligibility.test_id == Test.id)
-        .filter(
-            TestEligibility.student_id == current_user.id,
-            Test.start_time.isnot(None),
-            Test.start_time >= datetime.combine(first_day, datetime.min.time()),
-            Test.start_time <= datetime.combine(last_day, datetime.max.time()),
-        )
-        .all()
-    )
-    weeks = calendar_view_module.build_month_grid(year, month, tests)
-    prev_year, prev_month, next_year, next_month = calendar_view_module.prev_next_month(year, month)
-    return render_template(
-        "student/calendar.html", weeks=weeks, year=year, month=month, today=today,
-        prev_year=prev_year, prev_month=prev_month, next_year=next_year, next_month=next_month,
-    )
 
 
 @bp.route("/tests/<int:test_id>/request-accommodation", methods=["GET", "POST"])
