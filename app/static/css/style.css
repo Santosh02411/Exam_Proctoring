@@ -326,6 +326,22 @@ label.opt:hover{border-color:var(--primary)}
 
 .brand-logo{max-height:32px;max-width:160px;vertical-align:middle;object-fit:contain}
 
+/* Calendar View (see app.calendar_view) — a month grid of scheduled
+   exams. Reuses .table for the outer structure (borders, hover) but
+   each cell is a fixed-height day box rather than a data row. */
+.calendar-grid th{text-align:center}
+.calendar-grid td.calendar-day{vertical-align:top;height:110px;width:14.28%;padding:6px;position:relative}
+.calendar-day-outside{background:var(--bg2);opacity:0.5}
+.calendar-day-today{background:rgba(11,122,107,0.08)}
+.calendar-day-num{font-size:12px;font-weight:700;color:var(--muted);margin-bottom:4px}
+.calendar-day-today .calendar-day-num{color:var(--primary)}
+.calendar-event{display:block;font-size:12px;padding:2px 4px;border-radius:4px;background:var(--bg2);color:var(--text);text-decoration:none;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.calendar-event:hover{background:var(--primary);color:#fff}
+@media (max-width: 700px){
+  .calendar-grid td.calendar-day{height:auto;min-height:60px;font-size:11px}
+  .calendar-event{font-size:10px}
+}
+
 /* ---------------------------------------------------------------------
    Mobile-Friendly Proctor Review: general small-screen tuning so the
    review workflow (queue -> attempt detail -> evidence) is comfortable
