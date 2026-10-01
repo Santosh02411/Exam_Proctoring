@@ -15,4 +15,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 RUN mkdir -p instance instance/snapshots instance/recordings
-0 --workers 3 --timeout 120 wsgi:app"]
+
+ENV FLASK_APP=run.py \
+    PYTHONUNBUFFERED=1
+
+EXPOSE 8000
+
+# Run migrations/table creation, then start Gunicorn. SECRET_KEY, DATABASE_URL,
+# MAIL_* etc. should be supplied as environment variables at deploy time —
+# see .env.example.
+CMD ["sh", "-c", "flask init-db && gunicorn --bind 0.0.0.0:8000 --workers 3 --timeout 120 wsgi:app"]
