@@ -221,6 +221,7 @@
             <button type="submit" class="btn danger ghost small" style="margin-left:6px">Remove</button>
           </form>
           <a class="btn ghost small" style="margin-left:6px" href="{{ url_for('admin.edit_question', test_id=test.id, question_id=q.id) }}">Edit</a>
+          <a class="btn ghost small" style="margin-left:6px" href="{{ url_for('admin.question_history', test_id=test.id, question_id=q.id) }}">History</a>
           {% if not q.bank_item_id %}
           <form class="inline" method="post" action="{{ url_for('admin.save_question_to_bank', test_id=test.id, question_id=q.id) }}">
             <button type="submit" class="btn ghost small" style="margin-left:6px">Save to bank</button>

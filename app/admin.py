@@ -19,12 +19,13 @@ from app import db
 from app.forms import (
     TestForm, QuestionForm, QuestionImportForm, UserImportForm, QuestionBankForm, SectionForm,
     RetentionPolicyForm, BrandingForm, ApiKeyForm, LmsWebhookForm, CertificateSettingsForm, ProctoringPolicyForm,
-    AccessControlForm, AccommodationApproveForm, AccommodationDenyForm,
+    AccessControlForm, AccommodationApproveForm, AccommodationDenyForm, CohortForm, AssignProctorForm,
 )
 from app.models import (
     Test, Question, User, TestEligibility, Attempt, Answer, ProctoringEvent, AdminActivityLog,
     QuestionBankItem, Section, IdentityDocument, NotificationLog, AnswerSimilarityFlag,
-    LoginSession, LoginSecurityEvent, ApiKey, Organization, AccommodationRequest, gen_user_id, recompute_attempt_score,
+    LoginSession, LoginSecurityEvent, ApiKey, Organization, AccommodationRequest, QuestionRevision,
+    Cohort, CohortMembership, gen_user_id, recompute_attempt_score,
 )
 from app.proctoring import compute_suspicion_score, build_timeline, get_live_alerts_since, EVENT_TYPE_LABELS
 from app.utils import (
@@ -474,10 +475,30 @@ def edit_question(test_id, question_id):
             scoring_changed = (
                 fields["correct_answer"] != question.correct_answer or fields["marks"] != question.marks
             )
+
+            # Question Edit History: snapshot only the fields this edit is
+            # actually about to change — see QuestionRevision. Computed
+            # before the setattr loop below, since afterward the "old"
+            # values would already be gone.
+            old_values = {}
+            for key, value in fields.items():
+                old_val = getattr(question, key)
+                if old_val != value:
+                    old_values[key] = old_val
+
             for key, value in fields.items():
                 setattr(question, key, value)
             section_id = request.form.get("section_id", type=int)
-            question.section_id = section_id if section_id and Section.query.filter_by(id=section_id, test_id=test.id).first() else None
+            new_section_id = section_id if section_id and Section.query.filter_by(id=section_id, test_id=test.id).first() else None
+            if new_section_id != question.section_id:
+                old_values["section_id"] = question.section_id
+            question.section_id = new_section_id
+
+            if old_values:
+                db.session.add(QuestionRevision(
+                    question_id=question.id, edited_by_id=current_user.id,
+                    old_values=json.dumps(old_values, default=str),
+                ))
             db.session.commit()
 
             regraded = 0
@@ -496,6 +517,68 @@ def edit_question(test_id, question_id):
     return render_template(
         "admin/edit_question.html", form=form, test=test, question=question, answered_count=answered_count,
         sections=Section.query.filter_by(test_id=test.id).order_by(Section.order_index).all(),
+    )
+
+
+@bp.route("/tests/<int:test_id>/questions/<int:question_id>/history")
+@content_access
+def question_history(test_id, question_id):
+    """Question Edit History: every recorded edit to this question, most
+    recent first, each showing exactly what it changed FROM (see
+    QuestionRevision.old_values) — the current values are just whatever
+    the question looks like right now, shown for comparison."""
+    test = Test.query.get_or_404(test_id)
+    ensure_same_org(test)
+    question = Question.query.filter_by(id=question_id, test_id=test.id).first_or_404()
+    revisions = QuestionRevision.query.filter_by(question_id=question.id).order_by(
+        QuestionRevision.edited_at.desc()
+    ).all()
+
+    field_labels = {
+        "question_text": "Question text", "option_a": "Option A", "option_b": "Option B",
+        "option_c": "Option C", "option_d": "Option D", "correct_answer": "Correct answer",
+        "marks": "Marks", "question_type": "Question type", "time_limit_seconds": "Time limit",
+        "category": "Category", "difficulty": "Difficulty", "code_language": "Language",
+        "starter_code": "Starter code", "media_url": "Media URL", "media_type": "Media type",
+        "section_id": "Section",
+    }
+
+    # Reconstructing each revision's "after" value takes more than just
+    # the current live value once a question has been edited more than
+    # once: for an OLDER revision, "after" is whatever the NEXT edit's
+    # "before" was (that's the value in the gap between the two edits) —
+    # only the single most recent revision's "after" is simply the
+    # question's current value. Walking oldest-to-newest and looking
+    # forward for the next revision that touches each field is what
+    # correctly reconstructs that, rather than every row misleadingly
+    # showing today's value as what it changed "to" at the time.
+    chronological = list(reversed(revisions))  # oldest first
+    parsed_by_id = {}
+    for i, rev in enumerate(chronological):
+        try:
+            old_values = json.loads(rev.old_values)
+        except (TypeError, ValueError):
+            old_values = {}
+        changes = []
+        for field, old_val in old_values.items():
+            after_val = None
+            for later in chronological[i + 1:]:
+                try:
+                    later_old = json.loads(later.old_values)
+                except (TypeError, ValueError):
+                    later_old = {}
+                if field in later_old:
+                    after_val = later_old[field]
+                    break
+            else:
+                after_val = getattr(question, field, None)
+            changes.append({"label": field_labels.get(field, field), "old_value": old_val, "new_value": after_val})
+        parsed_by_id[rev.id] = {"edited_at": rev.edited_at, "edited_by": rev.edited_by, "changes": changes}
+
+    parsed_revisions = [parsed_by_id[rev.id] for rev in revisions]  # back to most-recent-first for display
+
+    return render_template(
+        "admin/question_history.html", test=test, question=question, revisions=parsed_revisions,
     )
 
 
@@ -981,6 +1064,7 @@ def assign_students(test_id):
     return render_template(
         "admin/assign_students.html", test=test, pagination=pagination,
         students=pagination.items, assigned=assigned, search=search,
+        cohorts=Cohort.query.filter_by(org_id=test.org_id).order_by(Cohort.name).all(),
     )
 
 
@@ -1210,10 +1294,13 @@ def proctor_queue():
     most-recently-started first."""
     page = request.args.get("page", 1, type=int)
     sort = request.args.get("sort", "risk")
+    mine_only = request.args.get("mine") == "1"
     query = Attempt.query.join(Test).filter(
         Test.org_id == current_org_id(),
         db.or_(Attempt.status == "terminated", Attempt.violation_count > 0),
     )
+    if mine_only:
+        query = query.filter(Attempt.assigned_proctor_id == current_user.id)
     if sort == "recent":
         query = query.order_by(Attempt.started_at.desc())
     else:
@@ -1227,10 +1314,39 @@ def proctor_queue():
     for a in pagination.items:
         reasons = compute_suspicion_score(a)["reasons"]
         top_reasons[a.id] = reasons[0] if reasons else None
+    reviewers = User.query.filter(
+        User.org_id == current_org_id(), User.role.in_(["admin", "proctor"]), User.status == "active",
+    ).order_by(User.name).all()
     return render_template(
         "admin/proctor_queue.html", pagination=pagination, attempts=pagination.items, sort=sort,
-        top_reasons=top_reasons,
+        top_reasons=top_reasons, reviewers=reviewers, mine_only=mine_only, assign_form=AssignProctorForm(),
     )
+
+
+@bp.route("/attempts/<int:attempt_id>/assign-proctor", methods=["POST"])
+@review_access
+def assign_proctor(attempt_id):
+    """Case Assignment for Multi-Proctor Teams: claim (or reassign, or
+    clear) which reviewer owns following up on this attempt. Whoever is
+    reviewing the queue can reassign any case — this is a coordination
+    tool for a team that trusts each other, not a locking mechanism, so
+    there's no "only the current assignee can reassign" restriction."""
+    attempt = Attempt.query.get_or_404(attempt_id)
+    ensure_same_org(attempt.test)
+    form = AssignProctorForm()
+    if not form.validate_on_submit():
+        flash("Something went wrong — please try again.", "error")
+        return redirect(request.referrer or url_for("admin.proctor_queue"))
+    proctor_id = request.form.get("proctor_id", type=int)
+    if proctor_id:
+        proctor = User.query.filter(
+            User.id == proctor_id, User.org_id == current_org_id(), User.role.in_(["admin", "proctor"]),
+        ).first()
+        attempt.assigned_proctor_id = proctor.id if proctor else None
+    else:
+        attempt.assigned_proctor_id = None
+    db.session.commit()
+    return redirect(request.referrer or url_for("admin.proctor_queue"))
 
 
 @bp.route("/proctor-alerts/stream")
@@ -1515,6 +1631,143 @@ def delete_bank_item(item_id):
     log_activity("deleted_bank_item", f"Deleted a question bank item (#{item_id})")
     flash("Removed from the question bank.", "success")
     return redirect(url_for("admin.manage_bank"))
+
+
+@bp.route("/cohorts")
+@admin_required
+def manage_cohorts():
+    """Student Cohorts/Classes: named groups of students ("Section A")
+    for bulk assignment (see assign_cohort below) — purely a labeling
+    convenience, not a new permissions boundary."""
+    cohorts = Cohort.query.filter_by(org_id=current_user.organization.id).order_by(Cohort.name).all()
+    form = CohortForm()
+    return render_template("admin/manage_cohorts.html", cohorts=cohorts, form=form)
+
+
+@bp.route("/cohorts/create", methods=["POST"])
+@admin_required
+def create_cohort():
+    form = CohortForm()
+    if form.validate_on_submit():
+        cohort = Cohort(
+            org_id=current_user.organization.id, name=form.name.data.strip(),
+            description=(form.description.data or "").strip() or None, created_by_id=current_user.id,
+        )
+        db.session.add(cohort)
+        db.session.commit()
+        log_activity("created_cohort", f"Created cohort '{cohort.name}'")
+        flash(f"Cohort '{cohort.name}' created.", "success")
+        return redirect(url_for("admin.view_cohort", cohort_id=cohort.id))
+    flash("Please enter a cohort name.", "error")
+    return redirect(url_for("admin.manage_cohorts"))
+
+
+@bp.route("/cohorts/<int:cohort_id>")
+@admin_required
+def view_cohort(cohort_id):
+    cohort = Cohort.query.get_or_404(cohort_id)
+    if cohort.org_id != current_user.organization.id:
+        abort(404)
+
+    member_ids = {m.student_id for m in cohort.memberships}
+    search = request.args.get("q", "").strip()
+    page = request.args.get("page", 1, type=int)
+    query = User.query.filter_by(role="student", status="active", org_id=cohort.org_id)
+    if member_ids:
+        query = query.filter(~User.id.in_(member_ids))
+    if search:
+        like = f"%{search}%"
+        query = query.filter(db.or_(User.name.ilike(like), User.email.ilike(like)))
+    pagination = query.order_by(User.name).paginate(page=page, per_page=PER_PAGE, error_out=False)
+
+    return render_template(
+        "admin/view_cohort.html", cohort=cohort, pagination=pagination, students=pagination.items, search=search,
+    )
+
+
+@bp.route("/cohorts/<int:cohort_id>/add-student", methods=["POST"])
+@admin_required
+def add_cohort_student(cohort_id):
+    cohort = Cohort.query.get_or_404(cohort_id)
+    if cohort.org_id != current_user.organization.id:
+        abort(404)
+    student_ids = request.form.getlist("student_ids")
+    added = 0
+    for sid in student_ids:
+        sid = int(sid)
+        student = User.query.filter_by(id=sid, role="student", org_id=cohort.org_id).first()
+        if not student:
+            continue
+        if not CohortMembership.query.filter_by(cohort_id=cohort.id, student_id=sid).first():
+            db.session.add(CohortMembership(cohort_id=cohort.id, student_id=sid))
+            added += 1
+    db.session.commit()
+    flash(f"Added {added} student(s) to '{cohort.name}'.", "success")
+    return redirect(url_for("admin.view_cohort", cohort_id=cohort.id))
+
+
+@bp.route("/cohorts/<int:cohort_id>/remove-student/<int:student_id>", methods=["POST"])
+@admin_required
+def remove_cohort_student(cohort_id, student_id):
+    cohort = Cohort.query.get_or_404(cohort_id)
+    if cohort.org_id != current_user.organization.id:
+        abort(404)
+    m = CohortMembership.query.filter_by(cohort_id=cohort.id, student_id=student_id).first_or_404()
+    db.session.delete(m)
+    db.session.commit()
+    flash("Student removed from cohort.", "success")
+    return redirect(url_for("admin.view_cohort", cohort_id=cohort.id))
+
+
+@bp.route("/cohorts/<int:cohort_id>/delete", methods=["POST"])
+@admin_required
+def delete_cohort(cohort_id):
+    cohort = Cohort.query.get_or_404(cohort_id)
+    if cohort.org_id != current_user.organization.id:
+        abort(404)
+    name = cohort.name
+    db.session.delete(cohort)
+    db.session.commit()
+    log_activity("deleted_cohort", f"Deleted cohort '{name}'")
+    flash(f"Cohort '{name}' deleted — its students and any test assignments are unaffected.", "success")
+    return redirect(url_for("admin.manage_cohorts"))
+
+
+@bp.route("/tests/<int:test_id>/assign-cohort", methods=["POST"])
+@content_access
+def assign_cohort(test_id):
+    """The bulk-assignment payoff of Student Cohorts: adds every member
+    of a chosen cohort to this test's eligibility in one action, using
+    the exact same eligibility-creation and notify-checkbox logic as
+    assign_students — a cohort is just a faster way to pick the same
+    student_ids that page's checkboxes would, not a separate mechanism."""
+    test = Test.query.get_or_404(test_id)
+    ensure_same_org(test)
+    cohort = Cohort.query.get_or_404(request.form.get("cohort_id", type=int))
+    if cohort.org_id != test.org_id:
+        abort(404)
+
+    extra_time = request.form.get("extra_time_minutes", type=int, default=0) or 0
+    extra_attempts = request.form.get("extra_attempts", type=int, default=0) or 0
+    should_notify = request.form.get("notify") == "on"
+
+    added = 0
+    for membership in cohort.memberships:
+        student = membership.student
+        if not student or student.role != "student" or student.org_id != test.org_id:
+            continue
+        if not TestEligibility.query.filter_by(test_id=test.id, student_id=student.id).first():
+            db.session.add(TestEligibility(
+                test_id=test.id, student_id=student.id,
+                extra_time_minutes=extra_time, extra_attempts=extra_attempts,
+            ))
+            added += 1
+            if should_notify:
+                notify_exam_scheduled(student, test)
+    db.session.commit()
+    log_activity("assigned_cohort", f"Assigned cohort '{cohort.name}' ({added} student(s)) to '{test.title}'")
+    flash(f"Assigned {added} student(s) from '{cohort.name}' to this test.", "success")
+    return redirect(url_for("admin.assign_students", test_id=test.id))
 
 
 @bp.route("/users")

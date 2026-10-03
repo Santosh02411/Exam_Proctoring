@@ -125,6 +125,18 @@ class NotificationPreferencesForm(FlaskForm):
     pass
 
 
+class CohortForm(FlaskForm):
+    name = StringField("Cohort name", validators=[DataRequired(), Length(max=120)])
+    description = TextAreaField("Description (optional)", validators=[Optional(), Length(max=500)])
+
+
+class AssignProctorForm(FlaskForm):
+    """CSRF-only — the actual reviewer selection is a single <select>
+    rendered by hand in proctor_queue.html since its options are the
+    org's current admin/proctor roster, not a fixed field set."""
+    pass
+
+
 class OrganizationForm(FlaskForm):
     name = StringField("Organization Name", validators=[DataRequired(), Length(max=150)])
     status = SelectField("Status", choices=[("active", "Active"), ("inactive", "Inactive")], validators=[DataRequired()])

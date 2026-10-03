@@ -48,6 +48,27 @@
       <div class="small">No more students to assign — everyone eligible is already assigned.</div>
       {% endif %}
     </form>
+
+    {% if cohorts %}
+    <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border-soft)">
+      <h3 style="margin-top:0">Assign a cohort</h3>
+      <div class="small muted" style="margin-bottom:8px">Adds every member of the chosen cohort at once — see <a href="{{ url_for('admin.manage_cohorts') }}">Cohorts</a> to manage membership.</div>
+      <form method="post" action="{{ url_for('admin.assign_cohort', test_id=test.id) }}" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+        <div class="field" style="margin-bottom:0;flex:1;min-width:160px">
+          <label for="cohort_id">Cohort</label>
+          <select name="cohort_id" id="cohort_id">
+            {% for c in cohorts %}
+            <option value="{{ c.id }}">{{ c.name }} ({{ c.member_count }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        <label class="opt" style="display:flex;align-items:center;gap:6px">
+          <input type="checkbox" name="notify" checked> <span class="small">Notify</span>
+        </label>
+        <button type="submit" class="btn ghost">Assign Cohort</button>
+      </form>
+    </div>
+    {% endif %}
   </div>
 
   <div class="card">

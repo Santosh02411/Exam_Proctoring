@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Edit History — {{ test.title }}{% endblock %}
+{% block content %}
+<div style="margin-bottom:16px">
+  <a class="small" href="{{ url_for('admin.add_question', test_id=test.id) }}">&larr; {{ test.title }}</a>
+  <h1 style="margin-top:8px">Question Edit History</h1>
+  <div class="lead">{{ question.question_text[:100] }}{{ '…' if question.question_text|length > 100 }}</div>
+</div>
+
+<div class="card">
+  {% if revisions %}
+  {% for rev in revisions %}
+  <div style="padding:14px 0;border-bottom:1px solid var(--border-soft)">
+    <div class="small muted" style="margin-bottom:8px">
+      {{ rev.edited_at.strftime('%Y-%m-%d %H:%M') }}
+      {% if rev.edited_by %} by {{ rev.edited_by.name }}{% endif %}
+    </div>
+    <table class="table" style="margin-bottom:0">
+      <thead><tr><th>Field</th><th>Before</th><th>After</th></tr></thead>
+      <tbody>
+        {% for c in rev.changes %}
+        <tr>
+          <td class="small" style="font-weight:600">{{ c.label }}</td>
+          <td class="small mono">{{ c.old_value if c.old_value is not none else '—' }}</td>
+          <td class="small mono">{{ c.new_value if c.new_value is not none else '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endfor %}
+  {% else %}
+  <div class="small">No edits recorded for this question yet.</div>
+  {% endif %}
+</div>
+{% endblock %}

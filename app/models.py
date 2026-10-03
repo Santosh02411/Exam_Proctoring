@@ -143,7 +143,7 @@ class User(UserMixin, db.Model):
     notification_prefs = db.Column(db.Text, nullable=True)
 
     tests_created = db.relationship("Test", backref="creator", lazy=True)
-    attempts = db.relationship("Attempt", backref="student", lazy=True)
+    attempts = db.relationship("Attempt", foreign_keys="Attempt.student_id", backref="student", lazy=True)
 
     def set_password(self, raw_password):
         self.password_hash = generate_password_hash(raw_password)
@@ -465,6 +465,79 @@ class Question(db.Model):
         return round(self.marks * fraction, 2)
 
 
+class QuestionRevision(db.Model):
+    """Question Edit History: a snapshot of a question's fields exactly
+    as they were the moment BEFORE an edit changed them — see
+    admin.edit_question, which is the only place these get created.
+    Deliberately snapshots the OLD state rather than the new one: the
+    live Question row already IS the current state, so recording it
+    again here would be redundant; what's actually needed for a dispute
+    ("you changed the answer key after I took it") is what it used to
+    say. Only written when an edit actually changes something —
+    resubmitting a question edit form with no real changes doesn't
+    create a no-op revision."""
+
+    __tablename__ = "question_revisions"
+
+    id = db.Column(db.Integer, primary_key=True)
+    question_id = db.Column(db.Integer, db.ForeignKey("questions.id"), nullable=False, index=True)
+    edited_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    edited_at = db.Column(db.DateTime, default=datetime.utcnow)
+    # JSON: {field_name: old_value, ...} — only the fields that changed,
+    # not a full copy of every column, since most edits touch one or two
+    # fields and there's no need to duplicate everything else that stayed
+    # the same on every single revision row.
+    old_values = db.Column(db.Text, nullable=False)
+
+    question = db.relationship("Question", backref=db.backref("revisions", cascade="all, delete-orphan", lazy=True))
+    edited_by = db.relationship("User")
+
+    @property
+    def changed_fields(self):
+        try:
+            return sorted(json.loads(self.old_values).keys())
+        except (TypeError, ValueError):
+            return []
+
+
+class Cohort(db.Model):
+    """Student Cohorts/Classes: a named group of students within an org
+    ("Section A", "Fall 2026 Cohort") — purely a labeling/bulk-assignment
+    convenience (see admin.assign_cohort), not a permissions boundary of
+    its own. A student can belong to any number of cohorts; deleting a
+    cohort never touches the students or any test they've already been
+    assigned to, only the grouping itself."""
+
+    __tablename__ = "cohorts"
+
+    id = db.Column(db.Integer, primary_key=True)
+    org_id = db.Column(db.Integer, db.ForeignKey("organizations.id"), nullable=False, index=True)
+    name = db.Column(db.String(120), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    organization = db.relationship("Organization")
+    created_by = db.relationship("User")
+    memberships = db.relationship("CohortMembership", backref="cohort", cascade="all, delete-orphan", lazy=True)
+
+    @property
+    def member_count(self):
+        return len(self.memberships)
+
+
+class CohortMembership(db.Model):
+    __tablename__ = "cohort_memberships"
+    __table_args__ = (db.UniqueConstraint("cohort_id", "student_id", name="uq_cohort_student"),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    cohort_id = db.Column(db.Integer, db.ForeignKey("cohorts.id"), nullable=False)
+    student_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    added_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    student = db.relationship("User")
+
+
 class TestEligibility(db.Model):
     __tablename__ = "test_eligibility"
 
@@ -535,6 +608,15 @@ class Attempt(db.Model):
     # new violation lands — see compute_suspicion_score() for the formula.
     suspicion_score = db.Column(db.Integer, nullable=False, default=0)
     risk_level = db.Column(db.String(10), nullable=False, default="low")  # low | medium | high | critical
+
+    # Case Assignment for Multi-Proctor Teams: which admin/proctor has
+    # claimed this attempt for review on the Review Queue — purely a
+    # coordination convenience ("you take this one") so multiple
+    # reviewers on the same queue don't duplicate or drop work; it has no
+    # bearing on who's ALLOWED to review an attempt (org membership
+    # alone still governs that, same as every other admin page).
+    assigned_proctor_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    assigned_proctor = db.relationship("User", foreign_keys=[assigned_proctor_id])
 
     # Per-attempt randomized question order (list of question ids) and per-question
     # option display order (dict of question_id -> list of option keys in display

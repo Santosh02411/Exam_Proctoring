@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% from "_pagination.html" import render_pagination %}
+{% block title %}{{ cohort.name }} — Cohorts{% endblock %}
+{% block content %}
+<div style="margin-bottom:16px">
+  <a class="small" href="{{ url_for('admin.manage_cohorts') }}">&larr; Cohorts</a>
+  <h1 style="margin-top:8px">{{ cohort.name }}</h1>
+  {% if cohort.description %}<div class="lead">{{ cohort.description }}</div>{% endif %}
+</div>
+
+<div class="wrap" style="grid-template-columns:1fr 1fr;display:grid">
+  <div class="card">
+    <h2>Add students</h2>
+    <form method="get" style="margin-bottom:12px">
+      <div class="field" style="margin-bottom:0">
+        <input type="text" name="q" value="{{ search }}" placeholder="Search by name or email…">
+      </div>
+    </form>
+    <form method="post" action="{{ url_for('admin.add_cohort_student', cohort_id=cohort.id) }}">
+      {% if students %}
+      <div>
+        {% for s in students %}
+        <label class="opt" style="margin-bottom:8px">
+          <input type="checkbox" name="student_ids" value="{{ s.id }}">
+          <span>{{ s.name }} <span class="muted small">({{ s.email }})</span></span>
+        </label>
+        {% endfor %}
+      </div>
+      {{ render_pagination(pagination, 'admin.view_cohort', {'cohort_id': cohort.id, 'q': search}) }}
+      <button type="submit" class="btn" style="margin-top:12px">Add Selected</button>
+      {% elif search %}
+      <div class="small">No unadded students match "{{ search }}".</div>
+      {% else %}
+      <div class="small">No more students to add — everyone eligible is already in this cohort.</div>
+      {% endif %}
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Members ({{ cohort.member_count }})</h2>
+    {% if cohort.memberships %}
+    {% for m in cohort.memberships|sort(attribute='student.name') %}
+      <div class="opt" style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px">
+        <span>{{ m.student.name }} <span class="muted small">({{ m.student.email }})</span></span>
+        <form method="post" action="{{ url_for('admin.remove_cohort_student', cohort_id=cohort.id, student_id=m.student_id) }}">
+          <button type="submit" class="btn danger ghost small">Remove</button>
+        </form>
+      </div>
+    {% endfor %}
+    {% else %}
+    <div class="small muted">No members yet.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

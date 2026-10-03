@@ -8,15 +8,17 @@
     <div class="lead">Attempts that were terminated or flagged for proctoring violations, across every test.</div>
   </div>
   <div class="actions">
-    <a class="btn small {{ 'ghost' if sort != 'risk' }}" href="{{ url_for('admin.proctor_queue', sort='risk') }}">Sort: Highest Risk</a>
-    <a class="btn small {{ 'ghost' if sort != 'recent' }}" href="{{ url_for('admin.proctor_queue', sort='recent') }}">Sort: Most Recent</a>
+    <a class="btn small {{ '' if mine_only else 'ghost' }}" href="{{ url_for('admin.proctor_queue', sort=sort, mine=1) }}">My Cases</a>
+    <a class="btn small {{ 'ghost' if mine_only else '' }}" href="{{ url_for('admin.proctor_queue', sort=sort) }}">All Cases</a>
+    <a class="btn small {{ 'ghost' if sort != 'risk' }}" href="{{ url_for('admin.proctor_queue', sort='risk', mine=1 if mine_only else None) }}">Sort: Highest Risk</a>
+    <a class="btn small {{ 'ghost' if sort != 'recent' }}" href="{{ url_for('admin.proctor_queue', sort='recent', mine=1 if mine_only else None) }}">Sort: Most Recent</a>
   </div>
 </div>
 
 <div class="card">
   {% if attempts %}
   <table class="table responsive-table">
-    <thead><tr><th>Student</th><th>Test</th><th>Status</th><th>Violations</th><th>Suspicion Score</th><th>Started</th><th></th></tr></thead>
+    <thead><tr><th>Student</th><th>Test</th><th>Status</th><th>Violations</th><th>Suspicion Score</th><th>Started</th><th>Assigned to</th><th></th></tr></thead>
     <tbody>
       {% for a in attempts %}
       <tr>
@@ -31,15 +33,26 @@
           {% endif %}
         </td>
         <td data-label="Started" class="small">{{ a.started_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td data-label="Assigned to">
+          <form method="post" action="{{ url_for('admin.assign_proctor', attempt_id=a.id) }}" onchange="this.submit()">
+            {{ assign_form.hidden_tag() }}
+            <select name="proctor_id" style="font-size:12px;padding:4px 6px">
+              <option value="">Unassigned</option>
+              {% for r in reviewers %}
+              <option value="{{ r.id }}" {{ 'selected' if a.assigned_proctor_id == r.id }}>{{ r.name }}{{ ' (you)' if r.id == current_user.id }}</option>
+              {% endfor %}
+            </select>
+          </form>
+        </td>
         <td data-label="" style="justify-content:flex-end"><a class="btn ghost small" href="{{ url_for('admin.view_attempt', attempt_id=a.id) }}">Review</a></td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
   <div class="small muted" style="margin-top:8px">Suspicion Score is a deterministic weighted score from the violation log (see the attempt detail page for the breakdown) — not a trained ML verdict, and not a substitute for human review.</div>
-  {{ render_pagination(pagination, 'admin.proctor_queue', {'sort': sort}) }}
+  {{ render_pagination(pagination, 'admin.proctor_queue', {'sort': sort, 'mine': 1 if mine_only else 0}) }}
   {% else %}
-  <div class="small">Nothing flagged right now — no terminated or violation-flagged attempts.</div>
+  <div class="small">Nothing flagged right now{{ ' for your assigned cases' if mine_only else '' }} — no terminated or violation-flagged attempts.</div>
   {% endif %}
 </div>
 {% endblock %}
