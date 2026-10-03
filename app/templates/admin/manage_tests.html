@@ -18,6 +18,18 @@
   <a class="btn" href="{{ url_for('admin.create_test') }}">+ New Test</a>
 </div>
 
+<div class="card" style="margin-bottom:16px">
+  <form method="get" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+    {% if mine_only %}<input type="hidden" name="mine" value="1">{% endif %}
+    <div class="field" style="margin-bottom:0;flex:1;min-width:220px">
+      <label for="q">Search</label>
+      <input type="text" id="q" name="q" value="{{ search }}" placeholder="Search by title or test code…">
+    </div>
+    <button type="submit" class="btn">Search</button>
+    {% if search %}<a class="btn ghost" href="{{ url_for('admin.manage_tests', mine=1 if mine_only else None) }}">Clear</a>{% endif %}
+  </form>
+</div>
+
 {% if session.get('impersonate_org_id') %}
 <div class="card" style="margin-bottom:16px">
   <span class="badge draft">Read-only support view</span> — editing, publishing, and deletion are disabled while impersonating.
@@ -80,7 +92,7 @@
       {% endfor %}
     </tbody>
   </table>
-  {{ render_pagination(pagination, 'admin.manage_tests', {'mine': 1 if mine_only else 0}) }}
+  {{ render_pagination(pagination, 'admin.manage_tests', {'mine': 1 if mine_only else 0, 'q': search}) }}
   {% else %}
   <div class="small">No tests yet. Create one to get started.</div>
   {% endif %}

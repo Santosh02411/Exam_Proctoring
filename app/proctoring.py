@@ -14,7 +14,7 @@ from app import db
 from app.models import Attempt, ProctoringEvent, Recording, Snapshot, IdentityDocument, Test
 from app.utils import student_required, admin_required
 from app.email_utils import send_email
-from app.notifications import maybe_send_high_risk_alert, notify_exam_warning
+from app.notifications import maybe_send_high_risk_alert, notify_exam_warning, channel_allowed
 from app import access_control
 
 bp = Blueprint("proctoring", __name__, url_prefix="/api/proctor")
@@ -708,15 +708,16 @@ def _notify_termination(attempt):
     student = attempt.student
     admin = test.creator
 
-    send_email(
-        student.email,
-        f"Your attempt on '{test.title}' was terminated",
-        f"Hi {student.name},\n\nYour attempt on '{test.title}' was automatically ended during "
-        f"the exam after {attempt.violation_count} proctoring violation(s) were flagged.\n\n"
-        f"Reason: {attempt.termination_reason}\n\n"
-        f"If you believe this was a mistake, contact your test administrator.",
-    )
-    if student.phone:
+    if channel_allowed(student, "termination", "email"):
+        send_email(
+            student.email,
+            f"Your attempt on '{test.title}' was terminated",
+            f"Hi {student.name},\n\nYour attempt on '{test.title}' was automatically ended during "
+            f"the exam after {attempt.violation_count} proctoring violation(s) were flagged.\n\n"
+            f"Reason: {attempt.termination_reason}\n\n"
+            f"If you believe this was a mistake, contact your test administrator.",
+        )
+    if student.phone and channel_allowed(student, "termination", "sms"):
         try:
             from app.sms_utils import send_sms
             send_sms(student.phone, f"Exam Proctoring: your attempt on \"{test.title}\" was ended — {attempt.termination_reason}")

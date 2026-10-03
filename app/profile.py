@@ -1,10 +1,12 @@
 from flask import Blueprint, render_template, redirect, url_for, flash, request, session
 from flask_login import login_required, current_user
+import json
 
 from app import db
 from app import twofa
-from app.forms import ProfileForm, ChangePasswordForm, TwoFactorSetupForm, TwoFactorDisableForm, TwoFactorRegenerateForm
+from app.forms import ProfileForm, ChangePasswordForm, TwoFactorSetupForm, TwoFactorDisableForm, TwoFactorRegenerateForm, NotificationPreferencesForm
 from app.models import LoginSession, LoginSecurityEvent
+from app.notifications import NOTIFICATION_PREF_LABELS
 
 bp = Blueprint("profile", __name__, url_prefix="/profile")
 
@@ -123,3 +125,51 @@ def signin_activity():
         LoginSecurityEvent.created_at.desc()
     ).limit(20).all()
     return render_template("profile/signin_activity.html", sessions=sessions, events=events)
+
+
+@bp.route("/notification-preferences", methods=["GET", "POST"])
+@login_required
+def notification_preferences():
+    """Notification Preferences: per notif_type/channel opt-outs (see
+    User.notification_prefs, app.notifications.channel_allowed) — nothing
+    here can turn OFF the NotificationLog history a message would have
+    left, only whether it actually gets sent; a skipped-by-preference
+    entry still records that the notification "fired," just that this
+    account asked not to receive it."""
+    current_prefs = {}
+    if current_user.notification_prefs:
+        try:
+            current_prefs = json.loads(current_user.notification_prefs)
+        except (TypeError, ValueError):
+            current_prefs = {}
+
+    form = NotificationPreferencesForm()
+    if form.validate_on_submit():
+        new_prefs = {}
+        for notif_type in NOTIFICATION_PREF_LABELS:
+            entry = {}
+            if request.form.get(f"email_{notif_type}") != "on":
+                entry["email"] = False
+            # A disabled checkbox (no phone on file) never submits a value
+            # at all — that's "not applicable," not "the user unchecked
+            # it," so it must not be recorded as an opt-out or an account
+            # that later adds a phone number would find SMS silently off
+            # for everything without ever having touched this page.
+            if current_user.phone and request.form.get(f"sms_{notif_type}") != "on":
+                entry["sms"] = False
+            if entry:
+                new_prefs[notif_type] = entry
+        current_user.notification_prefs = json.dumps(new_prefs) if new_prefs else None
+        db.session.commit()
+        flash("Notification preferences updated.", "success")
+        return redirect(url_for("profile.notification_preferences"))
+
+    rows = [
+        {
+            "notif_type": nt, "label": label,
+            "email_on": current_prefs.get(nt, {}).get("email", True),
+            "sms_on": current_prefs.get(nt, {}).get("sms", True),
+        }
+        for nt, label in NOTIFICATION_PREF_LABELS.items()
+    ]
+    return render_template("profile/notification_preferences.html", form=form, rows=rows, has_phone=bool(current_user.phone))

@@ -116,6 +116,15 @@ class AccommodationApproveForm(FlaskForm):
     pass
 
 
+class NotificationPreferencesForm(FlaskForm):
+    """CSRF-only — the actual per-notif_type email/sms checkboxes (see
+    app.notifications.NOTIFICATION_PREF_LABELS) are rendered and parsed
+    by hand in profile.notification_preferences, same reasoning as
+    ProctoringPolicyForm: the field set is generated dynamically from
+    that dict rather than being fixed at class-definition time."""
+    pass
+
+
 class OrganizationForm(FlaskForm):
     name = StringField("Organization Name", validators=[DataRequired(), Length(max=150)])
     status = SelectField("Status", choices=[("active", "Active"), ("inactive", "Inactive")], validators=[DataRequired()])

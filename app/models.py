@@ -134,6 +134,14 @@ class User(UserMixin, db.Model):
     sso_provider = db.Column(db.String(20), nullable=True)  # google | microsoft
     sso_subject = db.Column(db.String(255), nullable=True)
 
+    # Notification Preferences (see app.notifications.notify) — JSON text,
+    # {notif_type: {"email": bool, "sms": bool}}. A notif_type/channel
+    # combination missing from this dict defaults to "on" (the behavior
+    # every notification already had before this feature existed) —
+    # this column only ever stores explicit opt-OUTs, so an account that
+    # has never touched its preferences sends exactly as it always did.
+    notification_prefs = db.Column(db.Text, nullable=True)
+
     tests_created = db.relationship("Test", backref="creator", lazy=True)
     attempts = db.relationship("Attempt", backref="student", lazy=True)
 

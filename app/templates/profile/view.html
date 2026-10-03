@@ -95,5 +95,11 @@
     <p class="small">See your recent sessions and any sign-ins we flagged as coming from an unfamiliar device or location.</p>
     <a href="{{ url_for('profile.signin_activity') }}" class="btn ghost">View Sign-In Activity</a>
   </div>
+
+  <div class="card">
+    <h2>Notification Preferences</h2>
+    <p class="small">Choose which notifications you receive by email and text.</p>
+    <a href="{{ url_for('profile.notification_preferences') }}" class="btn ghost">Manage Notification Preferences</a>
+  </div>
 </div>
 {% endblock %}

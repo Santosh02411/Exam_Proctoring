@@ -8,6 +8,7 @@ history entry format.
 """
 
 from datetime import datetime, timedelta
+import json
 
 from flask import render_template, current_app, url_for
 from jinja2 import TemplateNotFound
@@ -32,6 +33,41 @@ NOTIFICATION_SUBJECTS = {
     "new_signin_alert": "New sign-in to your account",
 }
 
+# Notification Preferences (see User.notification_prefs): the
+# user-facing labels for every notif_type that's actually reasonable for
+# a person to individually control, in the order shown on the
+# preferences page. A couple of internal-only types intentionally aren't
+# listed here — "accommodation_requested" only ever goes to an admin
+# about a specific pending decision they need to act on, not an ongoing
+# stream of updates worth muting.
+NOTIFICATION_PREF_LABELS = {
+    "exam_scheduled": "A new test is assigned to me",
+    "exam_starting_soon": "An assigned test is starting soon",
+    "exam_completed": "My exam submission is confirmed",
+    "result_published": "My result is published",
+    "exam_warning": "I receive a proctoring warning during an exam",
+    "termination": "One of my attempts is terminated for proctoring violations",
+    "accommodation_approved": "My accommodation request is approved",
+    "accommodation_denied": "My accommodation request is denied",
+    "high_risk_alert": "A proctored attempt I own/proctor is flagged high-risk",
+    "new_signin_alert": "A new or unusual sign-in to my account",
+}
+
+
+def channel_allowed(user, notif_type, channel):
+    """Notification Preferences: True unless the user has explicitly
+    turned this notif_type/channel combination off. Missing from
+    notification_prefs (the case for every account that's never touched
+    its preferences) means "on" — this only ever stores opt-outs, so
+    nothing changes for an account that hasn't configured anything."""
+    if not user.notification_prefs:
+        return True
+    try:
+        prefs = json.loads(user.notification_prefs)
+    except (TypeError, ValueError):
+        return True
+    return prefs.get(notif_type, {}).get(channel, True)
+
 
 def notify(user, notif_type, context, test=None, attempt=None):
     """Render email/<notif_type>.txt with `context`, send it to `user`, and
@@ -54,13 +90,16 @@ def notify(user, notif_type, context, test=None, attempt=None):
     subject = NOTIFICATION_SUBJECTS[notif_type].format(**context)
     body = render_template(f"email/{notif_type}.txt", **context)
 
-    status = "sent"
-    try:
-        mode = send_email(user.email, subject, body)
-        status = "sent" if mode == "smtp" else "logged"
-    except Exception:
-        current_app.logger.exception("notification send failed: type=%s to=%s", notif_type, user.email)
-        status = "failed"
+    if not channel_allowed(user, notif_type, "email"):
+        status = "skipped_by_preference"
+    else:
+        status = "sent"
+        try:
+            mode = send_email(user.email, subject, body)
+            status = "sent" if mode == "smtp" else "logged"
+        except Exception:
+            current_app.logger.exception("notification send failed: type=%s to=%s", notif_type, user.email)
+            status = "failed"
 
     try:
         db.session.add(NotificationLog(
@@ -84,13 +123,16 @@ def _maybe_send_sms(user, notif_type, context, test, attempt):
     except TemplateNotFound:
         return  # this notif_type isn't SMS-eligible — nothing to do
 
-    sms_status = "sent"
-    try:
-        mode = send_sms(user.phone, sms_body)
-        sms_status = "sent" if mode == "twilio" else "logged"
-    except Exception:
-        current_app.logger.exception("SMS notification send failed: type=%s to=%s", notif_type, user.phone)
-        sms_status = "failed"
+    if not channel_allowed(user, notif_type, "sms"):
+        sms_status = "skipped_by_preference"
+    else:
+        sms_status = "sent"
+        try:
+            mode = send_sms(user.phone, sms_body)
+            sms_status = "sent" if mode == "twilio" else "logged"
+        except Exception:
+            current_app.logger.exception("SMS notification send failed: type=%s to=%s", notif_type, user.phone)
+            sms_status = "failed"
 
     try:
         db.session.add(NotificationLog(

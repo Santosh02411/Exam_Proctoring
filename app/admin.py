@@ -203,13 +203,20 @@ def edit_test(test_id):
 def manage_tests():
     page = request.args.get("page", 1, type=int)
     mine_only = request.args.get("mine") == "1"
+    search = request.args.get("q", "").strip()
 
     query = org_scope(Test.query, Test).order_by(Test.created_at.desc())
     if mine_only:
         query = query.filter_by(created_by=current_user.id)
+    if search:
+        like = f"%{search}%"
+        query = query.filter(db.or_(Test.title.ilike(like), Test.test_code.ilike(like)))
 
     pagination = query.paginate(page=page, per_page=PER_PAGE, error_out=False)
-    return render_template("admin/manage_tests.html", pagination=pagination, tests=pagination.items, mine_only=mine_only)
+    return render_template(
+        "admin/manage_tests.html", pagination=pagination, tests=pagination.items,
+        mine_only=mine_only, search=search,
+    )
 
 
 @bp.route("/calendar")

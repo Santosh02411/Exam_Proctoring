@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Notification Preferences{% endblock %}
+{% block content %}
+<div style="margin-bottom:16px">
+  <a class="small" href="{{ url_for('profile.view_profile') }}">&larr; Profile</a>
+  <h1 style="margin-top:8px">Notification Preferences</h1>
+  <div class="lead">Choose which notifications you receive by email and text. Unchecking a box only stops that specific message — it never affects anyone else's notifications about you.</div>
+  {% if not has_phone %}
+  <div class="small muted" style="margin-top:6px">Add a phone number in your profile to receive any of these by text.</div>
+  {% endif %}
+</div>
+
+<div class="card" style="max-width:720px">
+  <form method="post" novalidate>
+    {{ form.hidden_tag() }}
+    <table class="table">
+      <thead><tr><th>Notification</th><th>Email</th><th>SMS</th></tr></thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td>{{ row.label }}</td>
+          <td><input type="checkbox" name="email_{{ row.notif_type }}" {{ 'checked' if row.email_on }}></td>
+          <td><input type="checkbox" name="sms_{{ row.notif_type }}" {{ 'checked' if row.sms_on }} {{ 'disabled' if not has_phone }}></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <button type="submit" class="btn" style="margin-top:14px">Save Preferences</button>
+  </form>
+</div>
+{% endblock %}
