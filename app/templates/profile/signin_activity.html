@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Sign-In Activity{% endblock %}
+{% block content %}
+<div style="margin-bottom:16px">
+  <a class="small" href="{{ url_for('profile.view_profile') }}">&larr; Profile</a>
+  <h1 style="margin-top:8px">Sign-In Activity</h1>
+  <div class="lead">Your recent sessions and any sign-ins we flagged as coming from somewhere/something unfamiliar.</div>
+</div>
+
+{% if events %}
+<div class="card" style="margin-bottom:16px">
+  <h2 style="margin-top:0">Flagged Activity</h2>
+  <div class="small muted" style="margin-bottom:10px">If you don't recognize one of these, change your password and enable two-factor authentication from your profile.</div>
+  <table class="table">
+    <thead><tr><th>When</th><th>Type</th><th>Details</th></tr></thead>
+    <tbody>
+      {% for e in events %}
+      <tr>
+        <td class="mono small">{{ e.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td><span class="badge inactive">{{ e.event_type.replace('_', ' ')|capitalize }}</span></td>
+        <td class="small">{{ e.details }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2 style="margin-top:0">Recent Sessions</h2>
+  <table class="table responsive-table">
+    <thead><tr><th>Signed in</th><th>IP Address</th><th>Device</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for s in sessions %}
+      <tr>
+        <td data-label="Signed in" class="mono small">{{ s.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td data-label="IP Address" class="mono small">{{ s.ip_address }}</td>
+        <td data-label="Device" class="small">{{ s.user_agent or '—' }}</td>
+        <td data-label="Status">
+          {% if s.is_active %}
+          <span class="badge active">Active</span>
+          {% else %}
+          <span class="badge inactive">Ended{{ ' — ' + s.end_reason.replace('_', ' ') if s.end_reason }}</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -46,12 +46,13 @@ def _device_fingerprint():
 
 def register_login(user):
     """Create the LoginSession for a just-completed login, enforce the
-    single-active-session policy if enabled, and check for login anomalies.
-    Call this immediately after flask_login.login_user() succeeds."""
+    single-active-session policy if enabled, and check for login
+    anomalies. Call this immediately after flask_login.login_user()
+    succeeds. Returns the new LoginSession row."""
     ip = get_client_ip()
     device = _device_fingerprint()
 
-    _check_anomalies(user, ip, device)
+    anomalies = _check_anomalies(user, ip, device)
 
     if current_app.config.get("SINGLE_SESSION_PER_ACCOUNT", True):
         _end_other_sessions(user, reason="replaced_by_new_login")
@@ -63,6 +64,17 @@ def register_login(user):
     db.session.add(login_session)
     db.session.commit()
     session[SESSION_TOKEN_KEY] = token
+
+    # New Sign-In Alerts: told to the account owner themselves, not just
+    # logged for an admin to notice later on the security log page — see
+    # notify_new_signin below. Sent after the commit above so a
+    # notification failure (network hiccup, bad template) can never roll
+    # back the login/session itself; register_login's job is to get the
+    # session created, the alert is a best-effort side effect of that.
+    if anomalies:
+        from app.notifications import notify_new_signin
+        notify_new_signin(user, login_session, anomalies)
+
     return login_session
 
 
@@ -84,13 +96,16 @@ def _check_anomalies(user, ip, device):
     """Compare a fresh login's IP/device against the account's recent
     session history and log a LoginSecurityEvent for anything that looks
     new. First-ever login for an account is never flagged — there's no
-    history yet to be unusual relative to."""
+    history yet to be unusual relative to. Returns the list of event_type
+    strings that fired, so the caller can decide whether to alert the
+    account owner about this login (see register_login/notify_new_signin)."""
     recent = LoginSession.query.filter_by(user_id=user.id).order_by(
         LoginSession.created_at.desc()
     ).limit(ANOMALY_LOOKBACK).all()
     if not recent:
-        return
+        return []
 
+    fired = []
     known_ips = {s.ip_address for s in recent}
     known_devices = {s.user_agent for s in recent}
 
@@ -99,17 +114,22 @@ def _check_anomalies(user, ip, device):
             user_id=user.id, event_type="new_location",
             details=f"Login from a new IP address ({ip}) not seen in the last {len(recent)} session(s).",
         ))
+        fired.append("new_location")
     if device not in known_devices:
         db.session.add(LoginSecurityEvent(
             user_id=user.id, event_type="new_device",
             details="Login from a browser/device not seen in recent sessions.",
         ))
+        fired.append("new_device")
 
     vpn_reason = check_vpn_or_proxy(ip)
     if vpn_reason:
         db.session.add(LoginSecurityEvent(
             user_id=user.id, event_type="vpn_or_proxy_suspected", details=vpn_reason,
         ))
+        fired.append("vpn_or_proxy_suspected")
+
+    return fired
 
 
 def check_vpn_or_proxy(ip):

@@ -4,6 +4,7 @@ from flask_login import login_required, current_user
 from app import db
 from app import twofa
 from app.forms import ProfileForm, ChangePasswordForm, TwoFactorSetupForm, TwoFactorDisableForm, TwoFactorRegenerateForm
+from app.models import LoginSession, LoginSecurityEvent
 
 bp = Blueprint("profile", __name__, url_prefix="/profile")
 
@@ -103,3 +104,22 @@ def regenerate_backup_codes():
     db.session.commit()
     flash("New backup codes generated — your old ones no longer work.", "success")
     return render_template("profile/backup_codes.html", codes=plain_codes)
+
+
+@bp.route("/sign-in-activity")
+@login_required
+def signin_activity():
+    """New Sign-In Alerts / self-service security review: this account's
+    own recent sessions and flagged anomalies (see app.security) —
+    previously only visible to an admin on the org-wide security log,
+    even though the account owner is the one actually positioned to say
+    "that wasn't me." Read-only; a session shown here already ends itself
+    the normal way (logout, single-session replacement, expiry) rather
+    than being revocable from this page."""
+    sessions = LoginSession.query.filter_by(user_id=current_user.id).order_by(
+        LoginSession.created_at.desc()
+    ).limit(20).all()
+    events = LoginSecurityEvent.query.filter_by(user_id=current_user.id).order_by(
+        LoginSecurityEvent.created_at.desc()
+    ).limit(20).all()
+    return render_template("profile/signin_activity.html", sessions=sessions, events=events)

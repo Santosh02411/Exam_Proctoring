@@ -1,0 +1,11 @@
+Hi {{ user_name }},
+
+We noticed a sign-in to your account from {{ reasons|join(' and ') }}.
+
+Time: {{ signed_in_at }}
+IP address: {{ ip_address }}
+
+If this was you, no action is needed. If you don't recognize this sign-in, we'd recommend changing your
+password right away and enabling two-factor authentication if you haven't already.
+
+Review your recent sign-in activity here: {{ activity_url }}

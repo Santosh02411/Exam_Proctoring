@@ -29,6 +29,7 @@ NOTIFICATION_SUBJECTS = {
     "accommodation_requested": "Accommodation request — {student_name} on {test_title}",
     "accommodation_approved": "Accommodation request approved — {test_title}",
     "accommodation_denied": "Accommodation request update — {test_title}",
+    "new_signin_alert": "New sign-in to your account",
 }
 
 
@@ -158,6 +159,33 @@ def notify_accommodation_resolved(request_row):
         "requested_extra_minutes": request_row.requested_extra_minutes,
         "admin_note": request_row.admin_note, "dashboard_url": url_for("student.dashboard", _external=True),
     }, test=test)
+
+
+_SIGNIN_ANOMALY_DESCRIPTIONS = {
+    "new_location": "a new IP address",
+    "new_device": "a browser/device we haven't seen on your account recently",
+    "vpn_or_proxy_suspected": "a connection that looks like it's using a VPN or proxy",
+}
+
+
+def notify_new_signin(user, login_session, anomalies):
+    """New Sign-In Alerts: told to the account owner the moment
+    app.security's anomaly detection flags a login as coming from
+    somewhere/something unfamiliar (see app.security._check_anomalies) —
+    previously that detection only ever surfaced on the admin-facing
+    security log, so the one person best positioned to say "actually,
+    that wasn't me" never found out unless an admin happened to notice
+    and think to tell them. `anomalies` is the list of event_type strings
+    _check_anomalies returned (new_location/new_device/
+    vpn_or_proxy_suspected) — always non-empty when this is called."""
+    reasons = [_SIGNIN_ANOMALY_DESCRIPTIONS.get(a, a) for a in anomalies]
+    notify(user, "new_signin_alert", {
+        "user_name": user.name,
+        "reasons": reasons,
+        "ip_address": login_session.ip_address,
+        "signed_in_at": login_session.created_at.strftime("%Y-%m-%d %H:%M UTC"),
+        "activity_url": url_for("profile.signin_activity", _external=True),
+    })
 
 
 def send_starting_soon_reminders(window_minutes=None, org_id=None):

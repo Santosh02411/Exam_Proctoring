@@ -892,7 +892,7 @@ class NotificationLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
     # exam_scheduled | exam_starting_soon | exam_completed | result_published | high_risk_alert | exam_warning
-    # | accommodation_requested | accommodation_approved | accommodation_denied
+    # | accommodation_requested | accommodation_approved | accommodation_denied | new_signin_alert
     notif_type = db.Column(db.String(40), nullable=False)
     subject = db.Column(db.String(255), nullable=False)
     body_preview = db.Column(db.String(1000), nullable=False)

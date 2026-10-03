@@ -89,5 +89,11 @@
       <a href="{{ url_for('profile.setup_2fa') }}" class="btn">Set up two-factor authentication</a>
     {% endif %}
   </div>
+
+  <div class="card">
+    <h2>Sign-In Activity</h2>
+    <p class="small">See your recent sessions and any sign-ins we flagged as coming from an unfamiliar device or location.</p>
+    <a href="{{ url_for('profile.signin_activity') }}" class="btn ghost">View Sign-In Activity</a>
+  </div>
 </div>
 {% endblock %}
