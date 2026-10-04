@@ -425,6 +425,57 @@ legitimately give a similar answer to a short factual question.
   third-party IP-reputation API on login; off by default, and never blocks a login even
   when misconfigured or unreachable, only logs a `vpn_or_proxy_suspected` event.
 
+## Live Monitor & Appeals
+
+**Live Monitor** (`/admin/live`, admin / examiner / proctor): a real-time roster of every attempt
+currently in progress in your organization, highest risk first — student, test, elapsed time,
+connection status ("No signal" once the exam tab has stopped sending heartbeats for
+`LIVE_MONITOR_NO_SIGNAL_SECONDS`), violation count, risk level and the latest warning/violation.
+It polls a JSON endpoint every few seconds (no websockets or broker, so it behaves the same across
+multiple worker processes). Two interventions are available per row:
+
+- **Message** — a short note that appears on the student's exam screen until they dismiss it. It is
+  delivered through the exam page's existing heartbeat, so it arrives within one heartbeat
+  interval (~15s), exactly once, and only to the tab that currently owns the attempt.
+- **End** — terminates the attempt with a required reason, shown to the student and stored as
+  `Ended by a proctor: <reason>`. It ends in the same state as an automatic termination (same
+  notifications, result page and review queue) but does not count as a proctoring violation.
+
+Both actions are recorded as `info`-severity events on the attempt's timeline (never scored) and in
+the admin activity log.
+
+**Appeals** — a student can contest a *terminated* attempt, or one that picked up violations, from
+the result page (once per attempt, within `APPEAL_WINDOW_DAYS`, default 14). Staff decide from
+`/admin/appeals` (admin / examiner / proctor): **granting** gives the student one extra attempt on
+that test (via the existing `TestEligibility.extra_attempts`) and **denying** keeps the outcome;
+either way the student is emailed with an optional reviewer note. The original attempt's record is
+never altered, so the audit trail stays intact.
+
+Both features add new tables only (`appeals`, `proctor_messages`), created automatically on startup.
+
+## Review decisions & incident reports
+
+**Reviewer decision** — on any finished attempt's detail page a reviewer (admin / examiner /
+proctor) records a conclusion: **Cleared** (no misconduct found), **Confirmed** (misconduct), or
+**Escalate** (needs follow-up). Notes are required for Confirmed and Escalate, so a finding always
+carries its reasoning. There is one current decision per attempt; changing it updates it in place
+and each change is written to the admin activity log. Reviewing is refused while the attempt is
+still in progress (use the Live Monitor for mid-exam action).
+
+The **Review Queue** now shows each attempt's decision and can be filtered to *Not yet reviewed*,
+*Escalated*, *Confirmed* or *Cleared* — so "nobody has looked at this" is no longer
+indistinguishable from "looked at and fine". The Appeals page shows the decision alongside each
+appeal.
+
+**Incident report (PDF)** — "Download incident report" on the attempt page exports a one-attempt
+document for disciplinary cases, appeals or hand-offs: student/test/attempt summary, risk score
+and reasons, the reviewer's decision and notes, the student's appeal (if any), and the full
+proctoring event log. It is text-only by design — snapshots and recordings stay behind the app's
+access checks instead of being copied into a file that travels by email. All free text is escaped
+before rendering. Each export is written to the activity log.
+
+Adds one new table (`attempt_reviews`), created automatically on startup.
+
 ## Multi-tenancy (Institution / Organization Management)
 
 Every `Test`, `QuestionBankItem`, and non-`super_admin` `User` belongs to exactly one

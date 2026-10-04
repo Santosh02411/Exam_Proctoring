@@ -142,6 +142,10 @@ class Config:
     # keeps recording device/browser info and rotating session tokens, but
     # never blocks — useful for a deployment that only wants the audit
     # trail, not the enforcement.
+    # Appeals: how many days after an attempt ends a student may still contest it.
+    APPEAL_WINDOW_DAYS = int(os.environ.get("APPEAL_WINDOW_DAYS", 14))
+    # Live Monitor: an in-progress attempt with no heartbeat for this long is shown as "no signal".
+    LIVE_MONITOR_NO_SIGNAL_SECONDS = int(os.environ.get("LIVE_MONITOR_NO_SIGNAL_SECONDS", 60))
     EXAM_SESSION_ENFORCE_SINGLE_SESSION = os.environ.get("EXAM_SESSION_ENFORCE_SINGLE_SESSION", "true").lower() == "true"
 
     # LMS/API Integrations (see app.api_v1). Timeout for the optional
