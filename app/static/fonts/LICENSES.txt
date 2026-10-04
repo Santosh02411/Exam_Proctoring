@@ -1,0 +1,6 @@
+Self-hosted fonts (all licensed under the SIL Open Font License 1.1):
+- Newsreader (c) The Newsreader Project Authors
+- Instrument Sans (c) The Instrument Sans Project Authors
+- IBM Plex Mono (c) IBM Corp.
+
+Full license text: https://openfontlicense.org/open-font-license-official-text/
