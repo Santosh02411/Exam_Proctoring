@@ -1,0 +1,8 @@
+Hi {{ student_name }},
+
+{% if granted %}Your appeal on "{{ test_title }}" was granted. You have been given one additional attempt on this test.{% else %}Your appeal on "{{ test_title }}" was reviewed and not granted. The original outcome stands.{% endif %}
+{% if admin_note %}
+Note from the reviewer:
+{{ admin_note }}
+{% endif %}
+Log in here: {{ dashboard_url }}

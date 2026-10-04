@@ -8,17 +8,24 @@
     <div class="lead">Attempts that were terminated or flagged for proctoring violations, across every test.</div>
   </div>
   <div class="actions">
-    <a class="btn small {{ '' if mine_only else 'ghost' }}" href="{{ url_for('admin.proctor_queue', sort=sort, mine=1) }}">My Cases</a>
-    <a class="btn small {{ 'ghost' if mine_only else '' }}" href="{{ url_for('admin.proctor_queue', sort=sort) }}">All Cases</a>
-    <a class="btn small {{ 'ghost' if sort != 'risk' }}" href="{{ url_for('admin.proctor_queue', sort='risk', mine=1 if mine_only else None) }}">Sort: Highest Risk</a>
-    <a class="btn small {{ 'ghost' if sort != 'recent' }}" href="{{ url_for('admin.proctor_queue', sort='recent', mine=1 if mine_only else None) }}">Sort: Most Recent</a>
+    <a class="btn small ghost" href="{{ url_for('admin.appeals') }}">Appeals</a>
+    <a class="btn small {{ '' if mine_only else 'ghost' }}" href="{{ url_for('admin.proctor_queue', sort=sort, mine=1, review=review_filter if review_filter != 'all' else None) }}">My Cases</a>
+    <a class="btn small {{ 'ghost' if mine_only else '' }}" href="{{ url_for('admin.proctor_queue', sort=sort, review=review_filter if review_filter != 'all' else None) }}">All Cases</a>
+    <a class="btn small {{ 'ghost' if sort != 'risk' }}" href="{{ url_for('admin.proctor_queue', sort='risk', mine=1 if mine_only else None, review=review_filter if review_filter != 'all' else None) }}">Sort: Highest Risk</a>
+    <a class="btn small {{ 'ghost' if sort != 'recent' }}" href="{{ url_for('admin.proctor_queue', sort='recent', mine=1 if mine_only else None, review=review_filter if review_filter != 'all' else None) }}">Sort: Most Recent</a>
   </div>
+</div>
+
+<div class="actions" style="margin-bottom:12px" role="group" aria-label="Filter by review status">
+  {% for key, label in [('all','All'),('pending','Not yet reviewed'),('escalated','Escalated'),('confirmed','Confirmed'),('cleared','Cleared')] %}
+  <a class="btn small {{ '' if review_filter == key else 'ghost' }}" href="{{ url_for('admin.proctor_queue', sort=sort, mine=1 if mine_only else None, review=key if key != 'all' else None) }}">{{ label }}</a>
+  {% endfor %}
 </div>
 
 <div class="card">
   {% if attempts %}
   <table class="table responsive-table">
-    <thead><tr><th>Student</th><th>Test</th><th>Status</th><th>Violations</th><th>Suspicion Score</th><th>Started</th><th>Assigned to</th><th></th></tr></thead>
+    <thead><tr><th>Student</th><th>Test</th><th>Status</th><th>Violations</th><th>Suspicion Score</th><th>Started</th><th>Review</th><th>Assigned to</th><th></th></tr></thead>
     <tbody>
       {% for a in attempts %}
       <tr>
@@ -33,6 +40,10 @@
           {% endif %}
         </td>
         <td data-label="Started" class="small">{{ a.started_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td data-label="Review">
+          {% set d = decisions.get(a.id) %}
+          {% if d %}<span class="badge {{ 'published' if d == 'cleared' else ('inactive' if d == 'confirmed' else 'draft') }}">{{ d|capitalize }}</span>{% else %}<span class="small muted">Not reviewed</span>{% endif %}
+        </td>
         <td data-label="Assigned to">
           <form method="post" action="{{ url_for('admin.assign_proctor', attempt_id=a.id) }}" onchange="this.submit()">
             {{ assign_form.hidden_tag() }}
@@ -50,9 +61,9 @@
     </tbody>
   </table>
   <div class="small muted" style="margin-top:8px">Suspicion Score is a deterministic weighted score from the violation log (see the attempt detail page for the breakdown) — not a trained ML verdict, and not a substitute for human review.</div>
-  {{ render_pagination(pagination, 'admin.proctor_queue', {'sort': sort, 'mine': 1 if mine_only else 0}) }}
+  {{ render_pagination(pagination, 'admin.proctor_queue', {'sort': sort, 'mine': 1 if mine_only else 0, 'review': review_filter if review_filter != 'all' else ''}) }}
   {% else %}
-  <div class="small">Nothing flagged right now{{ ' for your assigned cases' if mine_only else '' }} — no terminated or violation-flagged attempts.</div>
+  <div class="small">Nothing to show{{ ' for your assigned cases' if mine_only else '' }}{{ ' with this review status' if review_filter != 'all' else '' }} — no matching terminated or violation-flagged attempts.</div>
   {% endif %}
 </div>
 {% endblock %}

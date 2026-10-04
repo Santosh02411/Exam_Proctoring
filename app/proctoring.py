@@ -183,6 +183,8 @@ INCIDENT_WINDOW_SECONDS = 90
 # anything not listed here (e.g. a future event type added without
 # updating this dict).
 EVENT_TYPE_LABELS = {
+    "proctor_message": "a proctor sent the student a message",
+    "proctor_terminated": "a proctor ended the attempt",
     "identity_mismatch": "identity mismatch (camera face didn't match the enrolled reference)",
     "identity_spotcheck_failed": "failed a random identity spot check",
     "concurrent_session_blocked": "a second device/tab tried to open this exam while another was already active",

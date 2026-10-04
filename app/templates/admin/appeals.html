@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Appeals{% endblock %}
+{% block content %}
+<div style="margin-bottom:16px">
+  <h1>Appeals</h1>
+  <div class="lead">Students contesting a proctoring outcome. Granting gives the student one extra attempt; the original attempt's record is left untouched.</div>
+</div>
+
+<div class="card" style="margin-bottom:16px">
+  <h2>Pending ({{ pending|length }})</h2>
+  {% if pending %}
+  <table class="table responsive-table">
+    <thead><tr><th>Student</th><th>Test</th><th>Outcome appealed</th><th>Student's reason</th><th>Submitted</th><th>Decision</th></tr></thead>
+    <tbody>
+      {% for a in pending %}
+      <tr>
+        <td data-label="Student">{{ a.student.name }}</td>
+        <td data-label="Test">{{ a.attempt.test.title }}</td>
+        <td data-label="Outcome" class="small">
+          <span class="badge {{ 'inactive' if a.attempt.status == 'terminated' else 'draft' }}">{{ a.attempt.status|capitalize }}</span>
+          {{ a.attempt.termination_reason or (a.attempt.violation_count ~ ' violation(s)') }}<br>
+          Risk: {{ a.attempt.risk_level|capitalize }} ({{ a.attempt.suspicion_score }})<br>
+          {% if a.attempt.review %}Reviewer decision: <strong>{{ a.attempt.review.decision|capitalize }}</strong><br>{% endif %}
+          <a href="{{ url_for('admin.view_attempt', attempt_id=a.attempt_id) }}">Review the attempt &rarr;</a>
+        </td>
+        <td data-label="Reason" class="small" style="white-space:pre-wrap;max-width:320px">{{ a.reason }}</td>
+        <td data-label="Submitted" class="small">{{ a.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td data-label="Decision" class="actions">
+          <form method="post" style="min-width:220px">
+            {{ decision_form.hidden_tag() }}
+            <textarea name="admin_note" rows="2" placeholder="Optional note to the student" style="width:100%;margin-bottom:6px"></textarea>
+            <button type="submit" class="btn small" formaction="{{ url_for('admin.resolve_appeal', appeal_id=a.id, decision='grant') }}">Grant (+1 attempt)</button>
+            <button type="submit" class="btn danger ghost small" formaction="{{ url_for('admin.resolve_appeal', appeal_id=a.id, decision='deny') }}">Deny</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="small">No pending appeals.</div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Recently decided</h2>
+  {% if resolved %}
+  <table class="table responsive-table">
+    <thead><tr><th>Student</th><th>Test</th><th>Decision</th><th>Decided</th><th>Note</th></tr></thead>
+    <tbody>
+      {% for a in resolved %}
+      <tr>
+        <td data-label="Student">{{ a.student.name }}</td>
+        <td data-label="Test">{{ a.attempt.test.title }}</td>
+        <td data-label="Decision"><span class="badge {{ 'published' if a.status == 'granted' else 'inactive' }}">{{ a.status|capitalize }}</span></td>
+        <td data-label="Decided" class="small">{{ a.resolved_at.strftime('%Y-%m-%d %H:%M') if a.resolved_at }} by {{ a.resolved_by.name if a.resolved_by }}</td>
+        <td data-label="Note" class="small">{{ a.admin_note or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="small">Nothing decided yet.</div>
+  {% endif %}
+</div>
+{% endblock %}

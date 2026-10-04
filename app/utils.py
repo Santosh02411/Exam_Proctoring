@@ -113,7 +113,19 @@ def org_scope(query, model):
     its org_id column (directly, or via model.test.has(...) for rows
     that hang off a Test rather than carrying their own org_id — pass
     the already-adjusted query with that filter applied yourself for
-    those and skip this helper)."""
+    those and skip this helper).
+
+    Trash / Soft Delete: when `model` is Test itself, this also excludes
+    soft-deleted rows (Test.deleted_at set — see admin.delete_test) by
+    default, so every ordinary "browse tests" listing that already goes
+    through this helper (Manage Tests, Calendar, the org-wide list used
+    for impersonation, etc.) is automatically protected without each one
+    needing its own copy of that filter. Code that genuinely needs to see
+    trashed tests (the Trash page itself) queries Test directly instead
+    of through here."""
+    from app.models import Test
+    if model is Test:
+        query = query.filter(Test.deleted_at.is_(None))
     if is_super_admin() and not is_impersonating():
         return query
     return query.filter(model.org_id == current_org_id())

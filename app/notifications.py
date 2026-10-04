@@ -31,6 +31,8 @@ NOTIFICATION_SUBJECTS = {
     "accommodation_approved": "Accommodation request approved — {test_title}",
     "accommodation_denied": "Accommodation request update — {test_title}",
     "new_signin_alert": "New sign-in to your account",
+    "appeal_submitted": "Appeal to review — {student_name} on {test_title}",
+    "appeal_resolved": "Your appeal has been decided — {test_title}",
 }
 
 # Notification Preferences (see User.notification_prefs): the
@@ -51,6 +53,7 @@ NOTIFICATION_PREF_LABELS = {
     "accommodation_denied": "My accommodation request is denied",
     "high_risk_alert": "A proctored attempt I own/proctor is flagged high-risk",
     "new_signin_alert": "A new or unusual sign-in to my account",
+    "appeal_resolved": "A decision is made on my appeal",
 }
 
 
@@ -201,6 +204,36 @@ def notify_accommodation_resolved(request_row):
         "requested_extra_minutes": request_row.requested_extra_minutes,
         "admin_note": request_row.admin_note, "dashboard_url": url_for("student.dashboard", _external=True),
     }, test=test)
+
+
+def notify_appeal_submitted(appeal):
+    """Tell the test's owning admin a student has appealed a proctoring
+    outcome (see student.appeal_attempt) — same reasoning as
+    notify_accommodation_requested: a review workflow that only works if
+    someone happens to check a queue isn't much of a workflow."""
+    attempt = appeal.attempt
+    test = attempt.test
+    admin = test.creator
+    if not admin or not admin.email:
+        return
+    notify(admin, "appeal_submitted", {
+        "student_name": appeal.student.name, "test_title": test.title,
+        "outcome": attempt.termination_reason or f"{attempt.violation_count} proctoring violation(s) recorded",
+        "reason": appeal.reason, "review_url": url_for("admin.appeals", _external=True),
+    }, test=test, attempt=attempt)
+
+
+def notify_appeal_resolved(appeal):
+    """Tell the student how their appeal came out — a silent resolution
+    would leave them refreshing the result page wondering."""
+    attempt = appeal.attempt
+    test = attempt.test
+    student = appeal.student
+    notify(student, "appeal_resolved", {
+        "student_name": student.name, "test_title": test.title,
+        "granted": appeal.status == "granted", "admin_note": appeal.admin_note,
+        "dashboard_url": url_for("student.dashboard", _external=True),
+    }, test=test, attempt=attempt)
 
 
 _SIGNIN_ANOMALY_DESCRIPTIONS = {

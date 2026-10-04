@@ -111,14 +111,14 @@ def _attempt_payload(attempt):
 @bp.route("/tests")
 @require_api_key
 def list_tests():
-    tests = Test.query.filter_by(org_id=g.api_org_id, status="published").order_by(Test.created_at.desc()).all()
+    tests = Test.query.filter_by(org_id=g.api_org_id, status="published", deleted_at=None).order_by(Test.created_at.desc()).all()
     return jsonify({"ok": True, "tests": [_test_payload(t) for t in tests]})
 
 
 @bp.route("/tests/<string:test_code>")
 @require_api_key
 def get_test(test_code):
-    test = Test.query.filter_by(org_id=g.api_org_id, test_code=test_code).first()
+    test = Test.query.filter_by(org_id=g.api_org_id, test_code=test_code, deleted_at=None).first()
     if not test:
         return jsonify({"ok": False, "error": "test not found"}), 404
     return jsonify({"ok": True, "test": _test_payload(test)})
@@ -136,7 +136,7 @@ def enroll_students(test_code):
     behavior in app.admin.import_users; no credentials are emailed here,
     since an institutional sync typically handles account provisioning/
     SSO on its own side."""
-    test = Test.query.filter_by(org_id=g.api_org_id, test_code=test_code).first()
+    test = Test.query.filter_by(org_id=g.api_org_id, test_code=test_code, deleted_at=None).first()
     if not test:
         return jsonify({"ok": False, "error": "test not found"}), 404
 

@@ -14,6 +14,38 @@
   {% endif %}
 </div>
 
+<div class="card" style="margin-bottom:16px">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px">
+    <h2 style="margin:0">Reviewer Decision</h2>
+    <a class="btn ghost small" href="{{ url_for('admin.export_attempt_report', attempt_id=attempt.id) }}">Download incident report (PDF)</a>
+  </div>
+  {% if review %}
+  <div style="margin-bottom:10px">
+    <span class="badge {{ 'published' if review.decision == 'cleared' else ('inactive' if review.decision == 'confirmed' else 'draft') }}">{{ review.decision|capitalize }}</span>
+    <span class="small muted">by {{ review.reviewer.name if review.reviewer else '—' }} on {{ review.reviewed_at.strftime('%Y-%m-%d %H:%M') }} UTC</span>
+    {% if review.notes %}<div style="white-space:pre-wrap;margin-top:6px">{{ review.notes }}</div>{% endif %}
+  </div>
+  {% elif attempt.status == 'in_progress' %}
+  <div class="small muted">Available once this attempt has ended.</div>
+  {% else %}
+  <div class="small muted" style="margin-bottom:10px">Nobody has recorded a conclusion on this attempt yet.</div>
+  {% endif %}
+  {% if attempt.status != 'in_progress' %}
+  <form method="post" action="{{ url_for('admin.review_attempt', attempt_id=attempt.id) }}" novalidate>
+    {{ review_form.hidden_tag() }}
+    <div class="field">
+      <label for="{{ review_form.decision.id }}">{{ 'Update decision' if review else 'Record a decision' }}</label>
+      {{ review_form.decision() }}
+    </div>
+    <div class="field">
+      <label for="{{ review_form.notes.id }}">Notes <span class="small muted">(required for Confirmed and Escalate)</span></label>
+      {{ review_form.notes(rows=3, placeholder="What did you look at, and what did you conclude?") }}
+    </div>
+    <button type="submit" class="btn small">Save decision</button>
+  </form>
+  {% endif %}
+</div>
+
 {% if attempt.device_info or attempt.ip_address %}
 <div class="card" style="margin-bottom:16px">
   <h2 style="margin:0 0 6px 0">Device &amp; Session</h2>

@@ -290,6 +290,46 @@
     if (sessionConflictOverlay) sessionConflictOverlay.style.display = 'flex';
   }
 
+  // ---------- Live Monitor: messages from a proctor ----------
+  // Delivered by the heartbeat (see student.heartbeat), exactly once each.
+  // Unlike showBanner()'s 4-second flash, these stay on screen until the
+  // student dismisses them — an instruction from a proctor that vanishes
+  // before it's been read is worse than none. Built with textContent, never
+  // innerHTML, since the body is free text typed by another user.
+  function showProctorMessages(messages) {
+    let box = document.getElementById('proctorMessageBox');
+    if (!box) {
+      box = document.createElement('div');
+      box.id = 'proctorMessageBox';
+      box.setAttribute('role', 'alertdialog');
+      box.setAttribute('aria-live', 'assertive');
+      box.style.cssText = 'position:fixed;left:50%;top:16px;transform:translateX(-50%);z-index:10000;'
+        + 'max-width:min(560px,92vw);width:100%;display:flex;flex-direction:column;gap:8px;';
+      document.body.appendChild(box);
+    }
+    messages.forEach(function (m) {
+      const item = document.createElement('div');
+      item.style.cssText = 'background:#1d4ed8;color:#fff;border-radius:10px;padding:12px 14px;'
+        + 'box-shadow:0 6px 24px rgba(0,0,0,.35);display:flex;gap:12px;align-items:flex-start;';
+      const text = document.createElement('div');
+      text.style.cssText = 'flex:1;white-space:pre-wrap;word-break:break-word;';
+      const title = document.createElement('strong');
+      title.textContent = 'Message from your proctor' + (m.sent_at ? ' (' + m.sent_at + ' UTC)' : '');
+      const bodyEl = document.createElement('div');
+      bodyEl.textContent = m.body;
+      text.appendChild(title);
+      text.appendChild(bodyEl);
+      const dismiss = document.createElement('button');
+      dismiss.type = 'button';
+      dismiss.textContent = 'Got it';
+      dismiss.style.cssText = 'background:#fff;color:#1d4ed8;border:0;border-radius:6px;padding:6px 10px;font-weight:700;cursor:pointer;';
+      dismiss.addEventListener('click', function () { item.remove(); });
+      item.appendChild(text);
+      item.appendChild(dismiss);
+      box.appendChild(item);
+    });
+  }
+
   async function pingHeartbeat() {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), HEARTBEAT_TIMEOUT_MS);
@@ -302,6 +342,9 @@
       if (data.session_conflict) {
         handleSessionSuperseded();
         return;
+      }
+      if (data.proctor_messages && data.proctor_messages.length) {
+        showProctorMessages(data.proctor_messages);
       }
       handleOnline(data);
     } catch (e) {

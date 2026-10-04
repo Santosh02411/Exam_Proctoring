@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Trash — Tests{% endblock %}
+{% block content %}
+<div style="margin-bottom:16px">
+  <a class="small" href="{{ url_for('admin.manage_tests') }}">&larr; Manage Tests</a>
+  <h1 style="margin-top:8px">Trash</h1>
+  <div class="lead">Deleted tests stay here — with all their questions, attempts, and recordings intact — until you restore them or delete them permanently.</div>
+</div>
+
+<div class="card">
+  {% if tests %}
+  <table class="table responsive-table">
+    <thead><tr><th>Title</th><th>Code</th><th>Deleted</th><th>Actions</th></tr></thead>
+    <tbody>
+      {% for t in tests %}
+      <tr>
+        <td data-label="Title">{{ t.title }}</td>
+        <td data-label="Code" class="mono">{{ t.test_code }}</td>
+        <td data-label="Deleted" class="small">{{ t.deleted_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td data-label="Actions" class="actions">
+          <form class="inline" method="post" action="{{ url_for('admin.restore_test', test_id=t.id) }}">
+            <button type="submit" class="btn small">Restore</button>
+          </form>
+          <form class="inline" method="post" action="{{ url_for('admin.delete_test_permanently', test_id=t.id) }}"
+                onsubmit="return confirm('Permanently delete \'' + {{ t.title|tojson }} + '\'? This cannot be undone — every question, attempt, and recording goes with it.');">
+            <button type="submit" class="btn danger ghost small">Delete Permanently</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="small">Trash is empty.</div>
+  {% endif %}
+</div>
+{% endblock %}

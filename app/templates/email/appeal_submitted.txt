@@ -1,0 +1,11 @@
+Hi,
+
+{{ student_name }} has appealed the proctoring outcome on "{{ test_title }}".
+
+Outcome being appealed:
+{{ outcome }}
+
+Their reason:
+{{ reason }}
+
+Review and decide here: {{ review_url }}

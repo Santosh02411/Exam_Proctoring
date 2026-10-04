@@ -247,6 +247,17 @@ class Test(db.Model):
     # is the same deterrence model as a visible watermark on a proof/PDF.
     enable_watermark = db.Column(db.Boolean, nullable=False, default=False)
 
+    # Trash / Soft Delete: "deleting" a test from Manage Tests sets this
+    # instead of removing the row — see admin.delete_test. Everywhere a
+    # test can be browsed to or started from filters this out (see
+    # app.utils.org_scope's Test-specific branch, and the explicit
+    # checks in student.dashboard/calendar_view/start_test, which don't
+    # go through org_scope at all since eligibility isn't an org-scoped
+    # relationship the same way). Only a hard "Delete Permanently" from
+    # the Trash page actually removes the row and everything that
+    # cascades from it — recordings, attempts, the works — for good.
+    deleted_at = db.Column(db.DateTime, nullable=True)
+
     # Partial credit for multi-select questions: award proportional marks based on
     # how many correct options were picked minus how many incorrect ones were,
     # instead of all-or-nothing. Doesn't affect single-choice or short-answer grading.
@@ -1226,3 +1237,97 @@ class SystemAlert(db.Model):
     notified_at = db.Column(db.DateTime, nullable=True)
     resolved = db.Column(db.Boolean, nullable=False, default=False)
     resolved_at = db.Column(db.DateTime, nullable=True)
+
+
+class Appeal(db.Model):
+    """A student's request for a human to re-examine a proctoring outcome
+    on one of their attempts — auto-termination, or a submission that
+    picked up violations. Until now the automated pipeline's decision was
+    final from the student's side: a false positive (a flaky webcam, a
+    sibling walking into frame) had no path back except emailing an admin
+    and hoping.
+
+    One appeal per attempt (enforced by the unique constraint, and
+    checked up front in student.appeal_attempt for a friendly message).
+    A "granted" appeal gives the student one extra attempt on that test
+    via TestEligibility.extra_attempts — the same field an admin would
+    already use by hand after a proctoring issue voided an attempt — and
+    never rewrites the original attempt's record, so the audit trail of
+    what actually happened stays intact.
+    """
+
+    __tablename__ = "appeals"
+
+    id = db.Column(db.Integer, primary_key=True)
+    attempt_id = db.Column(db.Integer, db.ForeignKey("attempts.id"), nullable=False)
+    student_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    reason = db.Column(db.Text, nullable=False)
+    # pending | granted | denied
+    status = db.Column(db.String(20), nullable=False, default="pending")
+    admin_note = db.Column(db.Text, nullable=True)
+    resolved_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    resolved_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    attempt = db.relationship("Attempt", backref=db.backref("appeals", lazy=True))
+    student = db.relationship("User", foreign_keys=[student_id])
+    resolved_by = db.relationship("User", foreign_keys=[resolved_by_id])
+
+    __table_args__ = (db.UniqueConstraint("attempt_id", name="uq_appeal_attempt"),)
+
+
+class ProctorMessage(db.Model):
+    """A short message a proctor sends to a student mid-exam from the Live
+    Monitor (see admin.live_monitor). Delivered through the exam page's
+    existing heartbeat poll (see student.heartbeat) rather than a new
+    socket — so it reaches the student within one heartbeat interval
+    (~15s) and works the same across multiple worker processes, with no
+    broker. delivered_at stays NULL until a heartbeat from the attempt's
+    active tab picks it up, which is what makes each message show exactly
+    once."""
+
+    __tablename__ = "proctor_messages"
+
+    id = db.Column(db.Integer, primary_key=True)
+    attempt_id = db.Column(db.Integer, db.ForeignKey("attempts.id"), nullable=False, index=True)
+    sender_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    body = db.Column(db.String(500), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    delivered_at = db.Column(db.DateTime, nullable=True)
+
+    attempt = db.relationship("Attempt", backref=db.backref("proctor_messages", lazy=True, cascade="all, delete-orphan"))
+    sender = db.relationship("User", foreign_keys=[sender_id])
+
+
+class AttemptReview(db.Model):
+    """A human's recorded conclusion on a flagged attempt — the missing
+    end of the proctoring pipeline. The automated side produces events, a
+    suspicion score and (sometimes) a termination, but nothing recorded
+    what a person concluded after actually looking at it, so the Review
+    Queue could never distinguish "not looked at yet" from "looked at and
+    fine", and a disciplinary case had no written rationale attached to
+    the evidence.
+
+    One current review per attempt (re-reviewing updates it in place; each
+    change is also written to the admin activity log, which is where the
+    history lives). Kept in its own table rather than as columns on
+    Attempt so an existing database picks it up via create_all() with no
+    migration.
+    """
+
+    __tablename__ = "attempt_reviews"
+
+    id = db.Column(db.Integer, primary_key=True)
+    attempt_id = db.Column(db.Integer, db.ForeignKey("attempts.id"), nullable=False)
+    # cleared (no misconduct found) | confirmed (misconduct confirmed) | escalated (needs follow-up)
+    decision = db.Column(db.String(20), nullable=False)
+    notes = db.Column(db.Text, nullable=True)
+    reviewer_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    reviewed_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    attempt = db.relationship("Attempt", backref=db.backref("review", uselist=False, cascade="all, delete-orphan"))
+    reviewer = db.relationship("User", foreign_keys=[reviewer_id])
+
+    __table_args__ = (db.UniqueConstraint("attempt_id", name="uq_attempt_review_attempt"),)
+
+    DECISIONS = ("cleared", "confirmed", "escalated")

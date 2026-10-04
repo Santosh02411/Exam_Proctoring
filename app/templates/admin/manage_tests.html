@@ -13,6 +13,7 @@
       {% else %}
         <a href="{{ url_for('admin.manage_tests', mine=1) }}">Show only my tests</a>
       {% endif %}
+      · <a href="{{ url_for('admin.test_trash') }}">Trash</a>
     </div>
   </div>
   <a class="btn" href="{{ url_for('admin.create_test') }}">+ New Test</a>
@@ -82,7 +83,7 @@
             </form>
 
             <form class="inline" method="post" action="{{ url_for('admin.delete_test', test_id=t.id) }}"
-                  onsubmit="return confirm('Delete this test? This cannot be undone.');">
+                  onsubmit="return confirm('Move this test to Trash? You can restore it later from Manage Tests → Trash.');">
               <button type="submit" class="btn danger ghost small">Delete</button>
             </form>
             {% endif %}

@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block title %}Live Monitor{% endblock %}
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px;margin-bottom:16px">
+  <div>
+    <h1>Live Monitor</h1>
+    <div class="lead">Everyone currently taking an exam, highest risk first. Refreshes every few seconds.</div>
+  </div>
+  <div class="small" id="liveStatus" aria-live="polite">Loading…</div>
+</div>
+
+<div class="card" id="actionPanel" style="display:none;margin-bottom:16px">
+  <div id="actionTitle" style="font-weight:700;margin-bottom:8px"></div>
+  <form id="messageForm" style="display:none" novalidate>
+    {{ message_form.hidden_tag() }}
+    <input type="text" name="body" maxlength="300" placeholder="Message shown on the student's exam screen (max 300 characters)" style="width:100%;margin-bottom:8px" aria-label="Message to student">
+    <button type="submit" class="btn small">Send message</button>
+    <button type="button" class="btn ghost small" data-cancel>Cancel</button>
+  </form>
+  <form id="terminateForm" style="display:none" novalidate>
+    {{ terminate_form.hidden_tag() }}
+    <input type="text" name="reason" maxlength="200" placeholder="Reason (shown to the student and stored on the attempt)" style="width:100%;margin-bottom:8px" aria-label="Reason for ending the attempt">
+    <button type="submit" class="btn danger small">End attempt</button>
+    <button type="button" class="btn ghost small" data-cancel>Cancel</button>
+  </form>
+  <div class="errors" id="actionError" style="display:none;margin-top:6px"></div>
+</div>
+
+<div class="card">
+  <table class="table responsive-table" id="liveTable" style="display:none">
+    <thead><tr><th>Student</th><th>Test</th><th>Elapsed</th><th>Connection</th><th>Violations</th><th>Risk</th><th>Latest event</th><th></th></tr></thead>
+    <tbody id="liveBody"></tbody>
+  </table>
+  <div class="small" id="liveEmpty" style="display:none">No exams are in progress right now.</div>
+</div>
+
+<script>
+(function () {
+  var DATA_URL = "{{ url_for('admin.live_monitor_data') }}";
+  var MESSAGE_URL = "{{ url_for('admin.send_proctor_message', attempt_id=0) }}";
+  var TERMINATE_URL = "{{ url_for('admin.terminate_attempt', attempt_id=0) }}";
+  var POLL_MS = 5000;
+
+  var body = document.getElementById('liveBody');
+  var table = document.getElementById('liveTable');
+  var empty = document.getElementById('liveEmpty');
+  var statusEl = document.getElementById('liveStatus');
+  var panel = document.getElementById('actionPanel');
+  var panelTitle = document.getElementById('actionTitle');
+  var errEl = document.getElementById('actionError');
+  var forms = { message: document.getElementById('messageForm'), terminate: document.getElementById('terminateForm') };
+  var active = null; // { mode, attemptId }
+
+  function fmtElapsed(s) {
+    var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+    return (h ? h + 'h ' : '') + m + 'm';
+  }
+
+  function cell(tr, label, node) {
+    var td = document.createElement('td');
+    td.setAttribute('data-label', label);
+    if (typeof node === 'string') td.textContent = node; else if (node) td.appendChild(node);
+    tr.appendChild(td);
+    return td;
+  }
+
+  function badge(text, cls) {
+    var b = document.createElement('span');
+    b.className = 'badge ' + cls;
+    b.textContent = text;
+    return b;
+  }
+
+  function actionButton(text, cls, mode, row) {
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn small ' + cls;
+    btn.textContent = text;
+    btn.addEventListener('click', function () { openPanel(mode, row); });
+    return btn;
+  }
+
+  function render(rows) {
+    body.textContent = '';
+    table.style.display = rows.length ? '' : 'none';
+    empty.style.display = rows.length ? 'none' : '';
+    rows.forEach(function (r) {
+      var tr = document.createElement('tr');
+      var name = document.createElement('strong'); name.textContent = r.student_name;
+      cell(tr, 'Student', name);
+      cell(tr, 'Test', r.test_title);
+      cell(tr, 'Elapsed', fmtElapsed(r.elapsed_seconds));
+      cell(tr, 'Connection', r.connection === 'online'
+        ? badge('Online', 'published')
+        : badge('No signal (' + (r.idle_seconds == null ? '?' : r.idle_seconds + 's') + ')', 'inactive'));
+      cell(tr, 'Violations', String(r.violation_count));
+      cell(tr, 'Risk', r.risk_level.charAt(0).toUpperCase() + r.risk_level.slice(1) + ' (' + r.suspicion_score + ')');
+      cell(tr, 'Latest event', r.last_event ? r.last_event.label + ' · ' + r.last_event.at : '—');
+      var actions = document.createElement('div');
+      actions.className = 'actions';
+      var view = document.createElement('a');
+      view.className = 'btn ghost small'; view.href = r.view_url; view.textContent = 'View';
+      actions.appendChild(view);
+      actions.appendChild(actionButton('Message', 'ghost', 'message', r));
+      actions.appendChild(actionButton('End', 'danger ghost', 'terminate', r));
+      cell(tr, 'Actions', actions);
+      body.appendChild(tr);
+    });
+  }
+
+  function openPanel(mode, row) {
+    active = { mode: mode, attemptId: row.attempt_id };
+    panel.style.display = '';
+    errEl.style.display = 'none';
+    Object.keys(forms).forEach(function (k) { forms[k].style.display = k === mode ? '' : 'none'; });
+    panelTitle.textContent = (mode === 'message' ? 'Message ' : 'End the attempt of ') + row.student_name + ' — ' + row.test_title;
+    var input = forms[mode].querySelector('input[type=text]');
+    input.value = '';
+    input.focus();
+  }
+
+  function closePanel() { active = null; panel.style.display = 'none'; }
+
+  Object.keys(forms).forEach(function (mode) {
+    var form = forms[mode];
+    form.querySelector('[data-cancel]').addEventListener('click', closePanel);
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      if (!active) return;
+      if (mode === 'terminate' && !window.confirm('End this student\'s exam now? This cannot be undone.')) return;
+      var url = (mode === 'message' ? MESSAGE_URL : TERMINATE_URL).replace(/\/0\//, '/' + active.attemptId + '/');
+      fetch(url, { method: 'POST', body: new FormData(form), credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+        .then(function (res) { return res.json().then(function (j) { return { ok: res.ok, j: j }; }); })
+        .then(function (r) {
+          if (!r.ok || !r.j.ok) { errEl.textContent = r.j.error || 'Something went wrong.'; errEl.style.display = ''; return; }
+          closePanel();
+          statusEl.textContent = mode === 'message' ? 'Message sent.' : 'Attempt ended.';
+          poll();
+        })
+        .catch(function () { errEl.textContent = 'Network error — try again.'; errEl.style.display = ''; });
+    });
+  });
+
+  function poll() {
+    fetch(DATA_URL, { credentials: 'same-origin', cache: 'no-store', headers: { 'Accept': 'application/json' } })
+      .then(function (res) { if (!res.ok) throw new Error(res.status); return res.json(); })
+      .then(function (data) {
+        render(data.attempts);
+        statusEl.textContent = data.attempts.length + ' in progress · updated ' + data.server_time + ' UTC';
+      })
+      .catch(function () { statusEl.textContent = 'Connection lost — retrying…'; });
+  }
+  poll();
+  setInterval(poll, POLL_MS);
+})();
+</script>
+{% endblock %}

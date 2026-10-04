@@ -38,6 +38,8 @@ def create_app(config_object="config.Config"):
     app.config.setdefault("EXAM_SESSION_STALE_AFTER_SECONDS", 45)
     app.config.setdefault("EXAM_SESSION_ENFORCE_SINGLE_SESSION", True)
     app.config.setdefault("LMS_WEBHOOK_TIMEOUT_SECONDS", 4)
+    app.config.setdefault("APPEAL_WINDOW_DAYS", 14)
+    app.config.setdefault("LIVE_MONITOR_NO_SIGNAL_SECONDS", 60)
 
     @app.template_filter("from_json")
     def _from_json_filter(value):

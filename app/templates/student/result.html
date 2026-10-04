@@ -24,7 +24,17 @@
     {% if certificate_eligible %}
     <div class="small" style="margin-top:6px;color:var(--success);font-weight:600">🎓 You've earned a certificate for this exam!</div>
     {% endif %}
-    <div style="margin-top:24px;display:flex;gap:8px;justify-content:center">
+    {% if appeal %}
+    <div class="small" style="margin-top:14px">
+      Appeal:
+      <span class="badge {{ 'published' if appeal.status == 'granted' else ('inactive' if appeal.status == 'denied' else 'draft') }}">{{ 'Pending review' if appeal.status == 'pending' else appeal.status|capitalize }}</span>
+      <a href="{{ url_for('student.appeal_attempt', attempt_id=attempt.id) }}">details</a>
+    </div>
+    {% endif %}
+    <div style="margin-top:24px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+      {% if can_appeal %}
+      <a class="btn ghost" href="{{ url_for('student.appeal_attempt', attempt_id=attempt.id) }}">Appeal this outcome</a>
+      {% endif %}
       {% if certificate_eligible %}
       <a class="btn" href="{{ url_for('student.download_certificate', attempt_id=attempt.id) }}">Download Certificate</a>
       {% endif %}

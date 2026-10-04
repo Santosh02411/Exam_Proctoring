@@ -1,19 +1,21 @@
 import json
 import secrets
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, abort, jsonify, current_app, Response
 from flask_login import current_user
 
 from app import db
-from app.forms import AccommodationRequestForm
+from app.forms import AccommodationRequestForm, AppealForm
 from app.models import (
     Test, TestEligibility, Attempt, Answer, Question, Section, IdentityDocument, AnswerEvent,
-    AccommodationRequest, recompute_attempt_score,
+    AccommodationRequest, Appeal, ProctorMessage, recompute_attempt_score,
 )
 from app.utils import student_required
 from app.randomize import build_attempt_order, ordered_questions, get_option_order
-from app.notifications import notify_exam_completed_and_maybe_published, notify_accommodation_requested
+from app.notifications import (
+    notify_exam_completed_and_maybe_published, notify_accommodation_requested, notify_appeal_submitted,
+)
 from app.exam_sessions import claim_session, record_blocked_concurrent_session, validate_session_token
 from app import certificates
 from app import access_control
@@ -36,6 +38,8 @@ def dashboard():
     rows = []
     for e in eligibilities:
         test = e.test
+        if test.deleted_at:
+            continue
         attempts = Attempt.query.filter_by(test_id=test.id, student_id=current_user.id).order_by(
             Attempt.started_at.desc()
         ).all()
@@ -70,6 +74,7 @@ def calendar_view():
         Test.query.join(TestEligibility, TestEligibility.test_id == Test.id)
         .filter(
             TestEligibility.student_id == current_user.id,
+            Test.deleted_at.is_(None),
             Test.start_time.isnot(None),
             Test.start_time >= datetime.combine(first_day, datetime.min.time()),
             Test.start_time <= datetime.combine(last_day, datetime.max.time()),
@@ -236,6 +241,8 @@ def _finalize_attempt(attempt, answers_map):
 @student_required
 def start_test(test_id):
     test = Test.query.get_or_404(test_id)
+    if test.deleted_at:
+        abort(404)
 
     eligibility = TestEligibility.query.filter_by(test_id=test.id, student_id=current_user.id).first()
     if not eligibility:
@@ -443,16 +450,34 @@ def heartbeat(attempt_id):
             session_conflict = True
 
     remaining_seconds = None
+    proctor_messages = []
     if attempt.status == "in_progress" and not session_conflict:
         test = attempt.test
         eligibility = TestEligibility.query.filter_by(test_id=test.id, student_id=current_user.id).first()
         remaining_seconds = _remaining_seconds(attempt, test, eligibility) if eligibility else None
+
+        # Live Monitor: hand over any messages a proctor has sent since the
+        # last heartbeat, exactly once each (delivered_at is what makes it
+        # once). Only the tab that currently owns the attempt's session
+        # gets them — a superseded tab would show them to nobody who's
+        # actually taking the exam.
+        pending = (
+            ProctorMessage.query.filter_by(attempt_id=attempt.id, delivered_at=None)
+            .order_by(ProctorMessage.created_at).all()
+        )
+        if pending:
+            now = datetime.utcnow()
+            for m in pending:
+                m.delivered_at = now
+                proctor_messages.append({"id": m.id, "body": m.body, "sent_at": m.created_at.strftime("%H:%M")})
+            db.session.commit()
 
     return jsonify({
         "ok": True,
         "status": attempt.status,
         "session_conflict": session_conflict,
         "remaining_seconds": remaining_seconds,
+        "proctor_messages": proctor_messages,
         "server_time": datetime.utcnow().isoformat(),
     })
 
@@ -470,10 +495,61 @@ def result(attempt_id):
         a.question.needs_manual_grading and a.selected_option and a.manual_score is None
         for a in attempt.answers
     )
+    appeal = Appeal.query.filter_by(attempt_id=attempt.id).first()
+    can_appeal, _appeal_block_reason = _appeal_eligibility(attempt, appeal)
     return render_template(
         "student/result.html", attempt=attempt, test=test, total_marks=total_marks,
         passed=passed, pending_grading=pending_grading,
         certificate_eligible=certificates.is_eligible(attempt),
+        appeal=appeal, can_appeal=can_appeal,
+    )
+
+
+def _appeal_eligibility(attempt, existing_appeal=None):
+    """(can_appeal, reason_if_not). An attempt is appealable when it's
+    finished and the proctoring pipeline actually acted on it —
+    terminated, or submitted with recorded violations — since there's
+    nothing to contest on a clean attempt. Bounded by APPEAL_WINDOW_DAYS
+    from when the attempt ended, so appeals can't reopen year-old
+    results, and limited to one per attempt."""
+    if attempt.status == "in_progress":
+        return False, "This attempt is still in progress."
+    if existing_appeal is not None:
+        return False, "You have already appealed this attempt."
+    if attempt.status != "terminated" and not attempt.violation_count:
+        return False, "There is no proctoring outcome on this attempt to appeal."
+    ended = attempt.submitted_at or attempt.started_at
+    window = current_app.config.get("APPEAL_WINDOW_DAYS", 14)
+    if ended and datetime.utcnow() - ended > timedelta(days=window):
+        return False, f"The {window}-day appeal window for this attempt has closed."
+    return True, None
+
+
+@bp.route("/attempts/<int:attempt_id>/appeal", methods=["GET", "POST"])
+@student_required
+def appeal_attempt(attempt_id):
+    """Appeals: lets a student ask a human to re-examine a proctoring
+    outcome instead of the automated decision being final. A granted
+    appeal gives one extra attempt (see admin.resolve_appeal) — it
+    never edits the original attempt."""
+    attempt = Attempt.query.get_or_404(attempt_id)
+    if attempt.student_id != current_user.id:
+        abort(403)
+    existing = Appeal.query.filter_by(attempt_id=attempt.id).first()
+    can_appeal, block_reason = _appeal_eligibility(attempt, existing)
+
+    form = AppealForm()
+    if can_appeal and form.validate_on_submit():
+        appeal = Appeal(attempt_id=attempt.id, student_id=current_user.id, reason=form.reason.data.strip())
+        db.session.add(appeal)
+        db.session.commit()
+        notify_appeal_submitted(appeal)
+        flash("Your appeal has been submitted. You'll be emailed once it has been reviewed.", "success")
+        return redirect(url_for("student.result", attempt_id=attempt.id))
+
+    return render_template(
+        "student/appeal.html", attempt=attempt, test=attempt.test, form=form,
+        appeal=existing, can_appeal=can_appeal, block_reason=block_reason,
     )
 
 

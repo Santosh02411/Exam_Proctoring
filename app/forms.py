@@ -116,6 +116,53 @@ class AccommodationApproveForm(FlaskForm):
     pass
 
 
+class AppealForm(FlaskForm):
+    """A student contesting a proctoring outcome (see app.models.Appeal).
+    The minimum length is deliberate: a one-word appeal gives the
+    reviewer nothing to act on."""
+    reason = TextAreaField(
+        "Why should this be reviewed?",
+        validators=[DataRequired(), Length(min=20, max=2000, message="Please explain in at least 20 characters (max 2000).")],
+    )
+
+
+class AppealDecisionForm(FlaskForm):
+    """CSRF + an optional note to the student, shared by grant and deny —
+    the decision itself comes from which endpoint was posted to."""
+    admin_note = TextAreaField("Note to the student (optional)", validators=[Optional(), Length(max=1000)])
+
+
+class ProctorMessageForm(FlaskForm):
+    """A short message sent to a student mid-exam from the Live Monitor."""
+    body = StringField("Message", validators=[DataRequired(), Length(max=300)])
+
+
+class ProctorTerminateForm(FlaskForm):
+    """Ending someone's exam is not something to do without saying why —
+    the reason is shown to the student and stored on the attempt."""
+    reason = StringField("Reason", validators=[DataRequired(), Length(min=3, max=200)])
+
+
+class AttemptReviewForm(FlaskForm):
+    """A reviewer's conclusion on a flagged attempt (see
+    app.models.AttemptReview). Written notes are required for anything
+    other than "cleared": a misconduct finding or an escalation with no
+    stated reasoning is exactly the record nobody can defend later."""
+    decision = SelectField("Decision", choices=[
+        ("cleared", "Cleared — no misconduct found"),
+        ("confirmed", "Confirmed — misconduct"),
+        ("escalated", "Escalate — needs follow-up"),
+    ], validators=[DataRequired()])
+    # No Optional() here on purpose: it short-circuits the whole validator
+    # chain (including validate_notes below) on blank input, which is the
+    # exact case the "notes required" rule has to catch.
+    notes = TextAreaField("Notes", validators=[Length(max=2000)])
+
+    def validate_notes(self, field):
+        if self.decision.data in ("confirmed", "escalated") and not (field.data or "").strip():
+            raise ValidationError("Please write down your reasoning for this decision.")
+
+
 class NotificationPreferencesForm(FlaskForm):
     """CSRF-only — the actual per-notif_type email/sms checkboxes (see
     app.notifications.NOTIFICATION_PREF_LABELS) are rendered and parsed

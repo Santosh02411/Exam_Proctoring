@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Appeal — {{ test.title }}{% endblock %}
+{% block content %}
+<div style="margin-bottom:16px">
+  <a class="small" href="{{ url_for('student.result', attempt_id=attempt.id) }}">&larr; Back to result</a>
+  <h1 style="margin-top:8px">Appeal a proctoring outcome</h1>
+  <div class="lead">{{ test.title }}</div>
+</div>
+
+<div class="card" style="max-width:560px;margin-bottom:16px">
+  <h3 style="margin-top:0">What is being appealed</h3>
+  {% if attempt.status == 'terminated' %}
+    <div class="small">This attempt was terminated: {{ attempt.termination_reason }}</div>
+  {% else %}
+    <div class="small">{{ attempt.violation_count }} proctoring violation(s) were recorded on this attempt.</div>
+  {% endif %}
+</div>
+
+{% if appeal %}
+<div class="card" style="max-width:560px">
+  <h3 style="margin-top:0">Your appeal</h3>
+  <div class="small" style="margin-bottom:8px">Submitted {{ appeal.created_at.strftime('%Y-%m-%d %H:%M') }} UTC</div>
+  <div style="white-space:pre-wrap;margin-bottom:12px">{{ appeal.reason }}</div>
+  <span class="badge {{ 'published' if appeal.status == 'granted' else ('inactive' if appeal.status == 'denied' else 'draft') }}">
+    {{ 'Pending review' if appeal.status == 'pending' else appeal.status|capitalize }}
+  </span>
+  {% if appeal.status == 'granted' %}
+    <div class="small" style="margin-top:10px">You have been given one additional attempt on this test.</div>
+  {% endif %}
+  {% if appeal.admin_note %}
+    <div class="small" style="margin-top:10px"><strong>Reviewer's note:</strong> {{ appeal.admin_note }}</div>
+  {% endif %}
+</div>
+{% elif can_appeal %}
+<div class="card" style="max-width:560px">
+  <form method="post" novalidate>
+    {{ form.hidden_tag() }}
+    <div class="field">
+      <label for="{{ form.reason.id }}">{{ form.reason.label.text }}</label>
+      {{ form.reason(rows=6, placeholder="Describe what happened — e.g. a technical problem, an interruption, or why you believe the flagged behavior was not misconduct.") }}
+      {% for e in form.reason.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+    </div>
+    <div class="small" style="margin-bottom:12px">A person will review the recorded events and your explanation. You can appeal each attempt once.</div>
+    <button type="submit" class="btn">Submit Appeal</button>
+  </form>
+</div>
+{% else %}
+<div class="card" style="max-width:560px">
+  <div class="flash flash-info" style="margin-bottom:0">{{ block_reason }}</div>
+</div>
+{% endif %}
+{% endblock %}

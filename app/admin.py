@@ -10,7 +10,7 @@ from datetime import datetime, date
 
 from flask import (
     Blueprint, render_template, redirect, url_for, flash, request, abort, Response, current_app,
-    stream_with_context,
+    stream_with_context, jsonify,
 )
 from flask_login import current_user
 from werkzeug.utils import secure_filename
@@ -20,12 +20,13 @@ from app.forms import (
     TestForm, QuestionForm, QuestionImportForm, UserImportForm, QuestionBankForm, SectionForm,
     RetentionPolicyForm, BrandingForm, ApiKeyForm, LmsWebhookForm, CertificateSettingsForm, ProctoringPolicyForm,
     AccessControlForm, AccommodationApproveForm, AccommodationDenyForm, CohortForm, AssignProctorForm,
+    AppealDecisionForm, ProctorMessageForm, ProctorTerminateForm, AttemptReviewForm,
 )
 from app.models import (
     Test, Question, User, TestEligibility, Attempt, Answer, ProctoringEvent, AdminActivityLog,
     QuestionBankItem, Section, IdentityDocument, NotificationLog, AnswerSimilarityFlag,
     LoginSession, LoginSecurityEvent, ApiKey, Organization, AccommodationRequest, QuestionRevision,
-    Cohort, CohortMembership, gen_user_id, recompute_attempt_score,
+    Cohort, CohortMembership, Appeal, ProctorMessage, AttemptReview, gen_user_id, recompute_attempt_score,
 )
 from app.proctoring import compute_suspicion_score, build_timeline, get_live_alerts_since, EVENT_TYPE_LABELS
 from app.utils import (
@@ -36,7 +37,7 @@ from app.activity_log import log_activity
 from app.email_utils import send_email
 from app.notifications import (
     notify_exam_scheduled, notify_result_published_if_now_complete, send_starting_soon_reminders,
-    notify_accommodation_resolved,
+    notify_accommodation_resolved, notify_appeal_resolved,
 )
 from app import analytics
 from app import proctoring
@@ -49,6 +50,7 @@ from app import retention as retention_module
 from app import org_export
 from app import org_reports
 from app import branding as branding_module
+from app import attempt_report
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
 
@@ -147,7 +149,7 @@ def dashboard():
         tests = org_scope(Test.query, Test).order_by(Test.created_at.desc()).all()
         total_attempts = Attempt.query.join(Test).filter(Test.org_id == current_org_id()).count()
     else:
-        tests = Test.query.filter_by(created_by=current_user.id).order_by(Test.created_at.desc()).all()
+        tests = Test.query.filter_by(created_by=current_user.id, deleted_at=None).order_by(Test.created_at.desc()).all()
         total_attempts = Attempt.query.join(Test).filter(Test.created_by == current_user.id).count()
     total_students = User.query.filter_by(role="student", org_id=current_org_id()).count()
     return render_template(
@@ -256,14 +258,61 @@ def calendar_view():
 @bp.route("/tests/<int:test_id>/delete", methods=["POST"])
 @content_access
 def delete_test(test_id):
+    """Trash / Soft Delete: marks the test deleted_at instead of removing
+    it outright — the actual row (and every question/attempt/recording
+    that cascades from it) stays intact until an explicit "Delete
+    Permanently" from the Trash page. A misclick here is now recoverable;
+    it wasn't before this feature existed, and this endpoint used to be
+    an immediate, irreversible db.session.delete(test)."""
     test = Test.query.get_or_404(test_id)
     ensure_same_org(test)
+    test.deleted_at = datetime.utcnow()
+    db.session.commit()
+    log_activity("deleted_test", f"Moved test '{test.title}' to Trash")
+    flash("Test moved to Trash. You can restore it from Manage Tests → Trash.", "success")
+    return redirect(url_for("admin.manage_tests"))
+
+
+@bp.route("/tests/trash")
+@content_access
+def test_trash():
+    tests = Test.query.filter(
+        Test.org_id == current_org_id(), Test.deleted_at.isnot(None),
+    ).order_by(Test.deleted_at.desc()).all()
+    return render_template("admin/test_trash.html", tests=tests)
+
+
+@bp.route("/tests/<int:test_id>/restore", methods=["POST"])
+@content_access
+def restore_test(test_id):
+    test = Test.query.get_or_404(test_id)
+    ensure_same_org(test)
+    test.deleted_at = None
+    db.session.commit()
+    log_activity("restored_test", f"Restored test '{test.title}' from Trash")
+    flash(f"'{test.title}' restored.", "success")
+    return redirect(url_for("admin.test_trash"))
+
+
+@bp.route("/tests/<int:test_id>/delete-permanently", methods=["POST"])
+@content_access
+def delete_test_permanently(test_id):
+    """The actual, irreversible delete — only reachable from the Trash
+    page, and only for a test that's already been soft-deleted (a test
+    still in active use can't skip straight to permanent deletion; it
+    has to go to Trash first, same two-step confirmation an emptied
+    Recycle Bin gives you everywhere else)."""
+    test = Test.query.get_or_404(test_id)
+    ensure_same_org(test)
+    if not test.deleted_at:
+        flash("Move this test to Trash first before deleting it permanently.", "error")
+        return redirect(url_for("admin.manage_tests"))
     title = test.title
     db.session.delete(test)
     db.session.commit()
-    log_activity("deleted_test", f"Deleted test '{title}'")
-    flash("Test deleted.", "success")
-    return redirect(url_for("admin.manage_tests"))
+    log_activity("permanently_deleted_test", f"Permanently deleted test '{title}'")
+    flash(f"'{title}' permanently deleted.", "success")
+    return redirect(url_for("admin.test_trash"))
 
 
 @bp.route("/tests/<int:test_id>/toggle", methods=["POST"])
@@ -1170,9 +1219,71 @@ def view_attempt(attempt_id):
     quality = proctoring.compute_quality_score(attempt)
     timeline = build_timeline(attempt)
     patterns = proctoring.detect_behavioral_patterns(attempt)
+    review = AttemptReview.query.filter_by(attempt_id=attempt.id).first()
+    review_form = AttemptReviewForm(decision=review.decision if review else "cleared", notes=review.notes if review else "")
     return render_template(
         "admin/view_attempt.html", attempt=attempt, events=events, risk=risk, timeline=timeline,
-        patterns=patterns, quality=quality,
+        patterns=patterns, quality=quality, review=review, review_form=review_form,
+    )
+
+
+@bp.route("/attempts/<int:attempt_id>/review", methods=["POST"])
+@review_access
+def review_attempt(attempt_id):
+    """Record (or update) a reviewer's conclusion on a finished attempt —
+    see app.models.AttemptReview. Refused while the attempt is still in
+    progress: a conclusion reached before the evidence is complete isn't
+    one, and the Live Monitor is the right tool for mid-exam action."""
+    attempt = Attempt.query.get_or_404(attempt_id)
+    ensure_same_org(attempt.test)
+    if attempt.status == "in_progress":
+        flash("This attempt is still in progress — review it once it has ended.", "error")
+        return redirect(url_for("admin.view_attempt", attempt_id=attempt.id))
+
+    form = AttemptReviewForm()
+    if not form.validate_on_submit():
+        for errors in form.errors.values():
+            for e in errors:
+                flash(e, "error")
+        return redirect(url_for("admin.view_attempt", attempt_id=attempt.id))
+
+    review = AttemptReview.query.filter_by(attempt_id=attempt.id).first()
+    previous = review.decision if review else None
+    if review is None:
+        review = AttemptReview(attempt_id=attempt.id, reviewer_id=current_user.id, decision=form.decision.data)
+        db.session.add(review)
+    review.decision = form.decision.data
+    review.notes = (form.notes.data or "").strip() or None
+    review.reviewer_id = current_user.id
+    review.reviewed_at = datetime.utcnow()
+    db.session.commit()
+
+    verb = "Recorded" if previous is None else f"Changed ({previous} → {review.decision})"
+    log_activity(
+        f"reviewed_attempt_{review.decision}",
+        f"{verb} review of {attempt.student.name}'s attempt on '{attempt.test.title}': {review.decision}",
+    )
+    flash("Review saved.", "success")
+    return redirect(url_for("admin.view_attempt", attempt_id=attempt.id))
+
+
+@bp.route("/attempts/<int:attempt_id>/report.pdf")
+@review_access
+def export_attempt_report(attempt_id):
+    """One-attempt incident report (PDF) — see app.attempt_report."""
+    attempt = Attempt.query.get_or_404(attempt_id)
+    ensure_same_org(attempt.test)
+    events = ProctoringEvent.query.filter_by(attempt_id=attempt.id).order_by(ProctoringEvent.created_at).all()
+    pdf_bytes = attempt_report.render_attempt_report_pdf(
+        attempt, events, compute_suspicion_score(attempt),
+        review=AttemptReview.query.filter_by(attempt_id=attempt.id).first(),
+        appeal=Appeal.query.filter_by(attempt_id=attempt.id).first(),
+    )
+    filename = f"incident_report_attempt{attempt.id}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.pdf"
+    log_activity("exported_attempt_report", f"Exported incident report for {attempt.student.name}'s attempt on '{attempt.test.title}'")
+    return Response(
+        pdf_bytes, mimetype="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
 
 
@@ -1299,6 +1410,16 @@ def proctor_queue():
         Test.org_id == current_org_id(),
         db.or_(Attempt.status == "terminated", Attempt.violation_count > 0),
     )
+    # Reviewed-status filter: "pending" = nobody has recorded a conclusion
+    # yet (the work still to do); or one of the three decisions. Anything
+    # else (including no parameter) shows everything, as before.
+    review_filter = request.args.get("review", "all")
+    if review_filter == "pending":
+        query = query.outerjoin(AttemptReview, AttemptReview.attempt_id == Attempt.id).filter(AttemptReview.id.is_(None))
+    elif review_filter in AttemptReview.DECISIONS:
+        query = query.join(AttemptReview, AttemptReview.attempt_id == Attempt.id).filter(AttemptReview.decision == review_filter)
+    else:
+        review_filter = "all"
     if mine_only:
         query = query.filter(Attempt.assigned_proctor_id == current_user.id)
     if sort == "recent":
@@ -1317,9 +1438,14 @@ def proctor_queue():
     reviewers = User.query.filter(
         User.org_id == current_org_id(), User.role.in_(["admin", "proctor"]), User.status == "active",
     ).order_by(User.name).all()
+    decisions = {
+        r.attempt_id: r.decision
+        for r in AttemptReview.query.filter(AttemptReview.attempt_id.in_([a.id for a in pagination.items])).all()
+    } if pagination.items else {}
     return render_template(
         "admin/proctor_queue.html", pagination=pagination, attempts=pagination.items, sort=sort,
         top_reasons=top_reasons, reviewers=reviewers, mine_only=mine_only, assign_form=AssignProctorForm(),
+        review_filter=review_filter, decisions=decisions,
     )
 
 
@@ -1408,6 +1534,223 @@ def proctor_alerts_stream():
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
     return response
+
+
+# ---------------------------------------------------------------------------
+# Live Monitor: a real-time roster of in-progress attempts in the current
+# organization, with the two interventions a proctor actually needs mid-exam
+# — message the student, or end the attempt. The bell/alert stream above
+# only pushes *high-severity events*; it can't answer "who is taking an exam
+# right now, and is anyone quietly in trouble?", and offered no way to act
+# on a problem short of waiting for the auto-terminate threshold. Polled
+# JSON (like the alert stream, DB-backed rather than a broker) so it works
+# the same across multiple worker processes.
+# ---------------------------------------------------------------------------
+
+@bp.route("/live")
+@review_access
+def live_monitor():
+    return render_template(
+        "admin/live_monitor.html", message_form=ProctorMessageForm(), terminate_form=ProctorTerminateForm(),
+    )
+
+
+@bp.route("/live/data")
+@review_access
+def live_monitor_data():
+    now = datetime.utcnow()
+    no_signal_after = current_app.config.get("LIVE_MONITOR_NO_SIGNAL_SECONDS", 60)
+    attempts = (
+        Attempt.query.join(Test, Attempt.test_id == Test.id)
+        .filter(Attempt.status == "in_progress", Test.org_id == current_org_id())
+        .order_by(Attempt.suspicion_score.desc(), Attempt.started_at)
+        .all()
+    )
+
+    # Most recent warning/violation per attempt, in one query rather than
+    # one per row.
+    latest_by_attempt = {}
+    if attempts:
+        latest_ids = (
+            db.session.query(db.func.max(ProctoringEvent.id))
+            .filter(
+                ProctoringEvent.attempt_id.in_([a.id for a in attempts]),
+                ProctoringEvent.severity.in_(["warning", "violation"]),
+            )
+            .group_by(ProctoringEvent.attempt_id)
+        )
+        for ev in ProctoringEvent.query.filter(ProctoringEvent.id.in_(latest_ids)).all():
+            latest_by_attempt[ev.attempt_id] = ev
+
+    rows = []
+    for a in attempts:
+        last_seen = a.session_last_seen_at or a.started_at
+        idle = (now - last_seen).total_seconds() if last_seen else None
+        ev = latest_by_attempt.get(a.id)
+        rows.append({
+            "attempt_id": a.id,
+            "student_name": a.student.name,
+            "test_title": a.test.title,
+            "elapsed_seconds": int((now - a.started_at).total_seconds()) if a.started_at else 0,
+            "violation_count": a.violation_count,
+            "suspicion_score": a.suspicion_score,
+            "risk_level": a.risk_level,
+            "connection": "no_signal" if idle is None or idle > no_signal_after else "online",
+            "idle_seconds": int(idle) if idle is not None else None,
+            "last_event": (
+                {
+                    "label": EVENT_TYPE_LABELS.get(ev.event_type, ev.event_type.replace("_", " ")),
+                    "severity": ev.severity,
+                    "at": ev.created_at.strftime("%H:%M:%S"),
+                } if ev else None
+            ),
+            "view_url": url_for("admin.view_attempt", attempt_id=a.id),
+        })
+    return jsonify({"ok": True, "server_time": now.strftime("%H:%M:%S"), "attempts": rows})
+
+
+def _live_action_attempt(attempt_id):
+    """Shared guard for the two Live Monitor actions: the attempt must be
+    in the caller's organization. Returns (attempt, error_response) — an
+    already-finished attempt is a normal race (the student submitted a
+    second before the proctor clicked), reported as a 409 instead of
+    silently doing nothing."""
+    attempt = Attempt.query.get_or_404(attempt_id)
+    ensure_same_org(attempt.test)
+    if attempt.status != "in_progress":
+        return attempt, (jsonify({"ok": False, "error": "This attempt is no longer in progress."}), 409)
+    return attempt, None
+
+
+def _first_form_error(form):
+    for errors in form.errors.values():
+        if errors:
+            return errors[0]
+    return "Invalid request."
+
+
+@bp.route("/attempts/<int:attempt_id>/message", methods=["POST"])
+@review_access
+def send_proctor_message(attempt_id):
+    attempt, error = _live_action_attempt(attempt_id)
+    if error:
+        return error
+    form = ProctorMessageForm()
+    if not form.validate_on_submit():
+        return jsonify({"ok": False, "error": _first_form_error(form)}), 400
+    body = form.body.data.strip()
+    if not body:
+        return jsonify({"ok": False, "error": "Message can't be empty."}), 400
+
+    db.session.add(ProctorMessage(attempt_id=attempt.id, sender_id=current_user.id, body=body))
+    # Recorded on the attempt's own timeline too (info severity — never
+    # counted as a violation or scored) so a reviewer replaying the attempt
+    # later can see exactly what the student was told and when.
+    db.session.add(ProctoringEvent(
+        attempt_id=attempt.id, event_type="proctor_message", severity="info",
+        details=f"{current_user.name}: {body}"[:500],
+    ))
+    db.session.commit()
+    log_activity("sent_proctor_message", f"Sent a live message to {attempt.student.name} on '{attempt.test.title}'")
+    return jsonify({"ok": True})
+
+
+@bp.route("/attempts/<int:attempt_id>/terminate", methods=["POST"])
+@review_access
+def terminate_attempt(attempt_id):
+    attempt, error = _live_action_attempt(attempt_id)
+    if error:
+        return error
+    form = ProctorTerminateForm()
+    if not form.validate_on_submit():
+        return jsonify({"ok": False, "error": _first_form_error(form)}), 400
+    reason = form.reason.data.strip()
+
+    # Same end state as an automatic termination (see
+    # proctoring._record_violation) so everything downstream — the result
+    # page, the review queue, notifications, retakes — treats it
+    # identically; the only difference is who decided.
+    attempt.status = "terminated"
+    attempt.termination_reason = f"Ended by a proctor: {reason}"
+    attempt.submitted_at = datetime.utcnow()
+    db.session.add(ProctoringEvent(
+        attempt_id=attempt.id, event_type="proctor_terminated", severity="info",
+        details=f"{current_user.name}: {reason}"[:500],
+    ))
+    db.session.commit()
+    proctoring._notify_termination(attempt)
+    log_activity("proctor_terminated_attempt", f"Ended {attempt.student.name}'s attempt on '{attempt.test.title}': {reason}")
+    return jsonify({"ok": True})
+
+
+# ---------------------------------------------------------------------------
+# Appeals: the human-review path for a student contesting a proctoring
+# outcome (see student.appeal_attempt / app.models.Appeal).
+# ---------------------------------------------------------------------------
+
+def _org_appeals_query():
+    return (
+        Appeal.query.join(Attempt, Appeal.attempt_id == Attempt.id)
+        .join(Test, Attempt.test_id == Test.id)
+        .filter(Test.org_id == current_org_id())
+    )
+
+
+@bp.route("/appeals")
+@review_access
+def appeals():
+    pending = _org_appeals_query().filter(Appeal.status == "pending").order_by(Appeal.created_at).all()
+    resolved = (
+        _org_appeals_query().filter(Appeal.status != "pending")
+        .order_by(Appeal.resolved_at.desc()).limit(30).all()
+    )
+    return render_template("admin/appeals.html", pending=pending, resolved=resolved, decision_form=AppealDecisionForm())
+
+
+@bp.route("/appeals/<int:appeal_id>/<string:decision>", methods=["POST"])
+@review_access
+def resolve_appeal(appeal_id, decision):
+    """Grant (gives the student one extra attempt on this test, via the
+    same TestEligibility.extra_attempts an admin would set by hand — the
+    original attempt's record is never altered) or deny an appeal."""
+    if decision not in ("grant", "deny"):
+        abort(404)
+    appeal = Appeal.query.get_or_404(appeal_id)
+    ensure_same_org(appeal.attempt.test)
+    if appeal.status != "pending":
+        flash("This appeal has already been decided.", "error")
+        return redirect(url_for("admin.appeals"))
+
+    form = AppealDecisionForm()
+    if not form.validate_on_submit():
+        flash("Something went wrong — please try again.", "error")
+        return redirect(url_for("admin.appeals"))
+
+    test = appeal.attempt.test
+    if decision == "grant":
+        eligibility = TestEligibility.query.filter_by(test_id=test.id, student_id=appeal.student_id).first()
+        if not eligibility:
+            eligibility = TestEligibility(test_id=test.id, student_id=appeal.student_id)
+            db.session.add(eligibility)
+        eligibility.extra_attempts = (eligibility.extra_attempts or 0) + 1
+        appeal.status = "granted"
+    else:
+        appeal.status = "denied"
+    appeal.admin_note = (form.admin_note.data or "").strip() or None
+    appeal.resolved_by_id = current_user.id
+    appeal.resolved_at = datetime.utcnow()
+    db.session.commit()
+
+    notify_appeal_resolved(appeal)
+    log_activity(
+        f"{appeal.status}_appeal",
+        f"{'Granted' if decision == 'grant' else 'Denied'} {appeal.student.name}'s appeal on '{test.title}'",
+    )
+    flash(
+        "Appeal granted — the student has one extra attempt and has been notified." if decision == "grant"
+        else "Appeal denied — the student has been notified.", "success",
+    )
+    return redirect(url_for("admin.appeals"))
 
 
 @bp.route("/activity-log")

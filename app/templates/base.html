@@ -53,6 +53,7 @@
           {% if not session.get('impersonate_org_id') %}<a href="{{ url_for('admin.create_test') }}">+ New Test</a>{% endif %}
           <a href="{{ url_for('admin.manage_bank') }}">Question Bank</a>
           <a href="{{ url_for('admin.proctor_queue') }}">Review Queue</a>
+          <a href="{{ url_for('admin.live_monitor') }}">Live Monitor</a>
           <a href="{{ url_for('admin.analytics_overview') }}">Analytics</a>
           {% if current_user.role == 'admin' %}
             <a href="{{ url_for('admin.manage_users') }}">Manage Users</a>
@@ -68,6 +69,7 @@
                 <a href="{{ url_for('admin.branding_settings') }}">Branding</a>
                 <a href="{{ url_for('admin.api_keys') }}">API Access</a>
                 <a href="{{ url_for('admin.access_control_settings') }}">Access Control</a>
+                <a href="{{ url_for('admin.appeals') }}">Appeals</a>
                 <a href="{{ url_for('admin.accommodation_requests') }}">Accommodation Requests</a>
                 <a href="{{ url_for('admin.manage_cohorts') }}">Cohorts</a>
               </div>
@@ -75,6 +77,8 @@
           {% endif %}
         {% elif current_user.role == 'proctor' %}
           <a href="{{ url_for('admin.proctor_queue') }}">Review Queue</a>
+          <a href="{{ url_for('admin.live_monitor') }}">Live Monitor</a>
+          <a href="{{ url_for('admin.appeals') }}">Appeals</a>
           <a href="{{ url_for('admin.analytics_overview') }}">Analytics</a>
         {% else %}
           <a href="{{ url_for('student.dashboard') }}">My Tests</a>
