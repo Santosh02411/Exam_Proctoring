@@ -1,0 +1,21 @@
+{% from "_icons.html" import icon %}
+{% from "_components.html" import meter %}
+<section class="auth-hero" aria-label="About Exam Proctoring">
+  <a class="side-brand" href="{{ url_for('index') }}"><span class="mark">{{ icon('shield', 18) }}</span><span>Exam Proctoring</span></a>
+
+  <div>
+    <h2>Fair exams, with a paper trail.</h2>
+    <p>Proctored online exams where every flag comes with evidence, and every decision comes with a reason.</p>
+    <ul class="auth-points">
+      <li>{{ icon('pulse', 20) }}<span>Reviewers see who is testing right now, and can message a student or end an attempt.</span></li>
+      <li>{{ icon('eye', 20) }}<span>Each flag links to the event log, snapshots and a plain-language explanation.</span></li>
+      <li>{{ icon('scale', 20) }}<span>Students can appeal an outcome, and the record shows who decided and why.</span></li>
+    </ul>
+  </div>
+
+  <div class="auth-log" aria-hidden="true">
+    <div><time>10:02</time><span>Switched away from the exam tab</span>{{ meter(12, 'low', show_text=false) }}</div>
+    <div><time>10:07</time><span>Second face in the camera frame</span>{{ meter(48, 'medium', show_text=false) }}</div>
+    <div><time>10:09</time><span>Phone detected in frame</span>{{ meter(85, 'critical', show_text=false) }}</div>
+  </div>
+</section>
