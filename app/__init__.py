@@ -137,6 +137,46 @@ def create_app(config_object="config.Config"):
     def _inject_sso_flags():
         return {"google_sso_enabled": sso_module.google_enabled(), "microsoft_sso_enabled": sso_module.microsoft_enabled()}
 
+    @app.context_processor
+    def _inject_staff_counts():
+        """Glanceable counts for the staff sidebar: exams in progress right
+        now, finished attempts flagged but not yet reviewed, and appeals
+        awaiting a decision. Three cheap COUNTs per staff page load. Strictly
+        best-effort — a failure here must never take a page down, so it falls
+        back to "no counts" (the sidebar simply shows none)."""
+        from flask_login import current_user as cu
+
+        try:
+            if not cu.is_authenticated or cu.role not in ("admin", "examiner", "proctor", "super_admin"):
+                return {"staff_counts": None}
+            from app.utils import current_org_id
+            from app.models import Attempt, Test, Appeal, AttemptReview
+
+            org_id = current_org_id()
+            if org_id is None:
+                return {"staff_counts": None}
+            live = (
+                Attempt.query.join(Test, Attempt.test_id == Test.id)
+                .filter(Test.org_id == org_id, Attempt.status == "in_progress").count()
+            )
+            unreviewed = (
+                Attempt.query.join(Test, Attempt.test_id == Test.id)
+                .outerjoin(AttemptReview, AttemptReview.attempt_id == Attempt.id)
+                .filter(
+                    Test.org_id == org_id, AttemptReview.id.is_(None), Attempt.status != "in_progress",
+                    db.or_(Attempt.status == "terminated", Attempt.violation_count > 0),
+                ).count()
+            )
+            appeals = (
+                Appeal.query.join(Attempt, Appeal.attempt_id == Attempt.id)
+                .join(Test, Attempt.test_id == Test.id)
+                .filter(Test.org_id == org_id, Appeal.status == "pending").count()
+            )
+            return {"staff_counts": {"live": live, "unreviewed": unreviewed, "appeals": appeals}}
+        except Exception:
+            db.session.rollback()
+            return {"staff_counts": None}
+
     @app.route("/branding/logo/<int:org_id>")
     def branding_logo(org_id):
         from flask import send_from_directory, abort as flask_abort

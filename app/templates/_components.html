@@ -1,0 +1,7 @@
+{# Shared UI pieces. #}
+{# Risk meter: a segmented gauge of the 0-100 suspicion score. The score is
+   also written out ("85/100") and the level named alongside it by the caller,
+   so the colour is never the only carrier of the information. #}
+{% macro meter(score, level, size='', show_text=true) -%}
+<span class="meter {{ size }}" data-level="{{ level }}" role="img" aria-label="Suspicion score {{ score }} out of 100, {{ level }} risk"><span class="meter-bar"><i style="--v:{{ score }}"></i></span>{% if show_text %}<span class="meter-num">{{ score }}/100</span>{% endif %}</span>
+{%- endmacro %}

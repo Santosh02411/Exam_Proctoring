@@ -476,6 +476,33 @@ before rendering. Each export is written to the activity log.
 
 Adds one new table (`attempt_reviews`), created automatically on startup.
 
+## Interface & design
+
+The UI is a single stylesheet (`app/static/css/style.css`, a token-based design system with a
+light and a dark theme) plus a shared shell in `app/templates/base.html`. Because every page
+inherits both, restyling the app means editing those two files rather than each template.
+
+- **Shell.** Staff (admin / examiner / proctor / super_admin) get a grouped left sidebar; students
+  get a top bar; the login/registration pages are a split screen with no nav. The sidebar's
+  long settings group folds away, and below 900px it becomes a slide-over menu.
+- **Live counts.** The sidebar shows exams in progress, finished attempts flagged but not yet
+  reviewed, and pending appeals. They come from a small, best-effort context processor
+  (`_inject_staff_counts` in `app/__init__.py`): three cheap `COUNT`s per staff page, and any
+  failure just hides the badges rather than breaking the page.
+- **Risk meter.** The segmented gauge for the 0-100 suspicion score (`.meter`, macro in
+  `_components.html`) is used identically in the review queue, dashboard, live monitor, appeals
+  and attempt pages. The score and level are always written out too, so colour is never the only
+  signal. Table rows carry a matching severity edge (`.rail-low|medium|high|critical`).
+- **Typography.** Newsreader (page titles and headline numerals), Instrument Sans (interface),
+  IBM Plex Mono (scores, times, ids). All three are **self-hosted** under `app/static/fonts/`
+  (SIL Open Font License, see `LICENSES.txt` there), so the app makes no third-party font
+  requests and works on an offline network.
+- **Icons** are inline SVG (`_icons.html`), not emoji or an icon font.
+- **Accessibility.** Visible keyboard focus, a skip link, `prefers-reduced-motion` respected, and
+  `aria-current` on the active navigation item.
+- **Safe rendering of user data.** The live-alert bell builds its DOM with `textContent` — alert
+  labels and student names are user-supplied and must never be interpolated into HTML.
+
 ## Multi-tenancy (Institution / Organization Management)
 
 Every `Test`, `QuestionBankItem`, and non-`super_admin` `User` belongs to exactly one
@@ -567,7 +594,8 @@ than a fabricated "accepted".
 An organization's own admin (`/admin/branding`) or a super_admin on its behalf
 (`/organizations/<id>/branding`) can upload a logo and set a primary accent color
 (`app.branding`), applied to that org's users via a small CSS custom-property override and a
-logo swap in the nav bar. Logo upload and color are two independent actions/forms, not one
+logo swap in the sidebar / top bar. The sidebar's pine background is fixed page chrome and
+does not follow the accent color; buttons, links, focus rings and highlights do. Logo upload and color are two independent actions/forms, not one
 combined submit — an HTML5 `type="color"` input can never be truly empty, so a shared submit
 button would silently overwrite the org's color with black every time someone only meant to
 upload a logo. Branding only ever applies **after** login; there's no per-org subdomain, so an

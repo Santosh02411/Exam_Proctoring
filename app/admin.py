@@ -152,8 +152,34 @@ def dashboard():
         tests = Test.query.filter_by(created_by=current_user.id, deleted_at=None).order_by(Test.created_at.desc()).all()
         total_attempts = Attempt.query.join(Test).filter(Test.created_by == current_user.id).count()
     total_students = User.query.filter_by(role="student", org_id=current_org_id()).count()
+
+    # "What needs me right now": the highest-risk finished attempts nobody has
+    # reviewed yet, and who is in an exam at this moment. Both are
+    # organization-wide (like the Review Queue and Live Monitor they link to),
+    # not limited to tests this user created.
+    org_id = current_org_id()
+    needs_review = (
+        Attempt.query.join(Test, Attempt.test_id == Test.id)
+        .outerjoin(AttemptReview, AttemptReview.attempt_id == Attempt.id)
+        .filter(
+            Test.org_id == org_id, AttemptReview.id.is_(None), Attempt.status != "in_progress",
+            db.or_(Attempt.status == "terminated", Attempt.violation_count > 0),
+        )
+        .order_by(Attempt.suspicion_score.desc(), Attempt.started_at.desc()).limit(5).all()
+    )
+    top_reasons = {}
+    for a in needs_review:
+        reasons = compute_suspicion_score(a).get("reasons") or []
+        if reasons:
+            top_reasons[a.id] = reasons[0]
+    live_now = (
+        Attempt.query.join(Test, Attempt.test_id == Test.id)
+        .filter(Test.org_id == org_id, Attempt.status == "in_progress")
+        .order_by(Attempt.suspicion_score.desc(), Attempt.started_at).limit(5).all()
+    )
     return render_template(
-        "admin/dashboard.html", tests=tests, total_students=total_students, total_attempts=total_attempts
+        "admin/dashboard.html", tests=tests, total_students=total_students, total_attempts=total_attempts,
+        needs_review=needs_review, top_reasons=top_reasons, live_now=live_now,
     )
 
 
