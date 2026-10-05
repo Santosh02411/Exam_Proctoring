@@ -1,15 +1,15 @@
 {% extends "base.html" %}
 {% block title %}Live Monitor{% endblock %}
 {% block content %}
-<div class="page-head">
+<div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px;margin-bottom:16px">
   <div>
     <h1>Live Monitor</h1>
     <div class="lead">Everyone currently taking an exam, highest risk first. Refreshes every few seconds.</div>
   </div>
-  <div class="badge live" id="liveStatus" aria-live="polite">Loading…</div>
+  <div class="small" id="liveStatus" aria-live="polite">Loading…</div>
 </div>
 
-<div class="card" id="actionPanel" style="display:none;margin-bottom:16px;border-left:4px solid var(--primary)">
+<div class="card" id="actionPanel" style="display:none;margin-bottom:16px">
   <div id="actionTitle" style="font-weight:700;margin-bottom:8px"></div>
   <form id="messageForm" style="display:none" novalidate>
     {{ message_form.hidden_tag() }}
@@ -26,12 +26,12 @@
   <div class="errors" id="actionError" style="display:none;margin-top:6px"></div>
 </div>
 
-<div class="card flush">
+<div class="card">
   <table class="table responsive-table" id="liveTable" style="display:none">
-    <thead><tr><th>Student</th><th>Test</th><th>Elapsed</th><th>Connection</th><th>Risk</th><th>Latest warning or violation</th><th></th></tr></thead>
+    <thead><tr><th>Student</th><th>Test</th><th>Elapsed</th><th>Connection</th><th>Violations</th><th>Risk</th><th>Latest event</th><th></th></tr></thead>
     <tbody id="liveBody"></tbody>
   </table>
-  <div class="empty" id="liveEmpty" style="display:none"><strong>No exams are in progress right now</strong>Students appear here the moment they start an exam.</div>
+  <div class="small" id="liveEmpty" style="display:none">No exams are in progress right now.</div>
 </div>
 
 <script>
@@ -54,12 +54,6 @@
   function fmtElapsed(s) {
     var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
     return (h ? h + 'h ' : '') + m + 'm';
-  }
-
-  function fmtIdle(s) {
-    if (s < 90) return s + 's';
-    if (s < 5400) return Math.round(s / 60) + 'm';
-    return Math.round(s / 3600) + 'h';
   }
 
   function cell(tr, label, node) {
@@ -86,47 +80,24 @@
     return btn;
   }
 
-  // Same segmented gauge as the review queue (see _components.html). Built with
-  // DOM calls rather than innerHTML; score/level come from the server.
-  function meter(score, level) {
-    var m = document.createElement('span');
-    m.className = 'meter';
-    m.setAttribute('data-level', level);
-    m.setAttribute('role', 'img');
-    m.setAttribute('aria-label', 'Suspicion score ' + score + ' out of 100, ' + level + ' risk');
-    var bar = document.createElement('span'); bar.className = 'meter-bar';
-    var fill = document.createElement('i'); fill.style.setProperty('--v', String(Math.max(0, Math.min(100, score))));
-    bar.appendChild(fill);
-    var num = document.createElement('span'); num.className = 'meter-num'; num.textContent = score + '/100';
-    m.appendChild(bar); m.appendChild(num);
-    return m;
-  }
-
   function render(rows) {
     body.textContent = '';
     table.style.display = rows.length ? '' : 'none';
     empty.style.display = rows.length ? 'none' : '';
     rows.forEach(function (r) {
       var tr = document.createElement('tr');
-      tr.className = 'rail-' + r.risk_level;
-      var who = document.createElement('div');
-      var name = document.createElement('span'); name.className = 'cell-strong'; name.textContent = r.student_name;
-      var sub = document.createElement('span'); sub.className = 'cell-sub'; sub.textContent = r.violation_count + ' violation' + (r.violation_count === 1 ? '' : 's');
-      who.appendChild(name); who.appendChild(sub);
-      cell(tr, 'Student', who);
+      var name = document.createElement('strong'); name.textContent = r.student_name;
+      cell(tr, 'Student', name);
       cell(tr, 'Test', r.test_title);
-      var el = cell(tr, 'Elapsed', fmtElapsed(r.elapsed_seconds)); el.className = 'mono nowrap';
+      cell(tr, 'Elapsed', fmtElapsed(r.elapsed_seconds));
       cell(tr, 'Connection', r.connection === 'online'
-        ? badge('Online', 'live')
-        : badge('No signal' + (r.idle_seconds == null ? '' : ' · ' + fmtIdle(r.idle_seconds)), 'inactive'));
-      cell(tr, 'Risk', meter(r.suspicion_score, r.risk_level));
-      var ev = cell(tr, 'Latest event', r.last_event ? r.last_event.label : '—');
-      if (r.last_event) {
-        var t = document.createElement('span'); t.className = 'cell-sub mono'; t.textContent = r.last_event.at + ' UTC';
-        ev.appendChild(t);
-      }
+        ? badge('Online', 'published')
+        : badge('No signal (' + (r.idle_seconds == null ? '?' : r.idle_seconds + 's') + ')', 'inactive'));
+      cell(tr, 'Violations', String(r.violation_count));
+      cell(tr, 'Risk', r.risk_level.charAt(0).toUpperCase() + r.risk_level.slice(1) + ' (' + r.suspicion_score + ')');
+      cell(tr, 'Latest event', r.last_event ? r.last_event.label + ' · ' + r.last_event.at : '—');
       var actions = document.createElement('div');
-      actions.className = 'actions nw';
+      actions.className = 'actions';
       var view = document.createElement('a');
       view.className = 'btn ghost small'; view.href = r.view_url; view.textContent = 'View';
       actions.appendChild(view);
@@ -176,9 +147,8 @@
       .then(function (data) {
         render(data.attempts);
         statusEl.textContent = data.attempts.length + ' in progress · updated ' + data.server_time + ' UTC';
-        statusEl.className = 'badge live';
       })
-      .catch(function () { statusEl.textContent = 'Connection lost — retrying…'; statusEl.className = 'badge inactive'; });
+      .catch(function () { statusEl.textContent = 'Connection lost — retrying…'; });
   }
   poll();
   setInterval(poll, POLL_MS);

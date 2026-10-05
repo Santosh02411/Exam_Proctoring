@@ -1,73 +1,65 @@
 {% extends "base.html" %}
-{% from "_components.html" import meter %}
 {% block title %}Appeals{% endblock %}
 {% block content %}
-<div class="page-head">
-  <div>
-    <h1>Appeals</h1>
-    <div class="lead">Students contesting a proctoring outcome. Granting gives the student one extra attempt; the original attempt's record is left untouched.</div>
-  </div>
+<div style="margin-bottom:16px">
+  <h1>Appeals</h1>
+  <div class="lead">Students contesting a proctoring outcome. Granting gives the student one extra attempt; the original attempt's record is left untouched.</div>
 </div>
 
-<h2>Pending ({{ pending|length }})</h2>
-{% if pending %}
-<div class="stack" style="margin-bottom:32px">
-  {% for a in pending %}
-  <article class="appeal-card">
-    <div>
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <strong style="font-size:16px">{{ a.student.name }}</strong>
-        <span class="muted">{{ a.attempt.test.title }}</span>
-      </div>
-      <div class="appeal-facts">
-        <span class="badge {{ 'inactive' if a.attempt.status == 'terminated' else 'draft' }}">{{ a.attempt.status|capitalize }}</span>
-        <span>{{ a.attempt.termination_reason or (a.attempt.violation_count ~ ' violation(s)') }}</span>
-      </div>
-      <div class="appeal-facts">
-        <span class="muted">Risk:</span> {{ meter(a.attempt.suspicion_score, a.attempt.risk_level) }}
-        <span class="badge risk-{{ a.attempt.risk_level }}">{{ a.attempt.risk_level|capitalize }} ({{ a.attempt.suspicion_score }})</span>
-      </div>
-      {% if a.attempt.review %}
-      <div class="appeal-facts">Reviewer decision: <strong>{{ a.attempt.review.decision|capitalize }}</strong></div>
-      {% endif %}
-      <blockquote class="appeal-reason">{{ a.reason }}</blockquote>
-      <div class="small">Submitted {{ a.created_at.strftime('%Y-%m-%d %H:%M') }} UTC · <a href="{{ url_for('admin.view_attempt', attempt_id=a.attempt_id) }}">Review the attempt</a></div>
-    </div>
-    <form method="post" class="appeal-decide">
-      {{ decision_form.hidden_tag() }}
-      <label for="note-{{ a.id }}">Note to the student <span class="hint">(optional)</span></label>
-      <textarea id="note-{{ a.id }}" name="admin_note" rows="3" placeholder="What did you find, and why did you decide this way?"></textarea>
-      <div class="actions">
-        <button type="submit" class="btn" formaction="{{ url_for('admin.resolve_appeal', appeal_id=a.id, decision='grant') }}">Grant (+1 attempt)</button>
-        <button type="submit" class="btn danger ghost" formaction="{{ url_for('admin.resolve_appeal', appeal_id=a.id, decision='deny') }}">Deny</button>
-      </div>
-    </form>
-  </article>
-  {% endfor %}
+<div class="card" style="margin-bottom:16px">
+  <h2>Pending ({{ pending|length }})</h2>
+  {% if pending %}
+  <table class="table responsive-table">
+    <thead><tr><th>Student</th><th>Test</th><th>Outcome appealed</th><th>Student's reason</th><th>Submitted</th><th>Decision</th></tr></thead>
+    <tbody>
+      {% for a in pending %}
+      <tr>
+        <td data-label="Student">{{ a.student.name }}</td>
+        <td data-label="Test">{{ a.attempt.test.title }}</td>
+        <td data-label="Outcome" class="small">
+          <span class="badge {{ 'inactive' if a.attempt.status == 'terminated' else 'draft' }}">{{ a.attempt.status|capitalize }}</span>
+          {{ a.attempt.termination_reason or (a.attempt.violation_count ~ ' violation(s)') }}<br>
+          Risk: {{ a.attempt.risk_level|capitalize }} ({{ a.attempt.suspicion_score }})<br>
+          <a href="{{ url_for('admin.view_attempt', attempt_id=a.attempt_id) }}">Review the attempt &rarr;</a>
+        </td>
+        <td data-label="Reason" class="small" style="white-space:pre-wrap;max-width:320px">{{ a.reason }}</td>
+        <td data-label="Submitted" class="small">{{ a.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td data-label="Decision" class="actions">
+          <form method="post" style="min-width:220px">
+            {{ decision_form.hidden_tag() }}
+            <textarea name="admin_note" rows="2" placeholder="Optional note to the student" style="width:100%;margin-bottom:6px"></textarea>
+            <button type="submit" class="btn small" formaction="{{ url_for('admin.resolve_appeal', appeal_id=a.id, decision='grant') }}">Grant (+1 attempt)</button>
+            <button type="submit" class="btn danger ghost small" formaction="{{ url_for('admin.resolve_appeal', appeal_id=a.id, decision='deny') }}">Deny</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="small">No pending appeals.</div>
+  {% endif %}
 </div>
-{% else %}
-<div class="card" style="margin-bottom:32px"><div class="empty"><strong>No pending appeals</strong>New appeals will show up here, and in the sidebar count.</div></div>
-{% endif %}
 
-<h2>Recently decided</h2>
-<div class="card flush">
+<div class="card">
+  <h2>Recently decided</h2>
   {% if resolved %}
   <table class="table responsive-table">
     <thead><tr><th>Student</th><th>Test</th><th>Decision</th><th>Decided</th><th>Note</th></tr></thead>
     <tbody>
       {% for a in resolved %}
       <tr>
-        <td data-label="Student" class="cell-strong">{{ a.student.name }}</td>
+        <td data-label="Student">{{ a.student.name }}</td>
         <td data-label="Test">{{ a.attempt.test.title }}</td>
         <td data-label="Decision"><span class="badge {{ 'published' if a.status == 'granted' else 'inactive' }}">{{ a.status|capitalize }}</span></td>
-        <td data-label="Decided" class="nowrap">{{ a.resolved_at.strftime('%b %d, %H:%M') if a.resolved_at }}<span class="cell-sub">by {{ a.resolved_by.name if a.resolved_by }}</span></td>
-        <td data-label="Note">{{ a.admin_note or '—' }}</td>
+        <td data-label="Decided" class="small">{{ a.resolved_at.strftime('%Y-%m-%d %H:%M') if a.resolved_at }} by {{ a.resolved_by.name if a.resolved_by }}</td>
+        <td data-label="Note" class="small">{{ a.admin_note or '—' }}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
   {% else %}
-  <div class="empty"><strong>Nothing decided yet</strong>Decisions you make will be listed here.</div>
+  <div class="small">Nothing decided yet.</div>
   {% endif %}
 </div>
 {% endblock %}

@@ -1,74 +1,10 @@
 {% extends "base.html" %}
-{% from "_icons.html" import icon %}
-{% from "_components.html" import meter %}
 {% block title %}{{ 'Examiner' if current_user.role == 'examiner' else 'Admin' }} Dashboard{% endblock %}
 {% block content %}
-{% set c = staff_counts or {} %}
-<div class="page-head">
-  <div>
-    <h1>{{ 'Examiner' if current_user.role == 'examiner' else 'Admin' }} Dashboard</h1>
-    <div class="lead">Welcome back, {{ current_user.name }}.</div>
-  </div>
-  {% if not session.get('impersonate_org_id') %}
-  <a class="btn" href="{{ url_for('admin.create_test') }}">{{ icon('plus', 16) }} New Test</a>
-  {% endif %}
-</div>
+<h1>{{ 'Examiner' if current_user.role == 'examiner' else 'Admin' }} Dashboard</h1>
+<div class="lead">Welcome back, {{ current_user.name }}.</div>
 
-<div class="pulse-row">
-  <a class="pulse {{ '' if c.get('live') else 'quiet' }}" href="{{ url_for('admin.live_monitor') }}">
-    <span class="num">{{ c.get('live', 0) }}</span>
-    <span class="label">Exams in progress</span>
-    <span class="go">Open live monitor {{ icon('arrow', 15) }}</span>
-  </a>
-  <a class="pulse {{ 'hot' if c.get('unreviewed') else 'quiet' }}" href="{{ url_for('admin.proctor_queue', review='pending') }}">
-    <span class="num">{{ c.get('unreviewed', 0) }}</span>
-    <span class="label">Flagged attempts to review</span>
-    <span class="go">Open review queue {{ icon('arrow', 15) }}</span>
-  </a>
-  <a class="pulse {{ '' if c.get('appeals') else 'quiet' }}" href="{{ url_for('admin.appeals') }}">
-    <span class="num">{{ c.get('appeals', 0) }}</span>
-    <span class="label">Appeals awaiting a decision</span>
-    <span class="go">Open appeals {{ icon('arrow', 15) }}</span>
-  </a>
-</div>
-
-<div class="two-col" style="margin-bottom:24px">
-  <div class="card">
-    <h2>Highest-risk cases awaiting review</h2>
-    {% if needs_review %}
-    <ul class="case-list">
-      {% for a in needs_review %}
-      <li>
-        <a class="case-name" href="{{ url_for('admin.view_attempt', attempt_id=a.id) }}">{{ a.student.name }} <span class="muted" style="font-weight:400">· {{ a.test.title }}</span></a>
-        {{ meter(a.suspicion_score, a.risk_level) }}
-        {% if top_reasons.get(a.id) %}<div class="case-why">{{ top_reasons[a.id] }}</div>{% endif %}
-      </li>
-      {% endfor %}
-    </ul>
-    {% else %}
-    <div class="empty"><strong>Nothing waiting</strong>Every flagged attempt has a recorded decision.</div>
-    {% endif %}
-  </div>
-
-  <div class="card">
-    <h2>Taking an exam right now</h2>
-    {% if live_now %}
-    <ul class="case-list">
-      {% for a in live_now %}
-      <li>
-        <a class="case-name" href="{{ url_for('admin.view_attempt', attempt_id=a.id) }}">{{ a.student.name }} <span class="muted" style="font-weight:400">· {{ a.test.title }}</span></a>
-        {{ meter(a.suspicion_score, a.risk_level, show_text=false) }}
-        <div class="case-why">{{ a.violation_count }} violation{{ '' if a.violation_count == 1 else 's' }} so far</div>
-      </li>
-      {% endfor %}
-    </ul>
-    {% else %}
-    <div class="empty"><strong>No exams running</strong>Students taking an exam will appear here.</div>
-    {% endif %}
-  </div>
-</div>
-
-<div class="kpi-row">
+<div class="kpi-row" style="margin-top:20px">
   <div class="kpi"><div class="num">{{ tests|length }}</div><div class="label">Your Tests</div></div>
   {% if current_user.role == 'admin' %}
   <a class="kpi" style="text-decoration:none;color:inherit" href="{{ url_for('admin.manage_users') }}"><div class="num">{{ total_students }}</div><div class="label">Students</div></a>
@@ -78,22 +14,23 @@
   <div class="kpi"><div class="num">{{ total_attempts }}</div><div class="label">Attempts</div></div>
 </div>
 
-<div class="card flush">
-  <div style="display:flex;justify-content:space-between;align-items:center;padding:20px 22px 6px">
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
     <h2 style="margin:0">Your Tests</h2>
+    <a class="btn" href="{{ url_for('admin.create_test') }}">+ New Test</a>
   </div>
   {% if tests %}
-  <table class="table responsive-table">
+  <table class="table">
     <thead><tr><th>Title</th><th>Code</th><th>Status</th><th>Duration</th><th>Questions</th><th>Actions</th></tr></thead>
     <tbody>
       {% for t in tests %}
       <tr>
-        <td data-label="Title" class="cell-strong">{{ t.title }}</td>
-        <td data-label="Code" class="mono">{{ t.test_code }}</td>
-        <td data-label="Status"><span class="badge {{ t.status }}">{{ t.status|capitalize }}</span></td>
-        <td data-label="Duration">{{ t.duration_minutes }} min</td>
-        <td data-label="Questions" class="mono">{{ t.questions|length }} / {{ t.total_questions }}</td>
-        <td data-label="Actions" class="actions">
+        <td style="font-weight:700">{{ t.title }}</td>
+        <td class="small">{{ t.test_code }}</td>
+        <td><span class="badge {{ t.status }}">{{ t.status|capitalize }}</span></td>
+        <td class="small">{{ t.duration_minutes }} min</td>
+        <td class="small">{{ t.questions|length }} / {{ t.total_questions }}</td>
+        <td class="actions">
           <a class="btn ghost small" href="{{ url_for('admin.edit_test', test_id=t.id) }}">Edit</a>
           <a class="btn ghost small" href="{{ url_for('admin.add_question', test_id=t.id) }}">Questions</a>
           <a class="btn ghost small" href="{{ url_for('admin.view_results', test_id=t.id) }}">Results</a>
@@ -103,7 +40,7 @@
     </tbody>
   </table>
   {% else %}
-  <div class="empty"><strong>No tests yet</strong><a href="{{ url_for('admin.create_test') }}">Create one</a> to get started.</div>
+  <div class="small">No tests yet. <a href="{{ url_for('admin.create_test') }}">Create one</a> to get started.</div>
   {% endif %}
 </div>
 {% endblock %}

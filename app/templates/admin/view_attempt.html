@@ -1,25 +1,45 @@
 {% extends "base.html" %}
-{% from "_components.html" import meter %}
 {% block title %}Attempt Detail{% endblock %}
 {% block content %}
-<div style="margin-bottom:22px">
+<div style="margin-bottom:16px">
   <a class="small" href="{{ url_for('admin.view_results', test_id=attempt.test_id) }}">&larr; Back to results</a>
-  <h1 style="margin-top:10px">{{ attempt.student.name }} — {{ attempt.test.title }}</h1>
-  <div class="lead" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+  <h1 style="margin-top:8px">{{ attempt.student.name }} — {{ attempt.test.title }}</h1>
+  <div class="lead">
     <span class="badge {{ attempt.status }}">{{ attempt.status|replace('_',' ')|capitalize }}</span>
-    {% if attempt.score is not none %}<span>Score: <span class="mono">{{ attempt.score }} / {{ attempt.max_marks() }}</span></span>{% endif %}
-    <span>Violations: <span class="mono">{{ attempt.violation_count }}</span></span>
+    {% if attempt.score is not none %} · Score: {{ attempt.score }} / {{ attempt.max_marks() }}{% endif %}
+    · Violations: {{ attempt.violation_count }}
   </div>
   {% if attempt.termination_reason %}
-  <div class="violation-banner" style="margin-top:14px;margin-bottom:0">Terminated: {{ attempt.termination_reason }}</div>
+  <div class="violation-banner" style="margin-top:10px">Terminated: {{ attempt.termination_reason }}</div>
   {% endif %}
 </div>
 
-<div class="case-layout">
-<div class="stack">
+{% if attempt.device_info or attempt.ip_address %}
+<div class="card" style="margin-bottom:16px">
+  <h2 style="margin:0 0 6px 0">Device &amp; Session</h2>
+  <div class="small muted" style="margin-bottom:8px">
+    The most recent browser/device to hold this attempt's exam session (see Exam Session Device Management) —
+    overwritten each time a device change is legitimately claimed, so this reflects the current/last owner, not
+    a full history. Device switches and blocked concurrent sessions still appear as individual entries in the
+    proctoring log below.
+  </div>
+  <table class="table" style="font-size:13px">
+    <tbody>
+      {% if attempt.ip_address %}<tr><th style="width:160px">IP address</th><td>{{ attempt.ip_address }}</td></tr>{% endif %}
+      {% set info = (attempt.device_info | from_json) if attempt.device_info else {} %}
+      {% if info.get('user_agent') %}<tr><th>Browser / user agent</th><td style="word-break:break-all">{{ info.user_agent }}</td></tr>{% endif %}
+      {% if info.get('platform') %}<tr><th>Platform</th><td>{{ info.platform }}</td></tr>{% endif %}
+      {% if info.get('screen') %}<tr><th>Screen</th><td>{{ info.screen }}</td></tr>{% endif %}
+      {% if info.get('timezone') %}<tr><th>Timezone</th><td>{{ info.timezone }}</td></tr>{% endif %}
+      {% if info.get('language') %}<tr><th>Language</th><td>{{ info.language }}</td></tr>{% endif %}
+      {% if attempt.session_started_at %}<tr><th>Session claimed at</th><td>{{ attempt.session_started_at.strftime('%Y-%m-%d %H:%M:%S') }}</td></tr>{% endif %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
 
 {% if risk.score > 0 %}
-<div class="card" style="border-left:4px solid {{ {'critical':'var(--danger)','high':'var(--danger)','medium':'var(--warning)','low':'var(--success)'}[risk.level] }}">
+<div class="card" style="margin-bottom:16px;border-left:4px solid {{ {'critical':'var(--danger)','high':'var(--danger)','medium':'var(--warning)','low':'var(--success)'}[risk.level] }}">
   <h2 style="margin:0 0 6px 0">
     Suspicion Score
     <span class="badge risk-{{ risk.level }}" style="font-size:14px;padding:6px 12px">{{ risk.score }}/100 · {{ risk.level|capitalize }}</span>
@@ -52,7 +72,7 @@
 {% endif %}
 
 {% if quality.score is not none %}
-<div class="card" style="border-left:4px solid {{ {'excellent':'var(--success)','good':'var(--success)','fair':'var(--warning)','poor':'var(--danger)'}[quality.level] }}">
+<div class="card" style="margin-bottom:16px;border-left:4px solid {{ {'excellent':'var(--success)','good':'var(--success)','fair':'var(--warning)','poor':'var(--danger)'}[quality.level] }}">
   <h2 style="margin:0 0 6px 0">
     Proctoring Quality Score
     <span class="badge risk-{{ 'low' if quality.level in ('excellent','good') else ('medium' if quality.level == 'fair' else 'high') }}" style="font-size:14px;padding:6px 12px">{{ quality.score }}/100 · {{ quality.level|capitalize }}</span>
@@ -80,7 +100,7 @@
 {% endif %}
 
 {% if patterns %}
-<div class="card">
+<div class="card" style="margin-bottom:16px">
   <h2 style="margin:0 0 6px 0">Behavioral Pattern Analysis</h2>
   <div class="small muted" style="margin-bottom:10px">
     Violations grouped into incidents by timing, and checked for whether each incident combines multiple
@@ -104,7 +124,7 @@
 {% endif %}
 
 {% if timeline.entries %}
-<div class="card">
+<div class="card" style="margin-bottom:16px">
   <h2>Behavior Timeline</h2>
   <div class="small muted" style="margin-bottom:10px">
     Every violation, warning, flagged snapshot, answer change, and recording segment from this attempt, in one
@@ -145,7 +165,7 @@
   {% endif %}
 </div>
 
-<div class="card">
+<div class="card" style="margin-top:16px">
   <h2>Flagged Snapshots</h2>
   {% if attempt.snapshots %}
   <div class="small muted" style="margin-bottom:10px">
@@ -166,7 +186,7 @@
   {% endif %}
 </div>
 
-<div class="card">
+<div class="card" style="margin-top:16px">
   <h2>Complete Exam Replay</h2>
   {% set webcam_recs = attempt.recordings|selectattr('kind', 'equalto', 'webcam')|list %}
   {% set screen_recs = attempt.recordings|selectattr('kind', 'equalto', 'screen')|list %}
@@ -204,7 +224,7 @@
   {% endif %}
 </div>
 
-<div class="card">
+<div class="card" style="margin-top:16px">
   <h2>Answers</h2>
   {% set has_manual = attempt.answers|selectattr('question.needs_manual_grading')|list %}
   {% if has_manual %}
@@ -267,78 +287,6 @@
     <button type="submit" class="btn">Save Grades</button>
   </form>
   {% endif %}
-</div>
-</div>
-<aside class="case-rail" aria-label="Case summary">
-  <div class="card verdict">
-    <div class="verdict-line">Suspicion score</div>
-    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-      {{ meter(risk.score, risk.level, 'lg', show_text=false) }}
-      <span style="font-family:var(--font-display);font-size:38px;line-height:1;letter-spacing:-.02em">{{ risk.score }}<span class="muted" style="font-size:18px;font-family:var(--font-ui)">/100</span></span>
-    </div>
-    <div><span class="badge risk-{{ risk.level }}">{{ risk.level|capitalize }} risk</span></div>
-    <dl class="kv">
-      <dt>Status</dt><dd>{{ attempt.status|replace('_',' ')|capitalize }}</dd>
-      <dt>Violations</dt><dd class="mono">{{ attempt.violation_count }}</dd>
-      <dt>Started</dt><dd class="mono">{{ attempt.started_at.strftime('%b %d, %H:%M') }}</dd>
-      {% if attempt.submitted_at %}<dt>Ended</dt><dd class="mono">{{ attempt.submitted_at.strftime('%b %d, %H:%M') }}</dd>{% endif %}
-      {% if attempt.score is not none %}<dt>Score</dt><dd class="mono">{{ attempt.score }} / {{ attempt.max_marks() }}</dd>{% endif %}
-    </dl>
-    <a class="btn ghost small" style="width:100%" href="{{ url_for('admin.export_attempt_report', attempt_id=attempt.id) }}">Download incident report (PDF)</a>
-  </div>
-
-<div class="card">
-  <h2>Reviewer Decision</h2>
-  {% if review %}
-  <div style="margin-bottom:10px">
-    <span class="badge {{ 'published' if review.decision == 'cleared' else ('inactive' if review.decision == 'confirmed' else 'draft') }}">{{ review.decision|capitalize }}</span>
-    <span class="small muted">by {{ review.reviewer.name if review.reviewer else '—' }} on {{ review.reviewed_at.strftime('%Y-%m-%d %H:%M') }} UTC</span>
-    {% if review.notes %}<div style="white-space:pre-wrap;margin-top:6px">{{ review.notes }}</div>{% endif %}
-  </div>
-  {% elif attempt.status == 'in_progress' %}
-  <div class="small muted">Available once this attempt has ended.</div>
-  {% else %}
-  <div class="small muted" style="margin-bottom:10px">Nobody has recorded a conclusion on this attempt yet.</div>
-  {% endif %}
-  {% if attempt.status != 'in_progress' %}
-  <form method="post" action="{{ url_for('admin.review_attempt', attempt_id=attempt.id) }}" novalidate>
-    {{ review_form.hidden_tag() }}
-    <div class="field">
-      <label for="{{ review_form.decision.id }}">{{ 'Update decision' if review else 'Record a decision' }}</label>
-      {{ review_form.decision() }}
-    </div>
-    <div class="field">
-      <label for="{{ review_form.notes.id }}">Notes <span class="small muted">(required for Confirmed and Escalate)</span></label>
-      {{ review_form.notes(rows=3, placeholder="What did you look at, and what did you conclude?") }}
-    </div>
-    <button type="submit" class="btn small">Save decision</button>
-  </form>
-  {% endif %}
-</div>
-{% if attempt.device_info or attempt.ip_address %}
-<div class="card">
-  <h2 style="margin:0 0 6px 0">Device &amp; Session</h2>
-  <div class="small muted" style="margin-bottom:8px">
-    The most recent browser/device to hold this attempt's exam session (see Exam Session Device Management) —
-    overwritten each time a device change is legitimately claimed, so this reflects the current/last owner, not
-    a full history. Device switches and blocked concurrent sessions still appear as individual entries in the
-    proctoring log below.
-  </div>
-  <table class="table" style="font-size:13px">
-    <tbody>
-      {% if attempt.ip_address %}<tr><th style="width:120px">IP address</th><td>{{ attempt.ip_address }}</td></tr>{% endif %}
-      {% set info = (attempt.device_info | from_json) if attempt.device_info else {} %}
-      {% if info.get('user_agent') %}<tr><th>Browser / user agent</th><td style="word-break:break-all">{{ info.user_agent }}</td></tr>{% endif %}
-      {% if info.get('platform') %}<tr><th>Platform</th><td>{{ info.platform }}</td></tr>{% endif %}
-      {% if info.get('screen') %}<tr><th>Screen</th><td>{{ info.screen }}</td></tr>{% endif %}
-      {% if info.get('timezone') %}<tr><th>Timezone</th><td>{{ info.timezone }}</td></tr>{% endif %}
-      {% if info.get('language') %}<tr><th>Language</th><td>{{ info.language }}</td></tr>{% endif %}
-      {% if attempt.session_started_at %}<tr><th>Session claimed at</th><td>{{ attempt.session_started_at.strftime('%Y-%m-%d %H:%M:%S') }}</td></tr>{% endif %}
-    </tbody>
-  </table>
-</div>
-{% endif %}
-</aside>
 </div>
 
 <script>

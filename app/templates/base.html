@@ -1,56 +1,23 @@
 <!doctype html>
-{% from "_icons.html" import icon %}
-{%- set authed = current_user.is_authenticated -%}
-{%- set role = current_user.role if authed else none -%}
-{%- set impersonating = session.get('impersonate_org_id') and role == 'super_admin' -%}
-{%- set staff = authed and role in ('super_admin', 'admin', 'examiner', 'proctor') -%}
-{%- set alerts_on = authed and role in ('admin', 'examiner', 'proctor') -%}
-{%- set ep = request.endpoint or '' -%}
-
-{% macro side_link(endpoint, label, ico, also=[], count=none, tone='') -%}
-  <a class="side-link" href="{{ url_for(endpoint) }}"{% if ep == endpoint or ep in also %} aria-current="page"{% endif %}>
-    {{ icon(ico) }}<span>{{ label }}</span>
-    {%- if count %}<span class="side-count {{ tone }}">{{ count }}</span>{% endif %}
-  </a>
-{%- endmacro %}
-
-{% macro student_link(endpoint, label) -%}
-  <a class="nl" href="{{ url_for(endpoint) }}"{% if ep == endpoint %} aria-current="page"{% endif %}>{{ label }}</a>
-{%- endmacro %}
-
-{% macro theme_button(extra_class='') -%}
-  <button type="button" class="theme-toggle {{ extra_class }}" id="themeToggle" aria-pressed="false" aria-label="Switch to dark mode">
-    <span id="themeToggleIcon" aria-hidden="true"><span class="ic-moon">{{ icon('moon', 17) }}</span><span class="ic-sun">{{ icon('sun', 17) }}</span></span>
-    <span id="themeToggleLabel" class="lbl">Dark</span>
-  </button>
-{%- endmacro %}
-
-{% macro brand_mark() -%}
-  {% if org_branding and org_branding.logo_url %}
-    <img src="{{ org_branding.logo_url }}" alt="{{ org_branding.name }}" class="brand-logo">
-  {% else %}
-    <span class="mark">{{ icon('shield', 18) }}</span><span>Exam Proctoring</span>
-  {% endif %}
-{%- endmacro %}
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <title>{% block title %}Exam Proctoring{% endblock %}</title>
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <link rel="preload" href="{{ url_for('static', filename='fonts/instrument-sans-latin-wght-normal.woff2') }}" as="font" type="font/woff2" crossorigin>
-  <link rel="preload" href="{{ url_for('static', filename='fonts/newsreader-latin-wght-normal.woff2') }}" as="font" type="font/woff2" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
   {% if org_branding and org_branding.primary_color %}
   <style>
     /* Org-level branding override (see app.branding) — applied on top of
        the platform's default theme, both light and dark, so an org's
        accent color survives a theme switch. */
-    :root, [data-theme="dark"] { --primary: {{ org_branding.primary_color }}; --primary-strong: color-mix(in srgb, {{ org_branding.primary_color }} 82%, black); --primary-soft: color-mix(in srgb, {{ org_branding.primary_color }} 12%, transparent); }
+    :root, [data-theme="dark"] { --primary: {{ org_branding.primary_color }}; }
   </style>
   {% endif %}
   <script>
-    // Applied before first paint so switching themes never flashes the wrong
-    // one. Falls back to the OS-level preference on a first visit.
+    // Applied before first paint (and before the stylesheet above finishes
+    // loading, since this is inline) so switching themes never flashes the
+    // wrong one. Falls back to the OS-level preference on a first visit.
     (function () {
       var saved = null;
       try { saved = localStorage.getItem('theme'); } catch (e) {}
@@ -58,224 +25,197 @@
       document.documentElement.setAttribute('data-theme', theme);
     })();
   </script>
-  <style>[data-theme="dark"] .ic-moon,:root:not([data-theme="dark"]) .ic-sun{display:none}</style>
   {% block head %}{% endblock %}
 </head>
-<body class="{{ 'staff-shell' if staff else ('student-shell' if authed else 'public-shell') }}">
+<body>
   <a class="skip-link" href="#mainContent">Skip to main content</a>
-
-  {% macro flashes(cls='') %}
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        <div class="flash-wrap {{ cls }}" role="status" aria-live="polite">
-          {% for category, message in messages %}
-            <div class="flash flash-{{ category }}">{{ message }}</div>
-          {% endfor %}
-        </div>
-      {% endif %}
-    {% endwith %}
-  {% endmacro %}
-
-  {% macro impersonation_banner() %}
-    {% if impersonating %}
-    <div class="flash flash-warning" style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:16px">
-      <span>Read-only support view — viewing an organization's exam content as a platform admin. No edits, deletes, or user/security changes are possible while impersonating.</span>
-      <form method="post" action="{{ url_for('organizations.stop_impersonating') }}" style="margin:0">
-        <button type="submit" class="btn ghost small">Stop Impersonating</button>
-      </form>
-    </div>
-    {% endif %}
-  {% endmacro %}
-
-  {% if staff %}
-  {# ------------------------------ Staff shell ------------------------------ #}
-  {% set c = staff_counts or {} %}
-  <div class="app">
-    <aside class="sidebar" id="navLinks" aria-label="Main navigation">
-      <a class="side-brand" href="{{ url_for('index') }}">{{ brand_mark() }}</a>
-
-      <nav class="side-nav">
-        {% if role == 'super_admin' and not impersonating %}
-          <div class="side-group">
-            <p class="side-title">Platform</p>
-            {{ side_link('organizations.list_organizations', 'Organizations', 'orgs') }}
-            {{ side_link('system_ops.health_dashboard', 'Operations', 'server') }}
-          </div>
-        {% elif role in ('admin', 'examiner') or impersonating %}
-          <div class="side-group">
-            {{ side_link('admin.dashboard', 'Dashboard', 'grid') }}
-          </div>
-          <div class="side-group">
-            <p class="side-title">Monitor</p>
-            {{ side_link('admin.live_monitor', 'Live monitor', 'pulse', count=c.get('live'), tone='live') }}
-            {{ side_link('admin.proctor_queue', 'Review queue', 'inbox', count=c.get('unreviewed'), tone='alert') }}
-            {{ side_link('admin.appeals', 'Appeals', 'scale', count=c.get('appeals'), tone='alert') }}
-          </div>
-          <div class="side-group">
-            <p class="side-title">Exams</p>
-            {{ side_link('admin.manage_tests', 'Manage tests', 'file', also=['admin.view_test', 'admin.edit_test', 'admin.add_question', 'admin.view_results']) }}
-            {% if not impersonating %}{{ side_link('admin.create_test', 'New test', 'plus') }}{% endif %}
-            {{ side_link('admin.manage_bank', 'Question bank', 'database') }}
-            {{ side_link('admin.calendar_view', 'Calendar', 'calendar') }}
-          </div>
-          <div class="side-group">
-            <p class="side-title">Insights</p>
-            {{ side_link('admin.analytics_overview', 'Analytics', 'chart') }}
-            {% if role == 'admin' %}{{ side_link('admin.org_report', 'Org report', 'building') }}{% endif %}
-          </div>
-          {% if role == 'admin' %}
-          <div class="side-group">
-            <p class="side-title">People</p>
-            {{ side_link('admin.manage_users', 'Users', 'users') }}
-            {{ side_link('admin.id_verification_queue', 'ID verification', 'idcard') }}
-            {{ side_link('admin.manage_cohorts', 'Cohorts', 'layers') }}
-            {{ side_link('admin.accommodation_requests', 'Accommodations', 'access') }}
-          </div>
-          {% set org_eps = ['admin.notification_history', 'admin.activity_log', 'admin.security_log', 'admin.retention_settings', 'admin.access_control_settings', 'admin.branding_settings', 'admin.api_keys'] %}
-          <details class="side-group side-details"{% if ep in org_eps %} open{% endif %}>
-            <summary class="side-title">Organization settings</summary>
-            {{ side_link('admin.notification_history', 'Notifications', 'mail') }}
-            {{ side_link('admin.activity_log', 'Activity log', 'list') }}
-            {{ side_link('admin.security_log', 'Security', 'lock') }}
-            {{ side_link('admin.retention_settings', 'Retention', 'clock') }}
-            {{ side_link('admin.access_control_settings', 'Access control', 'sliders') }}
-            {{ side_link('admin.branding_settings', 'Branding', 'palette') }}
-            {{ side_link('admin.api_keys', 'API access', 'key') }}
-          </details>
-          {% endif %}
-        {% elif role == 'proctor' %}
-          <div class="side-group">
-            <p class="side-title">Monitor</p>
-            {{ side_link('admin.live_monitor', 'Live monitor', 'pulse', count=c.get('live'), tone='live') }}
-            {{ side_link('admin.proctor_queue', 'Review queue', 'inbox', count=c.get('unreviewed'), tone='alert') }}
-            {{ side_link('admin.appeals', 'Appeals', 'scale', count=c.get('appeals'), tone='alert') }}
-          </div>
-          <div class="side-group">
-            <p class="side-title">Insights</p>
-            {{ side_link('admin.analytics_overview', 'Analytics', 'chart') }}
-          </div>
+  {% if current_user.is_authenticated %}
+  <nav class="topnav">
+    <div class="topnav-inner">
+      <a class="brand" href="{{ url_for('index') }}">
+        {% if org_branding and org_branding.logo_url %}
+          <img src="{{ org_branding.logo_url }}" alt="{{ org_branding.name }}" class="brand-logo">
+        {% else %}
+          🛡️ Exam Proctoring
         {% endif %}
-      </nav>
-
-      <div class="side-foot">
-        <div class="side-user">
-          <span class="avatar" aria-hidden="true">{{ (current_user.name or '?')[:1]|upper }}</span>
-          <div style="min-width:0">
-            <div class="side-user-name">{{ current_user.name }}</div>
-            <span class="badge role">{{ current_user.role }}</span>
-          </div>
-        </div>
-        {{ side_link('profile.view_profile', 'Profile', 'user') }}
-        <a class="side-link" href="{{ url_for('auth.logout') }}">{{ icon('logout') }}<span>Log out</span></a>
-      </div>
-    </aside>
-    <div class="side-scrim" id="sideScrim"></div>
-
-    <div class="app-main">
-      <header class="topbar">
-        <button type="button" class="icon-btn nav-toggle" id="navToggle" aria-label="Open menu" aria-expanded="false" aria-controls="navLinks">{{ icon('menu', 20) }}</button>
-        <div class="spacer"></div>
-        {% if alerts_on %}
-        <div class="alert-wrap">
+      </a>
+      <button type="button" class="nav-toggle" id="navToggle" aria-label="Open menu" aria-expanded="false" aria-controls="navLinks">
+        <span></span><span></span><span></span>
+      </button>
+      <div class="nav-links" id="navLinks">
+        {% if current_user.role == 'super_admin' and not session.get('impersonate_org_id') %}
+          <a href="{{ url_for('organizations.list_organizations') }}">Organizations</a>
+          <a href="{{ url_for('system_ops.health_dashboard') }}">Operations</a>
+        {% elif current_user.role in ('admin', 'examiner') or (current_user.role == 'super_admin' and session.get('impersonate_org_id')) %}
+          <a href="{{ url_for('admin.dashboard') }}">Dashboard</a>
+          <a href="{{ url_for('admin.manage_tests') }}">Manage Tests</a>
+          <a href="{{ url_for('admin.calendar_view') }}">Calendar</a>
+          {% if not session.get('impersonate_org_id') %}<a href="{{ url_for('admin.create_test') }}">+ New Test</a>{% endif %}
+          <a href="{{ url_for('admin.manage_bank') }}">Question Bank</a>
+          <a href="{{ url_for('admin.proctor_queue') }}">Review Queue</a>
+          <a href="{{ url_for('admin.live_monitor') }}">Live Monitor</a>
+          <a href="{{ url_for('admin.analytics_overview') }}">Analytics</a>
+          {% if current_user.role == 'admin' %}
+            <a href="{{ url_for('admin.manage_users') }}">Manage Users</a>
+            <a href="{{ url_for('admin.id_verification_queue') }}">ID Verification</a>
+            <div class="nav-dropdown">
+              <button type="button" class="nav-dropdown-toggle" aria-haspopup="true" aria-expanded="false">Admin ▾</button>
+              <div class="nav-dropdown-panel">
+                <a href="{{ url_for('admin.notification_history') }}">Notifications</a>
+                <a href="{{ url_for('admin.activity_log') }}">Activity Log</a>
+                <a href="{{ url_for('admin.security_log') }}">Security</a>
+                <a href="{{ url_for('admin.retention_settings') }}">Retention</a>
+                <a href="{{ url_for('admin.org_report') }}">Org Report</a>
+                <a href="{{ url_for('admin.branding_settings') }}">Branding</a>
+                <a href="{{ url_for('admin.api_keys') }}">API Access</a>
+                <a href="{{ url_for('admin.access_control_settings') }}">Access Control</a>
+                <a href="{{ url_for('admin.appeals') }}">Appeals</a>
+                <a href="{{ url_for('admin.accommodation_requests') }}">Accommodation Requests</a>
+                <a href="{{ url_for('admin.manage_cohorts') }}">Cohorts</a>
+              </div>
+            </div>
+          {% endif %}
+        {% elif current_user.role == 'proctor' %}
+          <a href="{{ url_for('admin.proctor_queue') }}">Review Queue</a>
+          <a href="{{ url_for('admin.live_monitor') }}">Live Monitor</a>
+          <a href="{{ url_for('admin.appeals') }}">Appeals</a>
+          <a href="{{ url_for('admin.analytics_overview') }}">Analytics</a>
+        {% else %}
+          <a href="{{ url_for('student.dashboard') }}">My Tests</a>
+          <a href="{{ url_for('student.calendar_view') }}">Calendar</a>
+          <a href="{{ url_for('student.enroll_face') }}">Identity Verification</a>
+        {% endif %}
+        {% if current_user.role in ('admin', 'examiner', 'proctor') %}
+        <div style="position:relative">
           <button type="button" class="proctor-alert-bell" id="proctorAlertBell" aria-label="Live proctor alerts" title="Live proctor alerts">
-            {{ icon('bell', 18) }}<span class="proctor-alert-badge" id="proctorAlertBadge" style="display:none">0</span>
+            🔔<span class="proctor-alert-badge" id="proctorAlertBadge" style="display:none">0</span>
           </button>
           <div class="proctor-alert-panel" id="proctorAlertPanel">
             <div class="proctor-alert-empty" id="proctorAlertEmpty">No live alerts yet. You'll be notified here the moment a high-severity event happens during an active exam.</div>
           </div>
         </div>
         {% endif %}
-        {{ theme_button() }}
-      </header>
-
-      <main class="page" id="mainContent">
-        {{ impersonation_banner() }}
-  {% elif authed %}
-  {# ----------------------------- Student shell ----------------------------- #}
-  <nav class="topnav" aria-label="Main navigation">
-    <div class="topnav-inner">
-      <a class="brand" href="{{ url_for('index') }}">{{ brand_mark() }}</a>
-      <button type="button" class="icon-btn nav-toggle" id="navToggle" aria-label="Open menu" aria-expanded="false" aria-controls="navLinks">{{ icon('menu', 20) }}</button>
-      <div class="nav-links" id="navLinks">
-        {{ student_link('student.dashboard', 'My Tests') }}
-        {{ student_link('student.calendar_view', 'Calendar') }}
-        {{ student_link('student.enroll_face', 'Identity Verification') }}
-        {{ student_link('profile.view_profile', 'Profile') }}
-      </div>
-      <div class="nav-right">
-        <span class="nav-user">{{ current_user.name }}</span>
-        {{ theme_button() }}
-        <a href="{{ url_for('auth.logout') }}" class="btn ghost small">Log out</a>
+        <a href="{{ url_for('profile.view_profile') }}">Profile</a>
+        <button type="button" class="theme-toggle" id="themeToggle" aria-pressed="false" aria-label="Switch to dark mode">
+          <span id="themeToggleIcon" aria-hidden="true">🌙</span><span id="themeToggleLabel">Dark</span>
+        </button>
+        <span class="nav-user">{{ current_user.name }} <span class="badge role">{{ current_user.role }}</span></span>
+        <a href="{{ url_for('auth.logout') }}" class="btn ghost small">Logout</a>
       </div>
     </div>
   </nav>
-  <main class="page" id="mainContent">
   {% else %}
-  {# ------------------------------ Public shell ------------------------------ #}
-  {{ theme_button('theme-toggle-floating') }}
-  <main class="public-main" id="mainContent">
+  <button type="button" class="theme-toggle theme-toggle-floating" id="themeToggle" aria-pressed="false" aria-label="Switch to dark mode">
+    <span id="themeToggleIcon" aria-hidden="true">🌙</span><span id="themeToggleLabel">Dark</span>
+  </button>
   {% endif %}
 
-    {{ flashes('public-flash' if not authed else '') }}
-    {% block content %}{% endblock %}
-
-  {% if staff %}
-      </main>
-
-      <footer class="site-footer">
-        <a href="{{ url_for('legal.terms') }}">Terms of Service</a>
-        <span aria-hidden="true">·</span>
-        <a href="{{ url_for('legal.privacy') }}">Privacy Policy</a>
-      </footer>
+  <main class="page" id="mainContent">
+    {% if session.get('impersonate_org_id') and current_user.is_authenticated and current_user.role == 'super_admin' %}
+    <div class="flash flash-warning" style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px">
+      <span>Read-only support view — viewing an organization's exam content as a platform admin. No edits, deletes, or user/security changes are possible while impersonating.</span>
+      <form method="post" action="{{ url_for('organizations.stop_impersonating') }}" style="margin:0">
+        <button type="submit" class="btn ghost small">Stop Impersonating</button>
+      </form>
     </div>
-  </div>
-  {% else %}
+    {% endif %}
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flash-wrap" role="status" aria-live="polite">
+          {% for category, message in messages %}
+            <div class="flash flash-{{ category }}">{{ message }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
   </main>
-  <footer class="site-footer"{% if not authed %} style="justify-content:center"{% endif %}>
+
+  {% if current_user.is_authenticated and current_user.role in ('admin', 'examiner', 'proctor') %}
+  <div class="proctor-alert-toast-wrap" id="proctorAlertToastWrap" aria-live="polite"></div>
+  {% endif %}
+
+  <footer class="site-footer">
     <a href="{{ url_for('legal.terms') }}">Terms of Service</a>
     <span aria-hidden="true">·</span>
     <a href="{{ url_for('legal.privacy') }}">Privacy Policy</a>
   </footer>
-  {% endif %}
-
-  {% if alerts_on %}
-  <div class="proctor-alert-toast-wrap" id="proctorAlertToastWrap" aria-live="polite"></div>
-  {% endif %}
 
   <script>
     (function () {
-      // Mobile menu: the sidebar (staff) / link list (students) is revealed by
-      // this button below the 900px breakpoint. Tapping a link, the scrim, or
-      // pressing Escape closes it again.
+      // The "Admin ▾" group in the topnav (see base.html) — collapses the
+      // long tail of admin-only pages (Activity Log, Security, Retention,
+      // etc.) behind one toggle instead of them all sitting as flat links,
+      // which is what was wrapping the nav into a multi-row wall of text
+      // on anything narrower than a very wide desktop. Same open/toggle/
+      // close-on-outside-click pattern as the proctor alert bell below.
+      // Below the mobile nav-toggle breakpoint this is CSS-overridden to
+      // always render flat (see .nav-dropdown-panel in style.css), so
+      // this only matters on desktop.
+      document.querySelectorAll('.nav-dropdown-toggle').forEach(function (toggle) {
+        var panel = toggle.nextElementSibling;
+        if (!panel) return;
+        toggle.addEventListener('click', function (evt) {
+          evt.stopPropagation();
+          var open = panel.classList.toggle('open');
+          toggle.setAttribute('aria-expanded', String(open));
+        });
+        document.addEventListener('click', function (evt) {
+          if (!panel.classList.contains('open')) return;
+          if (toggle.contains(evt.target) || panel.contains(evt.target)) return;
+          panel.classList.remove('open');
+          toggle.setAttribute('aria-expanded', 'false');
+        });
+      });
+    })();
+  </script>
+
+  <script>
+    (function () {
+      // Mobile-Friendly nav: below the .nav-toggle breakpoint, the link
+      // list is hidden by default and this button reveals it — desktop
+      // never sees the toggle at all (hidden in CSS), so this only wires
+      // up behavior that's actually reachable on a narrow screen.
       var toggle = document.getElementById('navToggle');
       var links = document.getElementById('navLinks');
-      var scrim = document.getElementById('sideScrim');
       if (!toggle || !links) return;
-      function setOpen(open) {
-        links.classList.toggle('open', open);
-        if (scrim) scrim.classList.toggle('open', open);
+
+      toggle.addEventListener('click', function () {
+        var open = links.classList.toggle('open');
         toggle.setAttribute('aria-expanded', String(open));
         toggle.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
-      }
-      toggle.addEventListener('click', function () { setOpen(!links.classList.contains('open')); });
-      if (scrim) scrim.addEventListener('click', function () { setOpen(false); });
-      links.addEventListener('click', function (evt) { if (evt.target.closest('a')) setOpen(false); });
-      document.addEventListener('keydown', function (evt) { if (evt.key === 'Escape') setOpen(false); });
+      });
+      // Tapping a nav link (i.e. actually navigating away) should close
+      // the panel rather than leaving it open for whenever the user comes
+      // back — otherwise the very first thing they'd see on the next page
+      // is their own menu still covering the screen.
+      links.addEventListener('click', function (evt) {
+        if (evt.target.tagName === 'A') {
+          links.classList.remove('open');
+          toggle.setAttribute('aria-expanded', 'false');
+        }
+      });
     })();
   </script>
 
   <script>
     (function () {
       var btn = document.getElementById('themeToggle');
+      var icon = document.getElementById('themeToggleIcon');
       var label = document.getElementById('themeToggleLabel');
       if (!btn) return;
+
       function sync() {
         var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
         btn.setAttribute('aria-pressed', String(isDark));
         btn.setAttribute('aria-label', isDark ? 'Switch to light mode' : 'Switch to dark mode');
-        if (label) label.textContent = isDark ? 'Light' : 'Dark';
+        icon.textContent = isDark ? '☀️' : '🌙';
+        label.textContent = isDark ? 'Light' : 'Dark';
       }
       sync();
+
       btn.addEventListener('click', function () {
         var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
         document.documentElement.setAttribute('data-theme', next);
@@ -285,7 +225,7 @@
     })();
   </script>
 
-  {% if alerts_on %}
+  {% if current_user.is_authenticated and current_user.role in ('admin', 'examiner', 'proctor') %}
   <script>
     (function () {
       var bell = document.getElementById('proctorAlertBell');
@@ -298,19 +238,6 @@
       var unread = 0;
       var MAX_PANEL_ITEMS = 20;
 
-      // Everything below builds DOM with textContent: alert.student_name,
-      // alert.test_title and alert.label originate from user-entered data (a
-      // student chooses their own name at registration), so they must never
-      // be interpolated into HTML.
-      function el(tag, text, style, cls) {
-        var n = document.createElement(tag);
-        if (text != null) n.textContent = text;
-        if (style) n.style.cssText = style;
-        if (cls) n.className = cls;
-        return n;
-      }
-      function safeUrl(u) { return (typeof u === 'string' && u.charAt(0) === '/') ? u : '#'; }
-
       function setBadge() {
         if (unread > 0) {
           badge.style.display = 'flex';
@@ -322,22 +249,29 @@
 
       function addPanelItem(alert) {
         if (emptyMsg) { emptyMsg.remove(); emptyMsg = null; }
-        var item = el('a', null, 'display:block;color:inherit;text-decoration:none', 'proctor-alert-item');
-        item.href = safeUrl(alert.view_url);
-        item.appendChild(el('div', alert.label, 'font-weight:600'));
-        item.appendChild(el('div', alert.student_name + ' · ' + alert.test_title, 'margin-top:2px', 'muted'));
-        item.appendChild(el('div', alert.created_at, 'margin-top:2px', 'muted'));
+        var item = document.createElement('a');
+        item.className = 'proctor-alert-item';
+        item.href = alert.view_url;
+        item.style.display = 'block';
+        item.style.color = 'inherit';
+        item.style.textDecoration = 'none';
+        item.innerHTML =
+          '<div style="font-weight:700">' + alert.label + '</div>' +
+          '<div class="muted" style="margin-top:2px">' + alert.student_name + ' · ' + alert.test_title + '</div>' +
+          '<div class="muted" style="margin-top:2px">' + alert.created_at + '</div>';
         panel.insertBefore(item, panel.firstChild);
-        while (panel.children.length > MAX_PANEL_ITEMS) panel.removeChild(panel.lastChild);
+        while (panel.children.length > MAX_PANEL_ITEMS) {
+          panel.removeChild(panel.lastChild);
+        }
       }
 
       function showToast(alert) {
-        var toast = el('div', null, null, 'proctor-alert-toast');
-        toast.appendChild(el('div', '⚠ ' + alert.label, 'font-weight:600'));
-        toast.appendChild(el('div', alert.student_name + ' · ' + alert.test_title, 'margin-top:2px', 'muted'));
-        var link = el('a', 'View attempt', 'display:inline-block;margin-top:6px;font-weight:600');
-        link.href = safeUrl(alert.view_url);
-        toast.appendChild(link);
+        var toast = document.createElement('div');
+        toast.className = 'proctor-alert-toast';
+        toast.innerHTML =
+          '<div style="font-weight:700">⚠ ' + alert.label + '</div>' +
+          '<div class="muted" style="margin-top:2px">' + alert.student_name + ' · ' + alert.test_title + '</div>' +
+          '<a href="' + alert.view_url + '" style="display:inline-block;margin-top:6px;font-weight:700">View attempt →</a>';
         toastWrap.appendChild(toast);
         setTimeout(function () {
           toast.style.transition = 'opacity .4s';
@@ -348,7 +282,10 @@
 
       bell.addEventListener('click', function () {
         panel.classList.toggle('open');
-        if (panel.classList.contains('open')) { unread = 0; setBadge(); }
+        if (panel.classList.contains('open')) {
+          unread = 0;
+          setBadge();
+        }
       });
       document.addEventListener('click', function (evt) {
         if (!panel.classList.contains('open')) return;
@@ -357,11 +294,12 @@
       });
 
       // Live Proctor Alerts (see app.admin.proctor_alerts_stream): a
-      // long-lived SSE connection that pushes high-severity proctoring events
-      // the moment they're logged for any exam in progress in this
+      // long-lived SSE connection that pushes high-severity proctoring
+      // events the moment they're logged for any exam in progress in this
       // organization. The stream ends on its own every so often (see
       // PROCTOR_ALERT_STREAM_SECONDS server-side); EventSource reconnects
-      // automatically and resumes via Last-Event-ID.
+      // automatically and resumes via Last-Event-ID, so nothing is missed
+      // or repeated across reconnects.
       if (typeof EventSource === 'undefined') return;
       var source = new EventSource("{{ url_for('admin.proctor_alerts_stream') }}");
       source.onmessage = function (evt) {
@@ -372,7 +310,10 @@
         addPanelItem(alert);
         showToast(alert);
       };
-      source.onerror = function () { /* EventSource retries on its own. */ };
+      source.onerror = function () {
+        // EventSource retries on its own (per the "retry:" hint the server
+        // sends); nothing to do here beyond letting it reconnect quietly.
+      };
     })();
   </script>
   {% endif %}
