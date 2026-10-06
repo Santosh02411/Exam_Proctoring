@@ -20,13 +20,13 @@ from app.forms import (
     TestForm, QuestionForm, QuestionImportForm, UserImportForm, QuestionBankForm, SectionForm,
     RetentionPolicyForm, BrandingForm, ApiKeyForm, LmsWebhookForm, CertificateSettingsForm, ProctoringPolicyForm,
     AccessControlForm, AccommodationApproveForm, AccommodationDenyForm, CohortForm, AssignProctorForm,
-    AppealDecisionForm, ProctorMessageForm, ProctorTerminateForm, AttemptReviewForm,
+    AppealDecisionForm, ProctorMessageForm, ProctorTerminateForm,
 )
 from app.models import (
     Test, Question, User, TestEligibility, Attempt, Answer, ProctoringEvent, AdminActivityLog,
     QuestionBankItem, Section, IdentityDocument, NotificationLog, AnswerSimilarityFlag,
     LoginSession, LoginSecurityEvent, ApiKey, Organization, AccommodationRequest, QuestionRevision,
-    Cohort, CohortMembership, Appeal, ProctorMessage, AttemptReview, gen_user_id, recompute_attempt_score,
+    Cohort, CohortMembership, Appeal, ProctorMessage, gen_user_id, recompute_attempt_score,
 )
 from app.proctoring import compute_suspicion_score, build_timeline, get_live_alerts_since, EVENT_TYPE_LABELS
 from app.utils import (
@@ -50,7 +50,6 @@ from app import retention as retention_module
 from app import org_export
 from app import org_reports
 from app import branding as branding_module
-from app import attempt_report
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
 
@@ -152,34 +151,8 @@ def dashboard():
         tests = Test.query.filter_by(created_by=current_user.id, deleted_at=None).order_by(Test.created_at.desc()).all()
         total_attempts = Attempt.query.join(Test).filter(Test.created_by == current_user.id).count()
     total_students = User.query.filter_by(role="student", org_id=current_org_id()).count()
-
-    # "What needs me right now": the highest-risk finished attempts nobody has
-    # reviewed yet, and who is in an exam at this moment. Both are
-    # organization-wide (like the Review Queue and Live Monitor they link to),
-    # not limited to tests this user created.
-    org_id = current_org_id()
-    needs_review = (
-        Attempt.query.join(Test, Attempt.test_id == Test.id)
-        .outerjoin(AttemptReview, AttemptReview.attempt_id == Attempt.id)
-        .filter(
-            Test.org_id == org_id, AttemptReview.id.is_(None), Attempt.status != "in_progress",
-            db.or_(Attempt.status == "terminated", Attempt.violation_count > 0),
-        )
-        .order_by(Attempt.suspicion_score.desc(), Attempt.started_at.desc()).limit(5).all()
-    )
-    top_reasons = {}
-    for a in needs_review:
-        reasons = compute_suspicion_score(a).get("reasons") or []
-        if reasons:
-            top_reasons[a.id] = reasons[0]
-    live_now = (
-        Attempt.query.join(Test, Attempt.test_id == Test.id)
-        .filter(Test.org_id == org_id, Attempt.status == "in_progress")
-        .order_by(Attempt.suspicion_score.desc(), Attempt.started_at).limit(5).all()
-    )
     return render_template(
-        "admin/dashboard.html", tests=tests, total_students=total_students, total_attempts=total_attempts,
-        needs_review=needs_review, top_reasons=top_reasons, live_now=live_now,
+        "admin/dashboard.html", tests=tests, total_students=total_students, total_attempts=total_attempts
     )
 
 
@@ -1245,71 +1218,9 @@ def view_attempt(attempt_id):
     quality = proctoring.compute_quality_score(attempt)
     timeline = build_timeline(attempt)
     patterns = proctoring.detect_behavioral_patterns(attempt)
-    review = AttemptReview.query.filter_by(attempt_id=attempt.id).first()
-    review_form = AttemptReviewForm(decision=review.decision if review else "cleared", notes=review.notes if review else "")
     return render_template(
         "admin/view_attempt.html", attempt=attempt, events=events, risk=risk, timeline=timeline,
-        patterns=patterns, quality=quality, review=review, review_form=review_form,
-    )
-
-
-@bp.route("/attempts/<int:attempt_id>/review", methods=["POST"])
-@review_access
-def review_attempt(attempt_id):
-    """Record (or update) a reviewer's conclusion on a finished attempt —
-    see app.models.AttemptReview. Refused while the attempt is still in
-    progress: a conclusion reached before the evidence is complete isn't
-    one, and the Live Monitor is the right tool for mid-exam action."""
-    attempt = Attempt.query.get_or_404(attempt_id)
-    ensure_same_org(attempt.test)
-    if attempt.status == "in_progress":
-        flash("This attempt is still in progress — review it once it has ended.", "error")
-        return redirect(url_for("admin.view_attempt", attempt_id=attempt.id))
-
-    form = AttemptReviewForm()
-    if not form.validate_on_submit():
-        for errors in form.errors.values():
-            for e in errors:
-                flash(e, "error")
-        return redirect(url_for("admin.view_attempt", attempt_id=attempt.id))
-
-    review = AttemptReview.query.filter_by(attempt_id=attempt.id).first()
-    previous = review.decision if review else None
-    if review is None:
-        review = AttemptReview(attempt_id=attempt.id, reviewer_id=current_user.id, decision=form.decision.data)
-        db.session.add(review)
-    review.decision = form.decision.data
-    review.notes = (form.notes.data or "").strip() or None
-    review.reviewer_id = current_user.id
-    review.reviewed_at = datetime.utcnow()
-    db.session.commit()
-
-    verb = "Recorded" if previous is None else f"Changed ({previous} → {review.decision})"
-    log_activity(
-        f"reviewed_attempt_{review.decision}",
-        f"{verb} review of {attempt.student.name}'s attempt on '{attempt.test.title}': {review.decision}",
-    )
-    flash("Review saved.", "success")
-    return redirect(url_for("admin.view_attempt", attempt_id=attempt.id))
-
-
-@bp.route("/attempts/<int:attempt_id>/report.pdf")
-@review_access
-def export_attempt_report(attempt_id):
-    """One-attempt incident report (PDF) — see app.attempt_report."""
-    attempt = Attempt.query.get_or_404(attempt_id)
-    ensure_same_org(attempt.test)
-    events = ProctoringEvent.query.filter_by(attempt_id=attempt.id).order_by(ProctoringEvent.created_at).all()
-    pdf_bytes = attempt_report.render_attempt_report_pdf(
-        attempt, events, compute_suspicion_score(attempt),
-        review=AttemptReview.query.filter_by(attempt_id=attempt.id).first(),
-        appeal=Appeal.query.filter_by(attempt_id=attempt.id).first(),
-    )
-    filename = f"incident_report_attempt{attempt.id}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.pdf"
-    log_activity("exported_attempt_report", f"Exported incident report for {attempt.student.name}'s attempt on '{attempt.test.title}'")
-    return Response(
-        pdf_bytes, mimetype="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
+        patterns=patterns, quality=quality,
     )
 
 
@@ -1436,16 +1347,6 @@ def proctor_queue():
         Test.org_id == current_org_id(),
         db.or_(Attempt.status == "terminated", Attempt.violation_count > 0),
     )
-    # Reviewed-status filter: "pending" = nobody has recorded a conclusion
-    # yet (the work still to do); or one of the three decisions. Anything
-    # else (including no parameter) shows everything, as before.
-    review_filter = request.args.get("review", "all")
-    if review_filter == "pending":
-        query = query.outerjoin(AttemptReview, AttemptReview.attempt_id == Attempt.id).filter(AttemptReview.id.is_(None))
-    elif review_filter in AttemptReview.DECISIONS:
-        query = query.join(AttemptReview, AttemptReview.attempt_id == Attempt.id).filter(AttemptReview.decision == review_filter)
-    else:
-        review_filter = "all"
     if mine_only:
         query = query.filter(Attempt.assigned_proctor_id == current_user.id)
     if sort == "recent":
@@ -1464,14 +1365,9 @@ def proctor_queue():
     reviewers = User.query.filter(
         User.org_id == current_org_id(), User.role.in_(["admin", "proctor"]), User.status == "active",
     ).order_by(User.name).all()
-    decisions = {
-        r.attempt_id: r.decision
-        for r in AttemptReview.query.filter(AttemptReview.attempt_id.in_([a.id for a in pagination.items])).all()
-    } if pagination.items else {}
     return render_template(
         "admin/proctor_queue.html", pagination=pagination, attempts=pagination.items, sort=sort,
         top_reasons=top_reasons, reviewers=reviewers, mine_only=mine_only, assign_form=AssignProctorForm(),
-        review_filter=review_filter, decisions=decisions,
     )
 
 

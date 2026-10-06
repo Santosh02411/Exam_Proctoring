@@ -1297,37 +1297,3 @@ class ProctorMessage(db.Model):
 
     attempt = db.relationship("Attempt", backref=db.backref("proctor_messages", lazy=True, cascade="all, delete-orphan"))
     sender = db.relationship("User", foreign_keys=[sender_id])
-
-
-class AttemptReview(db.Model):
-    """A human's recorded conclusion on a flagged attempt — the missing
-    end of the proctoring pipeline. The automated side produces events, a
-    suspicion score and (sometimes) a termination, but nothing recorded
-    what a person concluded after actually looking at it, so the Review
-    Queue could never distinguish "not looked at yet" from "looked at and
-    fine", and a disciplinary case had no written rationale attached to
-    the evidence.
-
-    One current review per attempt (re-reviewing updates it in place; each
-    change is also written to the admin activity log, which is where the
-    history lives). Kept in its own table rather than as columns on
-    Attempt so an existing database picks it up via create_all() with no
-    migration.
-    """
-
-    __tablename__ = "attempt_reviews"
-
-    id = db.Column(db.Integer, primary_key=True)
-    attempt_id = db.Column(db.Integer, db.ForeignKey("attempts.id"), nullable=False)
-    # cleared (no misconduct found) | confirmed (misconduct confirmed) | escalated (needs follow-up)
-    decision = db.Column(db.String(20), nullable=False)
-    notes = db.Column(db.Text, nullable=True)
-    reviewer_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
-    reviewed_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-    attempt = db.relationship("Attempt", backref=db.backref("review", uselist=False, cascade="all, delete-orphan"))
-    reviewer = db.relationship("User", foreign_keys=[reviewer_id])
-
-    __table_args__ = (db.UniqueConstraint("attempt_id", name="uq_attempt_review_attempt"),)
-
-    DECISIONS = ("cleared", "confirmed", "escalated")

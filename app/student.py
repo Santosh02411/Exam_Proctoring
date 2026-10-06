@@ -52,9 +52,6 @@ def dashboard():
             "attempts_left": max(allowed_attempts - completed_count, 0),
             "accommodation_pending": test.id in pending_by_test,
         })
-    # The exam you're in the middle of is the thing you most need to find:
-    # put it first (stable sort keeps the rest in their existing order).
-    rows.sort(key=lambda r: 0 if (r["attempt"] and r["attempt"].status == "in_progress") else 1)
     return render_template("student/dashboard.html", rows=rows)
 
 
