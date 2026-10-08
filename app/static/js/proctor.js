@@ -466,7 +466,7 @@
         showBanner(`Warning: ${eventType.replace(/_/g, ' ')} (${data.violation_count} violation${data.violation_count === 1 ? '' : 's'} recorded)`);
       }
       if (data.terminated) {
-        endExam('terminated');
+        endExam('terminated', data.message);
       }
       return data;
     } catch (e) {
@@ -1923,10 +1923,15 @@
     }
   }
 
-  function endExam(reason) {
+  function endExam(reason, message) {
     if (examEnded) return;
     if (reason === 'terminated') {
-      submitExam('Your attempt has been terminated due to repeated proctoring violations.');
+      // `message` is the server's specific reason for THIS occurrence (see
+      // _record_violation's disqualification/force-terminate messages) —
+      // shown when we have it, since "repeated proctoring violations" is
+      // misleading for e.g. a warning-limit disqualification or a
+      // zero-tolerance policy ending the exam on the very first offense.
+      submitExam(message || 'Your attempt has been terminated due to repeated proctoring violations.');
     }
   }
 
