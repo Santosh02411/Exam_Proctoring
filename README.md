@@ -188,6 +188,32 @@ exam_proctoring_python/
 │                                                         # organizations/, system_ops/)
 ```
 
+## Upgrading an existing database
+
+`db.create_all()` (run at every startup) only creates whole tables that don't exist yet —
+on a database from a previous version of this app, it silently leaves every table that
+*does* already exist completely untouched. If a newer version of the code has added a
+column to one of those tables, the very first query that touches it fails with
+`OperationalError: no such column: ...`, no matter how long ago that column was added or
+how many have piled up since.
+
+`app/__init__.py` closes that gap with `_ensure_columns`, which runs right after
+`db.create_all()` on every startup: it walks every table the models define, compares each
+one's columns against what the live database actually has (via `sqlalchemy.inspect`), and
+issues a plain `ALTER TABLE ... ADD COLUMN` for anything missing — the full set, not a
+specific list, so upgrading never depends on anyone having remembered to add an entry for
+a particular feature. It's a no-op (and safe to run on every boot) once the database is
+current, which is also exactly what happens on a brand-new install, where `create_all()`
+already created every column up front.
+
+This is deliberately a reconciliation step, not a real migration framework — it only ever
+*adds* missing columns, never renames, drops, or changes a column's type, and a column
+whose model default can't be expressed as plain SQL (for example `datetime.utcnow`, a
+Python callable) is added as nullable rather than guessing a value for existing rows. If
+you're running this app and `flask` commands or pages start throwing `no such column`
+errors after pulling a newer version, that's this step doing its job on the next startup —
+just run the app (or any `flask` CLI command) once and retry.
+
 ## Setup (development)
 
 ```bash
@@ -324,6 +350,61 @@ tab crashes. Chunks are stored under `instance/recordings/<attempt_id>/` and lis
 inline `<video>` players on the admin's attempt-detail page, gated so only the test's
 owning admin can fetch them.
 
+## Real (viewer-local) time, scheduling emails, and automatic reminders
+
+**All notifications go to the email a student registered with** (`User.email`, set at
+registration and not editable from the profile page) — this was already true throughout
+the app (see `notify()` in `app/notifications.py`) and hasn't changed; noted here because
+it's easy to assume otherwise.
+
+**Timestamps now show the viewer's real local time, not a raw UTC number.** Every
+timestamp in this app is stored and entered as naive UTC — that was already consistent,
+but several pages (the calendar, the review queue, the attempt detail page, appeals,
+notification history) rendered it with a plain `strftime` and no timezone label. To
+someone outside UTC that reads as flat-out wrong: a test set for "22:00" looks like 10pm
+local when it's actually 10pm UTC. The fix is `local_time()` (macro in
+`_components.html`) plus `applyLocalTimes()` (script in `base.html`): every timestamp is
+rendered as `<time class="localtime" data-utc="...">` with an explicit, correct "...
+UTC" fallback (right even with JS off or before the page script runs), and a small
+script rewrites it, once, to the viewer's actual real local time and date via the
+browser's own `Intl`/`toLocaleString` — no server-side timezone or locale configuration
+needed. Applied to the student and admin calendars, the student dashboard (which now also
+shows each test's Opens/Closes window), the review queue, the attempt detail page, appeals
+(both sides), and notification history. Admin-facing per-event technical logs (the
+Behavior Timeline, Proctoring Log, session/device detail) are left in plain UTC and
+labeled as such — those correlate with recording timestamps and an admin's own clock
+reference, where converting would do more harm than good. Test scheduling input fields
+(start/end time) are still entered and interpreted as UTC, same as always; the "Opens"/
+"Closes" preview on the student dashboard double-checks that for an admin.
+
+**Scheduling emails now include the date, time, and the test's rules.** "You've been
+assigned a new test" and the starting-soon reminder previously stated only a duration and
+a raw start timestamp. Both now also include the passing marks, attempts allowed, the
+test's open/close window as an explicit date plus a UTC time, and — if the admin set
+any — the test's **Instructions for students** field (the same "rules" shown on the
+pre-exam screen) under "Rules & instructions for this exam," so a student has the actual
+exam rules in their inbox, not just a login link.
+
+**The 1-hour-before reminder now actually fires on its own.** `send_starting_soon_reminders()`
+(dedup'd per student/test via `NotificationLog`, so it's safe to call repeatedly) always
+worked correctly once triggered, but previously the *only* triggers were an admin clicking
+"Send Starting-Soon Reminders Now" on the Notifications page, or an external cron/Task
+Scheduler entry calling `flask send-reminders` — nothing in the app itself ever called it.
+On a deployment without that external cron set up, reminders simply never went out.
+`app/scheduler.py` closes that gap with a small, dependency-free background thread
+(no APScheduler/Celery) started from `create_app`, which re-runs the sweep every
+`REMINDER_SCHEDULER_INTERVAL_SECONDS` (default 300s). It skips itself under `TESTING`,
+under Flask's debug-mode reloader's watcher half (so it doesn't start twice), and can be
+turned off with `ENABLE_BACKGROUND_SCHEDULER=false` to rely solely on the manual button or
+an external cron instead — the dedup means nothing is ever double-sent either way, however
+it's triggered.
+
+**The pre-exam rules now state the actual configured warning limit.** The "you must stay
+in fullscreen..." paragraph shown before a student starts a proctored exam now also says,
+in plain language, how many warnings this specific test allows before the next one
+disqualifies them (see "Warning-based disqualification" above) — reflecting
+`Test.max_warnings`/the platform default, not a generic "after repeated warnings."
+
 ## Email verification, password reset & login security
 
 Verification/reset use `itsdangerous` signed, time-limited tokens — no separate token
@@ -425,6 +506,46 @@ legitimately give a similar answer to a short factual question.
   third-party IP-reputation API on login; off by default, and never blocks a login even
   when misconfigured or unreachable, only logs a `vpn_or_proxy_suspected` event.
 
+## Warning-based disqualification
+
+The simple, blunt rule most admins actually want: **a student may be warned a couple of
+times, and the next rule violation after that disqualifies them** — regardless of which
+rule it was. This is separate from, and sits on top of, two other things already in this
+project that a reader familiar with the codebase should not confuse it with:
+
+- The **Customizable Warning System** (`Test.proctoring_policy`, configured per test per
+  event type) — lets an admin say e.g. "the first 2 `window_blur` events are just a
+  warning, the 3rd flags it, and `phone_detected` should terminate immediately." That's
+  fine-grained, per-event-type control, off by default.
+- **`MAX_VIOLATIONS_BEFORE_TERMINATION`** — the pre-existing plain count of
+  *violation*-severity events (not warnings) before the attempt is auto-terminated.
+  Unaffected by anything below; a real violation still counts toward it exactly as before.
+
+Warning-based disqualification tracks a single running total instead —
+`Attempt.total_warning_count` — that goes up by one for *every* warning-severity event on
+the attempt, no matter its type: a tab-switch warning and a no-face warning both count
+against the same total. Once that total reaches the limit, the next warning-worthy event
+disqualifies the student on the spot (`attempt.status = "terminated"`, with the reason
+"Disqualified after using all N warnings allowed for this exam.") instead of being logged
+as one more warning. The event itself is recorded as a violation, not a warning, and does
+count toward `violation_count` (it's the one real violation that ended the exam).
+
+- **Limit**: `MAX_WARNINGS` (env var, platform default is 2) or, per test, `Test.max_warnings`
+  — set when creating or editing a test. Leave it blank to use the platform default; set it
+  to `0` to turn this off for that one test (only real violations can end the exam, same as
+  before this feature existed); set it to any other number to override the default.
+- **What the student sees**: each warning's banner says how many are left ("1 warning left
+  before you are disqualified" / "Final warning — one more will disqualify you"), and the
+  alert shown when the exam ends now carries the server's actual reason instead of a
+  generic "repeated proctoring violations" message — useful for a zero-tolerance
+  termination too, not just this feature.
+- **What a reviewer sees**: the attempt detail page and the incident-report PDF both show
+  "Warnings used: X / N" next to the violation count.
+
+Adds two columns (`tests.max_warnings`, `attempts.total_warning_count`) rather than whole
+new tables. See "Upgrading an existing database" below for how those — and any other
+column a previously-deployed database is missing — get added automatically at startup.
+
 ## Live Monitor & Appeals
 
 **Live Monitor** (`/admin/live`, admin / examiner / proctor): a real-time roster of every attempt
@@ -452,6 +573,56 @@ either way the student is emailed with an optional reviewer note. The original a
 never altered, so the audit trail stays intact.
 
 Both features add new tables only (`appeals`, `proctor_messages`), created automatically on startup.
+
+## Review decisions & incident reports
+
+**Reviewer decision** — on any finished attempt's detail page a reviewer (admin / examiner /
+proctor) records a conclusion: **Cleared** (no misconduct found), **Confirmed** (misconduct), or
+**Escalate** (needs follow-up). Notes are required for Confirmed and Escalate, so a finding always
+carries its reasoning. There is one current decision per attempt; changing it updates it in place
+and each change is written to the admin activity log. Reviewing is refused while the attempt is
+still in progress (use the Live Monitor for mid-exam action).
+
+The **Review Queue** now shows each attempt's decision and can be filtered to *Not yet reviewed*,
+*Escalated*, *Confirmed* or *Cleared* — so "nobody has looked at this" is no longer
+indistinguishable from "looked at and fine". The Appeals page shows the decision alongside each
+appeal.
+
+**Incident report (PDF)** — "Download incident report" on the attempt page exports a one-attempt
+document for disciplinary cases, appeals or hand-offs: student/test/attempt summary, risk score
+and reasons, the reviewer's decision and notes, the student's appeal (if any), and the full
+proctoring event log. It is text-only by design — snapshots and recordings stay behind the app's
+access checks instead of being copied into a file that travels by email. All free text is escaped
+before rendering. Each export is written to the activity log.
+
+Adds one new table (`attempt_reviews`), created automatically on startup.
+
+## Interface & design
+
+The UI is a single stylesheet (`app/static/css/style.css`, a token-based design system with a
+light and a dark theme) plus a shared shell in `app/templates/base.html`. Because every page
+inherits both, restyling the app means editing those two files rather than each template.
+
+- **Shell.** Staff (admin / examiner / proctor / super_admin) get a grouped left sidebar; students
+  get a top bar; the login/registration pages are a split screen with no nav. The sidebar's
+  long settings group folds away, and below 900px it becomes a slide-over menu.
+- **Live counts.** The sidebar shows exams in progress, finished attempts flagged but not yet
+  reviewed, and pending appeals. They come from a small, best-effort context processor
+  (`_inject_staff_counts` in `app/__init__.py`): three cheap `COUNT`s per staff page, and any
+  failure just hides the badges rather than breaking the page.
+- **Risk meter.** The segmented gauge for the 0-100 suspicion score (`.meter`, macro in
+  `_components.html`) is used identically in the review queue, dashboard, live monitor, appeals
+  and attempt pages. The score and level are always written out too, so colour is never the only
+  signal. Table rows carry a matching severity edge (`.rail-low|medium|high|critical`).
+- **Typography.** Newsreader (page titles and headline numerals), Instrument Sans (interface),
+  IBM Plex Mono (scores, times, ids). All three are **self-hosted** under `app/static/fonts/`
+  (SIL Open Font License, see `LICENSES.txt` there), so the app makes no third-party font
+  requests and works on an offline network.
+- **Icons** are inline SVG (`_icons.html`), not emoji or an icon font.
+- **Accessibility.** Visible keyboard focus, a skip link, `prefers-reduced-motion` respected, and
+  `aria-current` on the active navigation item.
+- **Safe rendering of user data.** The live-alert bell builds its DOM with `textContent` — alert
+  labels and student names are user-supplied and must never be interpolated into HTML.
 
 ## Multi-tenancy (Institution / Organization Management)
 
@@ -544,7 +715,8 @@ than a fabricated "accepted".
 An organization's own admin (`/admin/branding`) or a super_admin on its behalf
 (`/organizations/<id>/branding`) can upload a logo and set a primary accent color
 (`app.branding`), applied to that org's users via a small CSS custom-property override and a
-logo swap in the nav bar. Logo upload and color are two independent actions/forms, not one
+logo swap in the sidebar / top bar. The sidebar's pine background is fixed page chrome and
+does not follow the accent color; buttons, links, focus rings and highlights do. Logo upload and color are two independent actions/forms, not one
 combined submit — an HTML5 `type="color"` input can never be truly empty, so a shared submit
 button would silently overwrite the org's color with black every time someone only meant to
 upload a logo. Branding only ever applies **after** login; there's no per-org subdomain, so an

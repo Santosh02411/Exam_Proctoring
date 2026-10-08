@@ -97,7 +97,14 @@ def test_warning_limit_escalates_after_configured_count(client, app, attempt_set
 
     d1 = fire()
     assert d1["violation_count"] == 0
-    assert d1["message"] == "Stay focused on the exam window. (1 warning left before this counts as a violation.)"
+    # The per-event-type Customizable Warning System's own message, plus the
+    # separate global warning-based-disqualification suffix (see
+    # test_warning_disqualification.py) — this test's window_blur warning is
+    # also the attempt's 1st warning overall, out of the platform default of 2.
+    assert d1["message"] == (
+        "Stay focused on the exam window. (1 warning left before this counts as a violation.)"
+        " (1 warning left before you are disqualified.)"
+    )
 
     d2 = fire()
     assert d2["violation_count"] == 0

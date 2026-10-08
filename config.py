@@ -39,6 +39,10 @@ class Config:
 
     # Proctoring settings
     MAX_VIOLATIONS_BEFORE_TERMINATION = int(os.environ.get("MAX_VIOLATIONS", 5))
+    # Warning-based disqualification default (see Test.max_warnings): how
+    # many total warnings a test allows, platform-wide, before the next one
+    # disqualifies the student. A test can override this per-test.
+    MAX_WARNINGS_BEFORE_TERMINATION = int(os.environ.get("MAX_WARNINGS", 2))
     SNAPSHOT_UPLOAD_DIR = os.path.join(BASE_DIR, "instance", "snapshots")
     RECORDINGS_DIR = os.path.join(BASE_DIR, "instance", "recordings")
     # face-api.js euclideanDistance threshold below which two descriptors are
@@ -61,6 +65,14 @@ class Config:
     # app.notifications.send_starting_soon_reminders and the `send-reminders`
     # CLI command, which is meant to be run periodically by an external cron.
     EXAM_REMINDER_WINDOW_MINUTES = int(os.environ.get("EXAM_REMINDER_WINDOW_MINUTES", 60))
+    # In-process background scheduler (see app/scheduler.py) that fires the
+    # starting-soon reminder sweep automatically, in real time, without
+    # needing an external cron job. Set to "false" to disable it (e.g. if
+    # you'd rather run `flask send-reminders` from cron yourself, which
+    # still works either way — NotificationLog dedup means a student is
+    # never emailed twice for the same test regardless of which path sent it).
+    ENABLE_BACKGROUND_SCHEDULER = os.environ.get("ENABLE_BACKGROUND_SCHEDULER", "true").lower() not in ("false", "0", "")
+    REMINDER_SCHEDULER_INTERVAL_SECONDS = int(os.environ.get("REMINDER_SCHEDULER_INTERVAL_SECONDS", 300))
 
     # Uploads — raised to comfortably fit ~30s webm video chunks plus base64 JPEG snapshots.
     MAX_CONTENT_LENGTH = 25 * 1024 * 1024  # 25 MB
