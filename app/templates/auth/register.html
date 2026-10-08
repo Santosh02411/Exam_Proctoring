@@ -1,13 +1,16 @@
 {% extends "base.html" %}
 {% block title %}Register — Exam Proctoring{% endblock %}
 {% block content %}
-<div class="center-page">
+<div class="auth-shell">
+  {% include "auth/_hero.html" %}
+  <section class="auth-panel">
   <div class="auth-box">
     <div class="auth-tabs">
       <a href="{{ url_for('auth.login') }}">Login</a>
       <a class="active" href="{{ url_for('auth.register') }}">Register</a>
     </div>
     <h2>Create an account</h2>
+    <p class="auth-sub">Students, examiners, proctors and admins all start here.</p>
     <form method="post" novalidate>
       {{ form.hidden_tag() }}
       <div class="field">
@@ -63,12 +66,14 @@
           </span>
         </label>
       </div>
-      <button type="submit" class="btn" style="width:100%">Register</button>
+      <button type="submit" class="btn" style="width:100%;min-height:44px">Register</button>
     </form>
     <div class="small" style="margin-top:16px;text-align:center">
       Already have an account? <a href="{{ url_for('auth.login') }}">Login</a>
     </div>
+    <div class="auth-legal"><a href="{{ url_for('legal.terms') }}">Terms of Service</a><a href="{{ url_for('legal.privacy') }}">Privacy Policy</a></div>
   </div>
+  </section>
 </div>
 <script>
   (function () {

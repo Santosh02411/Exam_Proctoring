@@ -1,43 +1,57 @@
 {% extends "base.html" %}
 {% from "_pagination.html" import render_pagination %}
+{% from "_components.html" import meter, local_time %}
 {% block title %}Review Queue{% endblock %}
 {% block content %}
-<div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px;margin-bottom:16px">
+{% set rv = review_filter if review_filter != 'all' else None %}
+<div class="page-head">
   <div>
     <h1>Review Queue</h1>
     <div class="lead">Attempts that were terminated or flagged for proctoring violations, across every test.</div>
   </div>
-  <div class="actions">
-    <a class="btn small ghost" href="{{ url_for('admin.appeals') }}">Appeals</a>
-    <a class="btn small {{ '' if mine_only else 'ghost' }}" href="{{ url_for('admin.proctor_queue', sort=sort, mine=1) }}">My Cases</a>
-    <a class="btn small {{ 'ghost' if mine_only else '' }}" href="{{ url_for('admin.proctor_queue', sort=sort) }}">All Cases</a>
-    <a class="btn small {{ 'ghost' if sort != 'risk' }}" href="{{ url_for('admin.proctor_queue', sort='risk', mine=1 if mine_only else None) }}">Sort: Highest Risk</a>
-    <a class="btn small {{ 'ghost' if sort != 'recent' }}" href="{{ url_for('admin.proctor_queue', sort='recent', mine=1 if mine_only else None) }}">Sort: Most Recent</a>
+  <a class="btn ghost" href="{{ url_for('admin.appeals') }}">Appeals</a>
+</div>
+
+<div class="filters">
+  <div class="chips" role="group" aria-label="Filter by review status">
+    {% for key, label in [('all','All'),('pending','Not yet reviewed'),('escalated','Escalated'),('confirmed','Confirmed'),('cleared','Cleared')] %}
+    <a class="chip" {% if review_filter == key %}aria-current="true"{% endif %} href="{{ url_for('admin.proctor_queue', sort=sort, mine=1 if mine_only else None, review=key if key != 'all' else None) }}">{{ label }}</a>
+    {% endfor %}
+  </div>
+  <div class="chips">
+    <a class="chip" {% if not mine_only %}aria-current="true"{% endif %} href="{{ url_for('admin.proctor_queue', sort=sort, review=rv) }}">All cases</a>
+    <a class="chip" {% if mine_only %}aria-current="true"{% endif %} href="{{ url_for('admin.proctor_queue', sort=sort, mine=1, review=rv) }}">My cases</a>
+    <span style="width:8px"></span>
+    <a class="chip" {% if sort == 'risk' %}aria-current="true"{% endif %} href="{{ url_for('admin.proctor_queue', sort='risk', mine=1 if mine_only else None, review=rv) }}">Highest risk</a>
+    <a class="chip" {% if sort == 'recent' %}aria-current="true"{% endif %} href="{{ url_for('admin.proctor_queue', sort='recent', mine=1 if mine_only else None, review=rv) }}">Most recent</a>
   </div>
 </div>
 
-<div class="card">
+<div class="card flush">
   {% if attempts %}
   <table class="table responsive-table">
-    <thead><tr><th>Student</th><th>Test</th><th>Status</th><th>Violations</th><th>Suspicion Score</th><th>Started</th><th>Assigned to</th><th></th></tr></thead>
+    <thead><tr><th>Student</th><th>Test</th><th>Suspicion Score</th><th>Status</th><th>Started</th><th>Review</th><th>Assigned to</th><th></th></tr></thead>
     <tbody>
       {% for a in attempts %}
-      <tr>
-        <td data-label="Student" style="font-weight:700">{{ a.student.name }}<br><span class="small muted">{{ a.student.email }}</span></td>
-        <td data-label="Test" class="small">{{ a.test.title }}</td>
-        <td data-label="Status"><span class="badge {{ a.status }}">{{ a.status|replace('_',' ')|capitalize }}</span></td>
-        <td data-label="Violations">{{ a.violation_count }}</td>
+      <tr class="rail-{{ a.risk_level }}">
+        <td data-label="Student"><span class="cell-strong">{{ a.student.name }}</span><span class="cell-sub">{{ a.student.email }}</span></td>
+        <td data-label="Test">{{ a.test.title }}</td>
         <td data-label="Suspicion Score">
-          <span class="badge risk-{{ a.risk_level }}">{{ a.suspicion_score }}/100 · {{ a.risk_level|capitalize }}</span>
-          {% if top_reasons.get(a.id) %}
-          <div class="small muted" style="margin-top:2px">{{ top_reasons[a.id] }}</div>
-          {% endif %}
+          <div class="risk-cell">
+            <div class="risk-line">{{ meter(a.suspicion_score, a.risk_level) }}<span class="badge risk-{{ a.risk_level }}">{{ a.risk_level|capitalize }}</span></div>
+            {% if top_reasons.get(a.id) %}<div class="why">{{ top_reasons[a.id] }}</div>{% endif %}
+          </div>
         </td>
-        <td data-label="Started" class="small">{{ a.started_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td data-label="Status"><span class="badge {{ a.status }}">{{ a.status|replace('_',' ')|capitalize }}</span><span class="cell-sub">{{ a.violation_count }} violation{{ '' if a.violation_count == 1 else 's' }}</span></td>
+        <td data-label="Started" class="nowrap">{{ local_time(a.started_at) }}</td>
+        <td data-label="Review">
+          {% set d = decisions.get(a.id) %}
+          {% if d %}<span class="badge {{ 'published' if d == 'cleared' else ('inactive' if d == 'confirmed' else 'draft') }}">{{ d|capitalize }}</span>{% else %}<span class="small muted">Not reviewed</span>{% endif %}
+        </td>
         <td data-label="Assigned to">
           <form method="post" action="{{ url_for('admin.assign_proctor', attempt_id=a.id) }}" onchange="this.submit()">
             {{ assign_form.hidden_tag() }}
-            <select name="proctor_id" style="font-size:12px;padding:4px 6px">
+            <select name="proctor_id" class="compact" aria-label="Assign a reviewer">
               <option value="">Unassigned</option>
               {% for r in reviewers %}
               <option value="{{ r.id }}" {{ 'selected' if a.assigned_proctor_id == r.id }}>{{ r.name }}{{ ' (you)' if r.id == current_user.id }}</option>
@@ -45,15 +59,15 @@
             </select>
           </form>
         </td>
-        <td data-label="" style="justify-content:flex-end"><a class="btn ghost small" href="{{ url_for('admin.view_attempt', attempt_id=a.id) }}">Review</a></td>
+        <td data-label="" class="actions"><a class="btn small" href="{{ url_for('admin.view_attempt', attempt_id=a.id) }}">Review</a></td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
-  <div class="small muted" style="margin-top:8px">Suspicion Score is a deterministic weighted score from the violation log (see the attempt detail page for the breakdown) — not a trained ML verdict, and not a substitute for human review.</div>
-  {{ render_pagination(pagination, 'admin.proctor_queue', {'sort': sort, 'mine': 1 if mine_only else 0}) }}
+  <div class="card-foot">Suspicion Score is a deterministic weighted score from the violation log (see the attempt detail page for the breakdown) — not a trained ML verdict, and not a substitute for human review.</div>
   {% else %}
-  <div class="small">Nothing flagged right now{{ ' for your assigned cases' if mine_only else '' }} — no terminated or violation-flagged attempts.</div>
+  <div class="empty"><strong>Nothing to review</strong>Nothing to show{{ ' for your assigned cases' if mine_only else '' }}{{ ' with this review status' if review_filter != 'all' else '' }} — no matching terminated or violation-flagged attempts.</div>
   {% endif %}
 </div>
+{{ render_pagination(pagination, 'admin.proctor_queue', {'sort': sort, 'mine': 1 if mine_only else 0, 'review': review_filter if review_filter != 'all' else ''}) }}
 {% endblock %}

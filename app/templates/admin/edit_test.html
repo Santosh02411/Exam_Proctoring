@@ -20,7 +20,7 @@
       {{ form.hidden_tag() }}
       {% set rendered_fields = ['test_code', 'title', 'duration_minutes', 'total_questions', 'passing_marks',
                                  'status', 'start_time', 'end_time', 'max_attempts', 'negative_marks_per_wrong',
-                                 'question_pool_size', 'enforce_ip_allowlist', 'geofence_lat', 'geofence_lng',
+                                 'question_pool_size', 'max_warnings', 'enforce_ip_allowlist', 'geofence_lat', 'geofence_lng',
                                  'geofence_radius_km', 'require_seb', 'enable_watermark'] %}
       {% if form.errors %}
       <div class="flash flash-error" style="margin-bottom:16px">
@@ -97,7 +97,18 @@
         </div>
       </div>
       <div class="field">
-        <label for="{{ form.question_pool_size.id }}">Question pool size (optional)</label>
+        <label for="{{ form.max_warnings.id }}">Warnings before disqualification (optional)</label>
+      {{ form.max_warnings(placeholder="e.g. 2") }}
+      <div class="hint">
+        Warnings across every proctoring rule combined — a tab switch plus a no-face warning count
+        toward the same total. Once a student uses them all up, the next one disqualifies them.
+        Leave blank to use the platform default ({{ config.MAX_WARNINGS_BEFORE_TERMINATION }}); use 0 to
+        turn this off for this test (only real violations end the exam, same as before).
+      </div>
+      {% for e in form.max_warnings.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+    </div>
+    <div class="field">
+      <label for="{{ form.question_pool_size.id }}">Question pool size (optional)</label>
         {{ form.question_pool_size(placeholder="e.g. 20") }}
         <div class="hint">
           Draw this many questions at random per student out of the full question set, instead of

@@ -103,6 +103,11 @@
       fullscreen; leaving fullscreen, switching tabs, having no face / multiple faces visible,
       sustained looking-away from the screen, a phone/book/extra person detected in frame, or an
       identity mismatch will be logged and can end your attempt after repeated warnings.
+      {% set warn_limit = test.max_warnings if test.max_warnings is not none else config.MAX_WARNINGS_BEFORE_TERMINATION %}
+      {% if warn_limit and warn_limit > 0 %}
+      You'll be warned the first {{ warn_limit }} time{{ '' if warn_limit == 1 else 's' }} this happens, with
+      a count of how many warnings you have left — after that, the next one ends your attempt.
+      {% endif %}
     </p>
     {% if test.instructions %}
     <div class="opt" style="margin-top:10px">

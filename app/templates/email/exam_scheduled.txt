@@ -3,6 +3,12 @@ Hi {{ student_name }},
 You've been assigned a new test: {{ test_title }}.
 
 Duration: {{ duration_minutes }} minutes.
-{% if start_time %}Opens: {{ start_time }}
+Passing marks: {{ passing_marks }}.
+Attempts allowed: {{ max_attempts }}.
+{% if start_date %}Opens: {{ start_date }} at {{ start_time }}
+{% endif %}{% if end_time %}Closes: {{ end_time }}
 {% endif %}
-Log in to Exam Proctoring to take it: {{ dashboard_url }}
+{% if instructions %}Rules & instructions for this exam:
+{{ instructions }}
+
+{% endif %}Log in to Exam Proctoring to take it: {{ dashboard_url }}

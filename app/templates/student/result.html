@@ -1,47 +1,61 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
 {% block title %}Result — {{ test.title }}{% endblock %}
 {% block content %}
-<div class="center-page" style="max-width:560px">
-  <div class="card" style="text-align:center">
-    <h1>{{ test.title }}</h1>
+<div class="center-page" style="max-width:600px;margin-top:32px">
+  <div class="card result">
+    <div class="small">Your result</div>
+    <h1 style="font-size:28px;margin-top:4px">{{ test.title }}</h1>
+
     {% if attempt.status == 'terminated' %}
-      <div class="violation-banner" style="margin-top:14px">
+      <div class="violation-banner" style="margin-top:20px;margin-bottom:0">
         Your attempt was terminated: {{ attempt.termination_reason }}
       </div>
-    {% else %}
-      <div style="font-size:42px;font-weight:800;margin:18px 0;color:{{ 'var(--success)' if passed else 'var(--danger)' }}">
-        {{ attempt.score }} / {{ total_marks }}
-      </div>
-      {% if pending_grading %}
-      <div class="badge draft" style="font-size:13px;padding:6px 12px">Some answers are still being reviewed — this score may change</div>
-      {% endif %}
-      <div class="badge {{ 'pass' if passed else 'fail' }}" style="font-size:14px;padding:8px 16px">
-        {{ 'PASSED' if passed else 'NOT PASSED' }}
-      </div>
-      <div class="small" style="margin-top:10px">Passing marks required: {{ test.passing_marks }}</div>
-    {% endif %}
-    <div class="small" style="margin-top:16px">Proctoring violations recorded: {{ attempt.violation_count }}</div>
-    {% if certificate_eligible %}
-    <div class="small" style="margin-top:6px;color:var(--success);font-weight:600">🎓 You've earned a certificate for this exam!</div>
-    {% endif %}
-    {% if appeal %}
-    <div class="small" style="margin-top:14px">
-      Appeal:
-      <span class="badge {{ 'published' if appeal.status == 'granted' else ('inactive' if appeal.status == 'denied' else 'draft') }}">{{ 'Pending review' if appeal.status == 'pending' else appeal.status|capitalize }}</span>
-      <a href="{{ url_for('student.appeal_attempt', attempt_id=attempt.id) }}">details</a>
-    </div>
-    {% endif %}
-    <div style="margin-top:24px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
       {% if can_appeal %}
-      <a class="btn ghost" href="{{ url_for('student.appeal_attempt', attempt_id=attempt.id) }}">Appeal this outcome</a>
+      <p class="small" style="margin:12px 0 0">If you think this was a mistake, you can ask a reviewer to look at it again.</p>
       {% endif %}
+    {% else %}
+      {% set pct = ((attempt.score / total_marks * 100) if total_marks else 0)|round(1) %}
+      {% set pass_pct = ((test.passing_marks / total_marks * 100) if total_marks else 0)|round(1) %}
+      <div style="display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-top:22px">
+        <div class="big-score" style="color:{{ 'var(--success)' if passed else 'var(--danger)' }}">{{ attempt.score }}<span class="of"> / {{ total_marks }}</span></div>
+        <div class="badge {{ 'pass' if passed else 'fail' }}" style="margin-bottom:8px">{{ 'PASSED' if passed else 'NOT PASSED' }}</div>
+      </div>
+      <div class="score-bar" role="img" aria-label="Score {{ attempt.score }} of {{ total_marks }}; passing mark {{ test.passing_marks }}" style="--c:{{ 'var(--success)' if passed else 'var(--danger)' }}">
+        <i style="width:{{ [pct, 100]|min }}%"></i><b style="left:{{ [pass_pct, 100]|min }}%"></b>
+      </div>
+      <div class="small">Passing marks required: {{ test.passing_marks }}</div>
+      {% if pending_grading %}
+      <div class="badge draft" style="margin-top:14px">Some answers are still being reviewed — this score may change</div>
+      {% endif %}
+    {% endif %}
+
+    <hr class="rule">
+    <dl class="kv">
+      <dt>Proctoring violations recorded</dt><dd class="mono">{{ attempt.violation_count }}</dd>
+      {% if appeal %}
+      <dt>Appeal</dt>
+      <dd>
+        <span class="badge {{ 'published' if appeal.status == 'granted' else ('inactive' if appeal.status == 'denied' else 'draft') }}">{{ 'Pending review' if appeal.status == 'pending' else appeal.status|capitalize }}</span>
+        <a href="{{ url_for('student.appeal_attempt', attempt_id=attempt.id) }}" style="margin-left:6px">details</a>
+      </dd>
+      {% endif %}
+    </dl>
+    {% if certificate_eligible %}
+    <div class="flash flash-success" style="margin:18px 0 0">You've earned a certificate for this exam!</div>
+    {% endif %}
+
+    <div class="actions" style="margin-top:24px">
+      <a class="btn" href="{{ url_for('student.dashboard') }}">Back to My Tests</a>
       {% if certificate_eligible %}
-      <a class="btn" href="{{ url_for('student.download_certificate', attempt_id=attempt.id) }}">Download Certificate</a>
+      <a class="btn ghost" href="{{ url_for('student.download_certificate', attempt_id=attempt.id) }}">Download Certificate</a>
       {% endif %}
       {% if test.allow_review and attempt.status != 'in_progress' %}
       <a class="btn ghost" href="{{ url_for('student.review', attempt_id=attempt.id) }}">Review Answers</a>
       {% endif %}
-      <a class="btn" href="{{ url_for('student.dashboard') }}">Back to My Tests</a>
+      {% if can_appeal %}
+      <a class="btn ghost" href="{{ url_for('student.appeal_attempt', attempt_id=attempt.id) }}">Appeal this outcome</a>
+      {% endif %}
     </div>
   </div>
 </div>

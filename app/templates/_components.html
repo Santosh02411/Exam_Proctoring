@@ -5,3 +5,22 @@
 {% macro meter(score, level, size='', show_text=true) -%}
 <span class="meter {{ size }}" data-level="{{ level }}" role="img" aria-label="Suspicion score {{ score }} out of 100, {{ level }} risk"><span class="meter-bar"><i style="--v:{{ score }}"></i></span>{% if show_text %}<span class="meter-num">{{ score }}/100</span>{% endif %}</span>
 {%- endmacro %}
+
+{# Real (viewer-local) time — every timestamp in this app is stored and
+   passed in as naive UTC (see the "All times are stored and entered in UTC"
+   convention). Rendering it with a plain strftime shows the same raw UTC
+   number to every viewer regardless of where they are, which reads as
+   flat-out wrong to anyone not in UTC (a test set for "22:00" looks like
+   10pm local when it's actually 10pm UTC = 3:30am IST, say). This macro
+   prints a clearly-labeled UTC fallback (correct even with JS disabled or
+   before the page script runs) and tags the element so base.html's
+   `applyLocalTimes()` can rewrite it, once, to the viewer's own real local
+   time via the browser's Intl API — no server-side timezone plumbing
+   needed. `fmt` is 'datetime' (default), 'date', or 'time'. #}
+{% macro local_time(dt, fmt='datetime') -%}
+{%- if dt -%}
+<time class="localtime" data-utc="{{ dt.strftime('%Y-%m-%dT%H:%M:%S') }}Z" data-fmt="{{ fmt }}">{% if fmt == 'date' %}{{ dt.strftime('%Y-%m-%d') }}{% elif fmt == 'time' %}{{ dt.strftime('%H:%M') }} UTC{% else %}{{ dt.strftime('%Y-%m-%d %H:%M') }} UTC{% endif %}</time>
+{%- else -%}
+—
+{%- endif -%}
+{%- endmacro %}

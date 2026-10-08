@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_components.html" import local_time %}
 {% from "_pagination.html" import render_pagination %}
 {% block title %}Notifications{% endblock %}
 {% block content %}
@@ -10,6 +11,13 @@
   </div>
   <form method="post" action="{{ url_for('admin.trigger_reminders') }}">
     <button type="submit" class="btn">Send Starting-Soon Reminders Now</button>
+    <div class="small muted" style="margin-top:6px;max-width:260px">
+      {% if config.ENABLE_BACKGROUND_SCHEDULER %}
+      This also runs automatically every few minutes — use this button to force a check right now instead of waiting.
+      {% else %}
+      Automatic background sending is turned off for this deployment; reminders only go out when this is clicked or an external cron calls <code>flask send-reminders</code>.
+      {% endif %}
+    </div>
   </form>
 </div>
 
@@ -27,7 +35,7 @@
     <tbody>
       {% for n in entries %}
       <tr>
-        <td class="small">{{ n.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+        <td class="small">{{ local_time(n.created_at) }}</td>
         <td><span class="badge draft">{{ n.notif_type|replace('_',' ')|capitalize }}</span></td>
         <td class="small">{{ n.user.name if n.user else '—' }}</td>
         <td class="small">{{ n.subject }}</td>
