@@ -143,6 +143,26 @@ class ProctorTerminateForm(FlaskForm):
     reason = StringField("Reason", validators=[DataRequired(), Length(min=3, max=200)])
 
 
+class AttemptReviewForm(FlaskForm):
+    """A reviewer's conclusion on a flagged attempt (see
+    app.models.AttemptReview). Written notes are required for anything
+    other than "cleared": a misconduct finding or an escalation with no
+    stated reasoning is exactly the record nobody can defend later."""
+    decision = SelectField("Decision", choices=[
+        ("cleared", "Cleared — no misconduct found"),
+        ("confirmed", "Confirmed — misconduct"),
+        ("escalated", "Escalate — needs follow-up"),
+    ], validators=[DataRequired()])
+    # No Optional() here on purpose: it short-circuits the whole validator
+    # chain (including validate_notes below) on blank input, which is the
+    # exact case the "notes required" rule has to catch.
+    notes = TextAreaField("Notes", validators=[Length(max=2000)])
+
+    def validate_notes(self, field):
+        if self.decision.data in ("confirmed", "escalated") and not (field.data or "").strip():
+            raise ValidationError("Please write down your reasoning for this decision.")
+
+
 class NotificationPreferencesForm(FlaskForm):
     """CSRF-only — the actual per-notif_type email/sms checkboxes (see
     app.notifications.NOTIFICATION_PREF_LABELS) are rendered and parsed
@@ -316,6 +336,9 @@ class TestForm(FlaskForm):
     )
     enable_watermark = BooleanField(
         "Overlay the student's name and a timestamp across the exam screen", default=False
+    )
+    max_warnings = IntegerField(
+        "Warnings before disqualification (optional)", validators=[Optional(), NumberRange(min=0, max=20)]
     )
 
 

@@ -86,6 +86,7 @@ def render_attempt_report_pdf(attempt, events, risk, review=None, appeal=None):
         ("Ended", _ts(attempt.submitted_at)),
         ("Score", score),
         ("Violations recorded", attempt.violation_count),
+        ("Warnings used", attempt.total_warning_count),
         ("Termination reason", attempt.termination_reason or "—"),
         ("IP address", attempt.ip_address or "—"),
     ]))

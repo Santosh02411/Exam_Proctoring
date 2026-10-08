@@ -153,7 +153,12 @@ def notify_exam_scheduled(student, test):
     notify(student, "exam_scheduled", {
         "student_name": student.name, "test_title": test.title,
         "duration_minutes": test.duration_minutes,
-        "start_time": test.start_time.strftime("%Y-%m-%d %H:%M UTC") if test.start_time else None,
+        "passing_marks": test.passing_marks,
+        "max_attempts": test.max_attempts,
+        "start_date": test.start_time.strftime("%Y-%m-%d") if test.start_time else None,
+        "start_time": test.start_time.strftime("%H:%M UTC") if test.start_time else None,
+        "end_time": test.end_time.strftime("%Y-%m-%d %H:%M UTC") if test.end_time else None,
+        "instructions": (test.instructions or "").strip() or None,
         "dashboard_url": url_for("student.dashboard", _external=True),
     }, test=test)
 
@@ -310,8 +315,11 @@ def send_starting_soon_reminders(window_minutes=None, org_id=None):
             minutes_until = max(int((test.start_time - now).total_seconds() // 60), 0)
             notify(student, "exam_starting_soon", {
                 "student_name": student.name, "test_title": test.title,
-                "start_time": test.start_time.strftime("%Y-%m-%d %H:%M UTC"),
+                "start_date": test.start_time.strftime("%Y-%m-%d"),
+                "start_time": test.start_time.strftime("%H:%M UTC"),
+                "duration_minutes": test.duration_minutes,
                 "minutes_until": minutes_until,
+                "instructions": (test.instructions or "").strip() or None,
                 "dashboard_url": url_for("student.dashboard", _external=True),
             }, test=test)
             sent += 1

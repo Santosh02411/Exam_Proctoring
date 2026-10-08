@@ -230,6 +230,18 @@ class Test(db.Model):
     geofence_lng = db.Column(db.Float, nullable=True)
     geofence_radius_km = db.Column(db.Float, nullable=True)
 
+    # Warning-based disqualification (see app.proctoring._record_violation):
+    # how many warning-severity proctoring events (of ANY type — tab
+    # switches, no-face, audio, etc. — combined) a student may accumulate
+    # over the whole attempt before the next one disqualifies them,
+    # instead of just being logged. None = use the platform default
+    # (config MAX_WARNINGS_BEFORE_TERMINATION); 0 = disabled for this test
+    # (warnings never disqualify on their own — the older, still-available
+    # per-event-type Customizable Warning System and the separate
+    # real-violation count in MAX_VIOLATIONS_BEFORE_TERMINATION are
+    # unaffected either way).
+    max_warnings = db.Column(db.Integer, nullable=True)
+
     # Safe Exam Browser (see app.seb): when True, a student starting this
     # test whose request doesn't look like it came from the SEB client
     # (see app.seb.looks_like_seb) gets a "seb_not_detected" proctoring
@@ -714,6 +726,14 @@ class Attempt(db.Model):
     # escalate to this type's configured post-limit action" without a extra
     # query over ProctoringEvent on every single event.
     warning_counts = db.Column(db.Text, nullable=True)
+
+    # Warning-based disqualification (see Test.max_warnings /
+    # app.proctoring._record_violation): total count of warning-severity
+    # events across ALL event types on this attempt — distinct from
+    # warning_counts above, which is per-event-type and only used for that
+    # older, opt-in escalation system. This is the plain running total
+    # checked against the test's (or platform's) warning limit.
+    total_warning_count = db.Column(db.Integer, nullable=False, default=0)
 
     answers = db.relationship("Answer", backref="attempt", cascade="all, delete-orphan", lazy=True)
     events = db.relationship("ProctoringEvent", backref="attempt", cascade="all, delete-orphan", lazy=True)
@@ -1297,3 +1317,37 @@ class ProctorMessage(db.Model):
 
     attempt = db.relationship("Attempt", backref=db.backref("proctor_messages", lazy=True, cascade="all, delete-orphan"))
     sender = db.relationship("User", foreign_keys=[sender_id])
+
+
+class AttemptReview(db.Model):
+    """A human's recorded conclusion on a flagged attempt — the missing
+    end of the proctoring pipeline. The automated side produces events, a
+    suspicion score and (sometimes) a termination, but nothing recorded
+    what a person concluded after actually looking at it, so the Review
+    Queue could never distinguish "not looked at yet" from "looked at and
+    fine", and a disciplinary case had no written rationale attached to
+    the evidence.
+
+    One current review per attempt (re-reviewing updates it in place; each
+    change is also written to the admin activity log, which is where the
+    history lives). Kept in its own table rather than as columns on
+    Attempt so an existing database picks it up via create_all() with no
+    migration.
+    """
+
+    __tablename__ = "attempt_reviews"
+
+    id = db.Column(db.Integer, primary_key=True)
+    attempt_id = db.Column(db.Integer, db.ForeignKey("attempts.id"), nullable=False)
+    # cleared (no misconduct found) | confirmed (misconduct confirmed) | escalated (needs follow-up)
+    decision = db.Column(db.String(20), nullable=False)
+    notes = db.Column(db.Text, nullable=True)
+    reviewer_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    reviewed_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    attempt = db.relationship("Attempt", backref=db.backref("review", uselist=False, cascade="all, delete-orphan"))
+    reviewer = db.relationship("User", foreign_keys=[reviewer_id])
+
+    __table_args__ = (db.UniqueConstraint("attempt_id", name="uq_attempt_review_attempt"),)
+
+    DECISIONS = ("cleared", "confirmed", "escalated")

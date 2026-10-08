@@ -931,6 +931,7 @@ def _record_violation(attempt, event_type, severity, details="", confidence=None
         resolved_action = default_action
 
     force_terminate = False
+    disqualified_by_warnings = False
     message = None
     if resolved_action == "ignore":
         severity = "info"
@@ -949,6 +950,45 @@ def _record_violation(attempt, event_type, severity, details="", confidence=None
     # default_action given either) — keep whatever severity the caller
     # passed in, same as before this feature.
 
+    # Warning-based disqualification: a simple, global counterpart to the
+    # per-event-type Customizable Warning System above. Where that system
+    # tracks "how many times has THIS event type warned", this tracks
+    # "how many warnings, of any type combined, has this attempt used" —
+    # e.g. one tab-switch warning plus one no-face warning together use up
+    # a 2-warning limit. It applies to every warning-severity event
+    # regardless of how it got there: a policy-driven "warning" action
+    # above, or an event type that's warning-severity by its own plain
+    # default (window_blur, audio_violation, no_face) with no policy
+    # override at all — either way, the student is being warned, and it
+    # counts. Test.max_warnings (None = platform default from config,
+    # 0 = disabled) controls the limit; leaves violation_count/
+    # MAX_VIOLATIONS_BEFORE_TERMINATION and the per-event-type system
+    # entirely alone; either mechanism can end the attempt independently.
+    warn_limit = attempt.test.max_warnings
+    if warn_limit is None:
+        warn_limit = current_app.config["MAX_WARNINGS_BEFORE_TERMINATION"]
+    if severity == "warning" and warn_limit and warn_limit > 0:
+        label = EVENT_TYPE_LABELS.get(event_type, event_type.replace("_", " "))
+        if attempt.total_warning_count >= warn_limit:
+            # Every warning has already been used — this occurrence
+            # disqualifies instead of being logged as one more warning.
+            severity = "violation"
+            force_terminate = True
+            disqualified_by_warnings = True
+            message = (
+                f"Disqualified: you already used all {warn_limit} warning"
+                f"{'s' if warn_limit != 1 else ''} allowed for this exam — {label} ends your attempt."
+            )
+        else:
+            attempt.total_warning_count += 1
+            remaining = warn_limit - attempt.total_warning_count
+            if message is None:
+                message = f"Warning: {label}."
+            message += (
+                " (Final warning — one more will disqualify you.)" if remaining == 0
+                else f" ({remaining} warning{'s' if remaining != 1 else ''} left before you are disqualified.)"
+            )
+
     event = ProctoringEvent(
         attempt_id=attempt.id, event_type=event_type, severity=severity,
         details=details, confidence=confidence,
@@ -961,11 +1001,18 @@ def _record_violation(attempt, event_type, severity, details="", confidence=None
         max_v = current_app.config["MAX_VIOLATIONS_BEFORE_TERMINATION"]
         if attempt.status == "in_progress" and (force_terminate or attempt.violation_count >= max_v):
             attempt.status = "terminated"
-            attempt.termination_reason = (
-                f"This exam is configured to terminate immediately on "
-                f"{EVENT_TYPE_LABELS.get(event_type, event_type.replace('_', ' '))}."
-                if force_terminate else f"Exceeded {max_v} proctoring violations."
-            )
+            if disqualified_by_warnings:
+                attempt.termination_reason = (
+                    f"Disqualified after using all {warn_limit} warning{'s' if warn_limit != 1 else ''} "
+                    f"allowed for this exam."
+                )
+            elif force_terminate:
+                attempt.termination_reason = (
+                    f"This exam is configured to terminate immediately on "
+                    f"{EVENT_TYPE_LABELS.get(event_type, event_type.replace('_', ' '))}."
+                )
+            else:
+                attempt.termination_reason = f"Exceeded {max_v} proctoring violations."
             attempt.submitted_at = datetime.utcnow()
             terminated = True
 

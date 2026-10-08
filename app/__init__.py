@@ -12,6 +12,96 @@ login_manager.login_message = "Please log in to continue."
 login_manager.login_message_category = "warning"
 
 
+def _literal_default_sql(column, dialect):
+    """A column's Python-side `default=` as a literal SQL value, or None if
+    it isn't one (a callable like `datetime.utcnow` or `lambda: gen_user_id(...)`
+    can't be expressed as a static SQL DEFAULT — there's no way to ask
+    SQLite to run Python at insert time). Literals (str/int/float/bool) are
+    the common case and cover most columns in this app; the earlier,
+    narrower version of this function hand-wrote exactly one of these
+    ("INTEGER NOT NULL DEFAULT 0") per column, which is exactly the kind of
+    thing this generic version exists to stop anyone needing to remember."""
+    if column.default is None or getattr(column.default, "is_callable", False):
+        return None
+    value = getattr(column.default, "arg", None)
+    if callable(value):
+        return None
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    if isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, str):
+        return "'" + value.replace("'", "''") + "'"
+    return None
+
+
+def _ensure_columns(engine):
+    """Reconcile every model's columns against the live database and add
+    whatever's missing. db.create_all() only creates whole tables that are
+    missing — on an already-deployed database it silently leaves an
+    existing table's columns untouched, so any column a model has gained
+    since that database was first created turns into a hard crash ("no
+    such column: users.totp_secret", say) the instant any query touches
+    it, regardless of how long ago that column was added or how many
+    columns have piled up since.
+
+    This used to be a short hand-maintained list of (table, column, DDL
+    type) tuples — safe, but only as complete as whoever last remembered
+    to add an entry, and a real deployment hit exactly that gap: several
+    `users` columns (2FA, SSO, notification preferences) predated the list
+    entirely and were never in it. This version instead walks every table
+    SQLAlchemy's models define (db.metadata, not a maintained list),
+    compares each one against what the live database actually has, and
+    ALTERs in anything the models have that the table doesn't — so
+    upgrading never again depends on someone remembering to list a column.
+    """
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(engine)
+    try:
+        existing_tables = set(inspector.get_table_names())
+    except Exception:
+        return
+
+    with engine.connect() as conn:
+        for table in db.metadata.sorted_tables:
+            if table.name not in existing_tables:
+                continue  # a fresh install: create_all() already made this table in full
+            try:
+                existing_cols = {c["name"] for c in inspector.get_columns(table.name)}
+            except Exception:
+                continue
+
+            for column in table.columns:
+                if column.name in existing_cols:
+                    continue
+                try:
+                    ddl_type = column.type.compile(dialect=engine.dialect)
+                except Exception:
+                    continue  # an exotic/custom type we can't safely stringify — skip rather than guess
+
+                clause = f"ALTER TABLE {table.name} ADD COLUMN {column.name} {ddl_type}"
+                default_sql = _literal_default_sql(column, engine.dialect)
+                if default_sql is not None:
+                    clause += f" DEFAULT {default_sql}"
+                    if not column.nullable:
+                        clause += " NOT NULL"
+                # else: a callable default (datetime.utcnow, gen_user_id, ...)
+                # or no default at all — added as a plain nullable column
+                # rather than forcing NOT NULL with nothing to backfill
+                # existing rows with, which SQLite would simply refuse.
+
+                try:
+                    conn.execute(text(clause))
+                    conn.commit()
+                except Exception:
+                    # Best-effort: an unsupported dialect quirk here
+                    # shouldn't prevent the app from starting. Worst case,
+                    # this specific column behaves as if unset until an
+                    # admin applies the ALTER TABLE by hand.
+                    pass
+
+
 def create_app(config_object="config.Config"):
     app = Flask(__name__, instance_relative_config=True)
     app.config.from_object(config_object)
@@ -38,6 +128,7 @@ def create_app(config_object="config.Config"):
     app.config.setdefault("EXAM_SESSION_STALE_AFTER_SECONDS", 45)
     app.config.setdefault("EXAM_SESSION_ENFORCE_SINGLE_SESSION", True)
     app.config.setdefault("LMS_WEBHOOK_TIMEOUT_SECONDS", 4)
+    app.config.setdefault("MAX_WARNINGS_BEFORE_TERMINATION", 2)
     app.config.setdefault("APPEAL_WINDOW_DAYS", 14)
     app.config.setdefault("LIVE_MONITOR_NO_SIGNAL_SECONDS", 60)
 
@@ -137,6 +228,46 @@ def create_app(config_object="config.Config"):
     def _inject_sso_flags():
         return {"google_sso_enabled": sso_module.google_enabled(), "microsoft_sso_enabled": sso_module.microsoft_enabled()}
 
+    @app.context_processor
+    def _inject_staff_counts():
+        """Glanceable counts for the staff sidebar: exams in progress right
+        now, finished attempts flagged but not yet reviewed, and appeals
+        awaiting a decision. Three cheap COUNTs per staff page load. Strictly
+        best-effort — a failure here must never take a page down, so it falls
+        back to "no counts" (the sidebar simply shows none)."""
+        from flask_login import current_user as cu
+
+        try:
+            if not cu.is_authenticated or cu.role not in ("admin", "examiner", "proctor", "super_admin"):
+                return {"staff_counts": None}
+            from app.utils import current_org_id
+            from app.models import Attempt, Test, Appeal, AttemptReview
+
+            org_id = current_org_id()
+            if org_id is None:
+                return {"staff_counts": None}
+            live = (
+                Attempt.query.join(Test, Attempt.test_id == Test.id)
+                .filter(Test.org_id == org_id, Attempt.status == "in_progress").count()
+            )
+            unreviewed = (
+                Attempt.query.join(Test, Attempt.test_id == Test.id)
+                .outerjoin(AttemptReview, AttemptReview.attempt_id == Attempt.id)
+                .filter(
+                    Test.org_id == org_id, AttemptReview.id.is_(None), Attempt.status != "in_progress",
+                    db.or_(Attempt.status == "terminated", Attempt.violation_count > 0),
+                ).count()
+            )
+            appeals = (
+                Appeal.query.join(Attempt, Appeal.attempt_id == Attempt.id)
+                .join(Test, Attempt.test_id == Test.id)
+                .filter(Test.org_id == org_id, Appeal.status == "pending").count()
+            )
+            return {"staff_counts": {"live": live, "unreviewed": unreviewed, "appeals": appeals}}
+        except Exception:
+            db.session.rollback()
+            return {"staff_counts": None}
+
     @app.route("/branding/logo/<int:org_id>")
     def branding_logo(org_id):
         from flask import send_from_directory, abort as flask_abort
@@ -161,8 +292,12 @@ def create_app(config_object="config.Config"):
 
     with app.app_context():
         db.create_all()
+        _ensure_columns(db.engine)
 
     from app.cli import register_cli
     register_cli(app)
+
+    from app.scheduler import start_background_scheduler
+    start_background_scheduler(app)
 
     return app
