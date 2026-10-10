@@ -188,6 +188,32 @@ exam_proctoring_python/
 │                                                         # organizations/, system_ops/)
 ```
 
+## Upgrading an existing database
+
+`db.create_all()` (run at every startup) only creates whole tables that don't exist yet —
+on a database from a previous version of this app, it silently leaves every table that
+*does* already exist completely untouched. If a newer version of the code has added a
+column to one of those tables, the very first query that touches it fails with
+`OperationalError: no such column: ...`, no matter how long ago that column was added or
+how many have piled up since.
+
+`app/__init__.py` closes that gap with `_ensure_columns`, which runs right after
+`db.create_all()` on every startup: it walks every table the models define, compares each
+one's columns against what the live database actually has (via `sqlalchemy.inspect`), and
+issues a plain `ALTER TABLE ... ADD COLUMN` for anything missing — the full set, not a
+specific list, so upgrading never depends on anyone having remembered to add an entry for
+a particular feature. It's a no-op (and safe to run on every boot) once the database is
+current, which is also exactly what happens on a brand-new install, where `create_all()`
+already created every column up front.
+
+This is deliberately a reconciliation step, not a real migration framework — it only ever
+*adds* missing columns, never renames, drops, or changes a column's type, and a column
+whose model default can't be expressed as plain SQL (for example `datetime.utcnow`, a
+Python callable) is added as nullable rather than guessing a value for existing rows. If
+you're running this app and `flask` commands or pages start throwing `no such column`
+errors after pulling a newer version, that's this step doing its job on the next startup —
+just run the app (or any `flask` CLI command) once and retry.
+
 ## Setup (development)
 
 ```bash
@@ -517,13 +543,8 @@ count toward `violation_count` (it's the one real violation that ended the exam)
   "Warnings used: X / N" next to the violation count.
 
 Adds two columns (`tests.max_warnings`, `attempts.total_warning_count`) rather than whole
-new tables — the first schema change of that kind in this project, so `app/__init__.py`
-now runs a tiny, dependency-free `_ensure_columns` step after `db.create_all()` at
-startup: `create_all()` only creates tables that don't exist yet, so on an already-running
-deployment it would otherwise leave these two columns missing and turn the very first
-query that touches them into a crash. `_ensure_columns` checks each table's actual columns
-via `sqlalchemy.inspect` and issues a plain `ALTER TABLE ... ADD COLUMN` for anything
-missing; harmless (a no-op) on a fresh install where `create_all()` already added them.
+new tables. See "Upgrading an existing database" below for how those — and any other
+column a previously-deployed database is missing — get added automatically at startup.
 
 ## Live Monitor & Appeals
 
