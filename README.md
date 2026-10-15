@@ -188,32 +188,6 @@ exam_proctoring_python/
 │                                                         # organizations/, system_ops/)
 ```
 
-## Upgrading an existing database
-
-`db.create_all()` (run at every startup) only creates whole tables that don't exist yet —
-on a database from a previous version of this app, it silently leaves every table that
-*does* already exist completely untouched. If a newer version of the code has added a
-column to one of those tables, the very first query that touches it fails with
-`OperationalError: no such column: ...`, no matter how long ago that column was added or
-how many have piled up since.
-
-`app/__init__.py` closes that gap with `_ensure_columns`, which runs right after
-`db.create_all()` on every startup: it walks every table the models define, compares each
-one's columns against what the live database actually has (via `sqlalchemy.inspect`), and
-issues a plain `ALTER TABLE ... ADD COLUMN` for anything missing — the full set, not a
-specific list, so upgrading never depends on anyone having remembered to add an entry for
-a particular feature. It's a no-op (and safe to run on every boot) once the database is
-current, which is also exactly what happens on a brand-new install, where `create_all()`
-already created every column up front.
-
-This is deliberately a reconciliation step, not a real migration framework — it only ever
-*adds* missing columns, never renames, drops, or changes a column's type, and a column
-whose model default can't be expressed as plain SQL (for example `datetime.utcnow`, a
-Python callable) is added as nullable rather than guessing a value for existing rows. If
-you're running this app and `flask` commands or pages start throwing `no such column`
-errors after pulling a newer version, that's this step doing its job on the next startup —
-just run the app (or any `flask` CLI command) once and retry.
-
 ## Setup (development)
 
 ```bash
@@ -349,61 +323,6 @@ exam and uploads each one as it's produced, so most of the session survives even
 tab crashes. Chunks are stored under `instance/recordings/<attempt_id>/` and listed with
 inline `<video>` players on the admin's attempt-detail page, gated so only the test's
 owning admin can fetch them.
-
-## Real (viewer-local) time, scheduling emails, and automatic reminders
-
-**All notifications go to the email a student registered with** (`User.email`, set at
-registration and not editable from the profile page) — this was already true throughout
-the app (see `notify()` in `app/notifications.py`) and hasn't changed; noted here because
-it's easy to assume otherwise.
-
-**Timestamps now show the viewer's real local time, not a raw UTC number.** Every
-timestamp in this app is stored and entered as naive UTC — that was already consistent,
-but several pages (the calendar, the review queue, the attempt detail page, appeals,
-notification history) rendered it with a plain `strftime` and no timezone label. To
-someone outside UTC that reads as flat-out wrong: a test set for "22:00" looks like 10pm
-local when it's actually 10pm UTC. The fix is `local_time()` (macro in
-`_components.html`) plus `applyLocalTimes()` (script in `base.html`): every timestamp is
-rendered as `<time class="localtime" data-utc="...">` with an explicit, correct "...
-UTC" fallback (right even with JS off or before the page script runs), and a small
-script rewrites it, once, to the viewer's actual real local time and date via the
-browser's own `Intl`/`toLocaleString` — no server-side timezone or locale configuration
-needed. Applied to the student and admin calendars, the student dashboard (which now also
-shows each test's Opens/Closes window), the review queue, the attempt detail page, appeals
-(both sides), and notification history. Admin-facing per-event technical logs (the
-Behavior Timeline, Proctoring Log, session/device detail) are left in plain UTC and
-labeled as such — those correlate with recording timestamps and an admin's own clock
-reference, where converting would do more harm than good. Test scheduling input fields
-(start/end time) are still entered and interpreted as UTC, same as always; the "Opens"/
-"Closes" preview on the student dashboard double-checks that for an admin.
-
-**Scheduling emails now include the date, time, and the test's rules.** "You've been
-assigned a new test" and the starting-soon reminder previously stated only a duration and
-a raw start timestamp. Both now also include the passing marks, attempts allowed, the
-test's open/close window as an explicit date plus a UTC time, and — if the admin set
-any — the test's **Instructions for students** field (the same "rules" shown on the
-pre-exam screen) under "Rules & instructions for this exam," so a student has the actual
-exam rules in their inbox, not just a login link.
-
-**The 1-hour-before reminder now actually fires on its own.** `send_starting_soon_reminders()`
-(dedup'd per student/test via `NotificationLog`, so it's safe to call repeatedly) always
-worked correctly once triggered, but previously the *only* triggers were an admin clicking
-"Send Starting-Soon Reminders Now" on the Notifications page, or an external cron/Task
-Scheduler entry calling `flask send-reminders` — nothing in the app itself ever called it.
-On a deployment without that external cron set up, reminders simply never went out.
-`app/scheduler.py` closes that gap with a small, dependency-free background thread
-(no APScheduler/Celery) started from `create_app`, which re-runs the sweep every
-`REMINDER_SCHEDULER_INTERVAL_SECONDS` (default 300s). It skips itself under `TESTING`,
-under Flask's debug-mode reloader's watcher half (so it doesn't start twice), and can be
-turned off with `ENABLE_BACKGROUND_SCHEDULER=false` to rely solely on the manual button or
-an external cron instead — the dedup means nothing is ever double-sent either way, however
-it's triggered.
-
-**The pre-exam rules now state the actual configured warning limit.** The "you must stay
-in fullscreen..." paragraph shown before a student starts a proctored exam now also says,
-in plain language, how many warnings this specific test allows before the next one
-disqualifies them (see "Warning-based disqualification" above) — reflecting
-`Test.max_warnings`/the platform default, not a generic "after repeated warnings."
 
 ## Email verification, password reset & login security
 
@@ -543,8 +462,13 @@ count toward `violation_count` (it's the one real violation that ended the exam)
   "Warnings used: X / N" next to the violation count.
 
 Adds two columns (`tests.max_warnings`, `attempts.total_warning_count`) rather than whole
-new tables. See "Upgrading an existing database" below for how those — and any other
-column a previously-deployed database is missing — get added automatically at startup.
+new tables — the first schema change of that kind in this project, so `app/__init__.py`
+now runs a tiny, dependency-free `_ensure_columns` step after `db.create_all()` at
+startup: `create_all()` only creates tables that don't exist yet, so on an already-running
+deployment it would otherwise leave these two columns missing and turn the very first
+query that touches them into a crash. `_ensure_columns` checks each table's actual columns
+via `sqlalchemy.inspect` and issues a plain `ALTER TABLE ... ADD COLUMN` for anything
+missing; harmless (a no-op) on a fresh install where `create_all()` already added them.
 
 ## Live Monitor & Appeals
 

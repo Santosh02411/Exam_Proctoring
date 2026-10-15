@@ -65,14 +65,6 @@ class Config:
     # app.notifications.send_starting_soon_reminders and the `send-reminders`
     # CLI command, which is meant to be run periodically by an external cron.
     EXAM_REMINDER_WINDOW_MINUTES = int(os.environ.get("EXAM_REMINDER_WINDOW_MINUTES", 60))
-    # In-process background scheduler (see app/scheduler.py) that fires the
-    # starting-soon reminder sweep automatically, in real time, without
-    # needing an external cron job. Set to "false" to disable it (e.g. if
-    # you'd rather run `flask send-reminders` from cron yourself, which
-    # still works either way — NotificationLog dedup means a student is
-    # never emailed twice for the same test regardless of which path sent it).
-    ENABLE_BACKGROUND_SCHEDULER = os.environ.get("ENABLE_BACKGROUND_SCHEDULER", "true").lower() not in ("false", "0", "")
-    REMINDER_SCHEDULER_INTERVAL_SECONDS = int(os.environ.get("REMINDER_SCHEDULER_INTERVAL_SECONDS", 300))
 
     # Uploads — raised to comfortably fit ~30s webm video chunks plus base64 JPEG snapshots.
     MAX_CONTENT_LENGTH = 25 * 1024 * 1024  # 25 MB
