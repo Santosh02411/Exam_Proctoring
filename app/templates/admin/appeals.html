@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_components.html" import meter, local_time %}
+{% from "_components.html" import meter %}
 {% block title %}Appeals{% endblock %}
 {% block content %}
 <div class="page-head">
@@ -31,7 +31,7 @@
       <div class="appeal-facts">Reviewer decision: <strong>{{ a.attempt.review.decision|capitalize }}</strong></div>
       {% endif %}
       <blockquote class="appeal-reason">{{ a.reason }}</blockquote>
-      <div class="small">Submitted {{ local_time(a.created_at) }} · <a href="{{ url_for('admin.view_attempt', attempt_id=a.attempt_id) }}">Review the attempt</a></div>
+      <div class="small">Submitted {{ a.created_at.strftime('%Y-%m-%d %H:%M') }} UTC · <a href="{{ url_for('admin.view_attempt', attempt_id=a.attempt_id) }}">Review the attempt</a></div>
     </div>
     <form method="post" class="appeal-decide">
       {{ decision_form.hidden_tag() }}
@@ -60,7 +60,7 @@
         <td data-label="Student" class="cell-strong">{{ a.student.name }}</td>
         <td data-label="Test">{{ a.attempt.test.title }}</td>
         <td data-label="Decision"><span class="badge {{ 'published' if a.status == 'granted' else 'inactive' }}">{{ a.status|capitalize }}</span></td>
-        <td data-label="Decided" class="nowrap">{{ local_time(a.resolved_at) if a.resolved_at else '—' }}<span class="cell-sub">by {{ a.resolved_by.name if a.resolved_by }}</span></td>
+        <td data-label="Decided" class="nowrap">{{ a.resolved_at.strftime('%b %d, %H:%M') if a.resolved_at }}<span class="cell-sub">by {{ a.resolved_by.name if a.resolved_by }}</span></td>
         <td data-label="Note">{{ a.admin_note or '—' }}</td>
       </tr>
       {% endfor %}
