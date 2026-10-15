@@ -8,11 +8,6 @@ from app import create_app
 
 
 class TestConfig:
-    TESTING = True
-    # The real app runs exam-reminder sweeps on a background thread (see
-    # app.scheduler) — off here so hundreds of short-lived test apps don't
-    # each spin one up against a database that's gone by the time it fires.
-    ENABLE_BACKGROUND_SCHEDULER = False
     SECRET_KEY = "test-secret-key"
     SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
     SQLALCHEMY_TRACK_MODIFICATIONS = False
