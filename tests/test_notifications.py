@@ -348,3 +348,59 @@ def test_trigger_reminders_requires_admin(client, app, notif_setup):
     login(client, "studentnt@test.com", "Studpass1!")
     r = client.post("/admin/notifications/send-reminders")
     assert r.status_code == 403
+
+
+# ---------- richer scheduling content: date, time, rules (added alongside
+# warning-based disqualification / real-time UI work) ----------
+
+def test_exam_scheduled_email_includes_date_time_and_rules(client, app, notif_setup):
+    from datetime import datetime, timedelta
+    start = datetime.utcnow().replace(microsecond=0) + timedelta(days=2)
+    test_id = _create_test(
+        client, app, code="NT_RULES",
+        start_time=start.strftime("%Y-%m-%dT%H:%M"),
+        instructions="No calculators. Keep both hands visible at all times.",
+    )
+    _assign(client, app, test_id, notify=True)
+
+    outbox = get_outbox(app)
+    assert "Rules & instructions for this exam:" in outbox
+    assert "No calculators. Keep both hands visible at all times." in outbox
+    assert start.strftime("%Y-%m-%d") in outbox
+    assert start.strftime("%H:%M") in outbox and "UTC" in outbox
+    assert "Passing marks: 1" in outbox
+    assert "Attempts allowed: 1" in outbox
+
+
+def test_exam_scheduled_email_omits_rules_section_when_test_has_none(client, app, notif_setup):
+    test_id = _create_test(client, app, code="NT_NORULES")
+    _assign(client, app, test_id, notify=True)
+    outbox = get_outbox(app)
+    assert "Rules & instructions for this exam:" not in outbox
+
+
+def test_starting_soon_reminder_includes_date_time_duration_and_rules(client, app, notif_setup):
+    from datetime import datetime, timedelta
+    from app.notifications import send_starting_soon_reminders
+
+    start = datetime.utcnow().replace(microsecond=0) + timedelta(minutes=45)
+    test_id = _create_test(
+        client, app, code="NT_SOON",
+        start_time=start.strftime("%Y-%m-%dT%H:%M"),
+        instructions="Photo ID must be visible for the first minute.",
+    )
+    _assign(client, app, test_id, notify=False)  # isolate the reminder email from the assignment email
+
+    with app.test_request_context():
+        sent = send_starting_soon_reminders()
+    assert sent == 1
+
+    outbox = get_outbox(app)
+    assert "Photo ID must be visible for the first minute." in outbox
+    assert start.strftime("%Y-%m-%d") in outbox
+    assert start.strftime("%H:%M") in outbox and "UTC" in outbox
+    assert "Duration: 10 minutes." in outbox
+
+    # Dedup: running the sweep again must not send a second reminder.
+    with app.test_request_context():
+        assert send_starting_soon_reminders() == 0

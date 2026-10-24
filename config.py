@@ -32,6 +32,36 @@ def _env_or(key, default):
 
 class Config:
     SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-key-change-this-in-production")
+
+    # The real, public URL this app is reached at — e.g.
+    # https://exams.my-college.edu — used to build every link this app
+    # emails out (verification, password reset, exam reminders, appeal
+    # notifications, ...). Without this set, those links are built from
+    # whatever Host header the request that triggered them happened to
+    # arrive on, which is exactly right behind a correctly configured
+    # reverse proxy, but is also why running `flask run` locally produces
+    # links like http://127.0.0.1:5000/... — that's genuinely what the
+    # server was asked for, not a bug, but it's rarely what you want in an
+    # email. Set this once your real domain exists and every emailed link
+    # uses it regardless of what host actually handled the request —
+    # including from the CLI or the background reminder scheduler, which
+    # have no incoming request/Host header to go on at all.
+    # Parsed into SERVER_NAME/PREFERRED_URL_SCHEME by create_app() itself
+    # (app/__init__.py), not here — those two need to be derived fresh from
+    # whatever APP_BASE_URL ends up being in app.config at startup (which a
+    # test config, or any config_object, may set directly rather than via
+    # this environment variable), not frozen in at the moment this config
+    # module happens to first get imported.
+    APP_BASE_URL = os.environ.get("APP_BASE_URL", "").strip().rstrip("/")
+
+    # Only trust X-Forwarded-* headers (client IP, scheme, host) if this app
+    # is actually sitting behind a reverse proxy you control (nginx, a load
+    # balancer, ...) that sets them itself. Off by default: blindly trusting
+    # these headers when the app is directly reachable from the internet
+    # lets anyone spoof their IP or the request scheme/host just by sending
+    # the header themselves — this app uses request.remote_addr for login
+    # throttling and security-event logging, so that trust has to be opt-in.
+    TRUST_PROXY_HEADERS = os.environ.get("TRUST_PROXY_HEADERS", "false").strip().lower() in ("1", "true", "yes")
     SQLALCHEMY_DATABASE_URI = _env_or(
         "DATABASE_URL", f"sqlite:///{os.path.join(BASE_DIR, 'instance', 'exam_proctoring.db')}"
     )
@@ -65,6 +95,14 @@ class Config:
     # app.notifications.send_starting_soon_reminders and the `send-reminders`
     # CLI command, which is meant to be run periodically by an external cron.
     EXAM_REMINDER_WINDOW_MINUTES = int(os.environ.get("EXAM_REMINDER_WINDOW_MINUTES", 60))
+    # In-process background scheduler (see app/scheduler.py) that fires the
+    # starting-soon reminder sweep automatically, in real time, without
+    # needing an external cron job. Set to "false" to disable it (e.g. if
+    # you'd rather run `flask send-reminders` from cron yourself, which
+    # still works either way — NotificationLog dedup means a student is
+    # never emailed twice for the same test regardless of which path sent it).
+    ENABLE_BACKGROUND_SCHEDULER = os.environ.get("ENABLE_BACKGROUND_SCHEDULER", "true").lower() not in ("false", "0", "")
+    REMINDER_SCHEDULER_INTERVAL_SECONDS = int(os.environ.get("REMINDER_SCHEDULER_INTERVAL_SECONDS", 300))
 
     # Uploads — raised to comfortably fit ~30s webm video chunks plus base64 JPEG snapshots.
     MAX_CONTENT_LENGTH = 25 * 1024 * 1024  # 25 MB

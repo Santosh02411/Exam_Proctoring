@@ -188,6 +188,32 @@ exam_proctoring_python/
 │                                                         # organizations/, system_ops/)
 ```
 
+## Upgrading an existing database
+
+`db.create_all()` (run at every startup) only creates whole tables that don't exist yet —
+on a database from a previous version of this app, it silently leaves every table that
+*does* already exist completely untouched. If a newer version of the code has added a
+column to one of those tables, the very first query that touches it fails with
+`OperationalError: no such column: ...`, no matter how long ago that column was added or
+how many have piled up since.
+
+`app/__init__.py` closes that gap with `_ensure_columns`, which runs right after
+`db.create_all()` on every startup: it walks every table the models define, compares each
+one's columns against what the live database actually has (via `sqlalchemy.inspect`), and
+issues a plain `ALTER TABLE ... ADD COLUMN` for anything missing — the full set, not a
+specific list, so upgrading never depends on anyone having remembered to add an entry for
+a particular feature. It's a no-op (and safe to run on every boot) once the database is
+current, which is also exactly what happens on a brand-new install, where `create_all()`
+already created every column up front.
+
+This is deliberately a reconciliation step, not a real migration framework — it only ever
+*adds* missing columns, never renames, drops, or changes a column's type, and a column
+whose model default can't be expressed as plain SQL (for example `datetime.utcnow`, a
+Python callable) is added as nullable rather than guessing a value for existing rows. If
+you're running this app and `flask` commands or pages start throwing `no such column`
+errors after pulling a newer version, that's this step doing its job on the next startup —
+just run the app (or any `flask` CLI command) once and retry.
+
 ## Setup (development)
 
 ```bash
@@ -226,6 +252,11 @@ registration/verification, CAPTCHA + login lockout, password reset, test creatio
 import, the full exam-taking flow (including negative marking and randomized order),
 retake limits, accessibility extra time, the activity log, proctoring violation/termination
 logic, identity-mismatch events, snapshot storage, and recording upload/playback access control.
+
+One file, `tests/test_liveness_js.py`, runs a small pure-JavaScript test
+(`tests/js/test_liveness.mjs`) for the blink/liveness decision algorithm via `node` as a
+subprocess, so it's covered directly rather than only through a browser. It's skipped
+automatically if `node` isn't on `PATH` — everything else needs only Python/pip.
 
 ## Deployment (production)
 
@@ -302,19 +333,76 @@ Three specific signals, in `app/static/js/proctor.js` (client-side detection) an
 
 ## Identity verification
 
-Students enroll once (`/student/enroll-face`) — face-api.js's `faceRecognitionNet`
-computes a 128-value descriptor from a live camera capture and only that descriptor is
-sent to and stored by the server (`User.face_descriptor`); the photo itself never leaves
-the browser. A proctored test can't be started until enrollment is done. At the consent
-screen, and again every ~25s during the exam, the live camera feed's descriptor is
+Students enroll once (`/student/enroll-face`), in three steps: upload a photo of a
+government or college ID; review what automated text extraction (OCR, via `pytesseract`)
+read from it; then a live camera check (face-api.js) that both matches the live face
+against the ID photo and confirms liveness via blink detection, so a static printed or
+on-screen photo can't be used in the student's place. Only the resulting 128-value face
+descriptor is stored (`User.face_descriptor`) — the live capture photo itself is never
+uploaded or saved. A proctored test can't be started until enrollment is done. At the
+consent screen, and again every ~25s during the exam, the live camera feed's descriptor is
 compared to the enrolled one via `faceapi.euclideanDistance()` — a distance above
 `FACE_MATCH_THRESHOLD` (default `0.6`, matching face-api.js's own recommendation) logs an
 `identity_mismatch` event.
 
+- **OCR review fields are editable**, not just a read-only display. OCR can miss fields
+  entirely on some ID layouts (photo overlapping text, a busy background, low-contrast
+  print) — the Name/ID Number/Date of Birth fields on the review step are plain inputs, so
+  a student can fill in or correct whatever OCR got wrong before continuing. These are for
+  an admin's manual review only; nothing is matched or graded against them automatically.
+- **Blink / liveness detection** (`app/static/js/liveness.js`, shared with the in-exam
+  identity spot checks in `proctor.js`) measures eye-aspect-ratio (EAR) per sampled frame
+  and looks for two independent kinds of evidence that a real person is on camera, not a
+  fixed threshold:
+  - A **blink**: EAR dropping below 80% of a *ceiling* — the highest sustained open-eye
+    reading seen so far this session (smoothed over a few frames so one noisy reading can't
+    set it), which only ever rises, never falls. An earlier version used a plain rolling
+    *average* instead of a ceiling, which could itself drift downward over several seconds
+    of normal eyelid relaxation — meaning a genuine blink was being measured against an
+    already-lowered baseline instead of the person's actual fully-open reading, and could
+    fail to register as a drop at all. A fixed, hardcoded threshold (the version before
+    that) had the same failure mode for a different reason: it assumed everyone's eyes,
+    camera angle, and lighting produce the same "closed" number, which in practice isn't
+    true, so genuine blinks could go undetected no matter how deliberately someone blinked.
+  - Failing that, **enough natural eye-openness variation over the whole session** (at
+    least a 10% swing from the lowest to the highest reading, over a minimum number of
+    samples) is accepted on its own — a landmark model can under-estimate how far an eye
+    actually closes, especially under non-ideal lighting, so a real blink doesn't always
+    produce a clean, fully-resolved dip; this fallback still passes a genuinely live,
+    moving face in that case. A frozen printed photo shows next to none of this variation
+    (the model is re-evaluating the same unchanging pixels each frame), so this stays a
+    meaningful check against the specific threat this feature exists to catch, rather than
+    a loophole.
+
+  The core decision logic (`createTracker` in that file) has no DOM/camera dependency and
+  is driven directly with synthetic EAR sequences in `tests/js/test_liveness.mjs` — a clean
+  blink, a slow baseline drift with no real blink, a frozen sequence, an outlier-resistance
+  check, and more — rather than only ever being exercised by an actual webcam; `pytest`
+  runs it automatically (via `tests/test_liveness_js.py`) if `node` is on `PATH`, and skips
+  it (not fails) otherwise. The heavy 128-d face descriptor is also no longer computed on
+  every sampled frame (only occasionally, on a good open-eye frame) — on slower hardware
+  that alone roughly doubles how many frames get sampled in the check window, improving the
+  odds of ever catching the instant eyes are actually closed.
+
+  **Liveness is verified server-side**, not trusted from the client: the browser sends the
+  raw `blink_count`/`ear_range`/`sample_count` numbers the check produced, and
+  `app.proctoring.confirm_id_match` derives its own pass/fail from them (mirroring
+  `liveness.js`'s thresholds exactly) rather than trusting a `liveness_passed` boolean
+  computed in the browser — which anyone could otherwise set to `true` directly (devtools,
+  curl, ...) regardless of what, if anything, the check actually saw on camera.
+
+  **Camera failures now say what's actually wrong and how to fix it.** A single generic
+  "Permission denied." used to cover every failure — a genuinely blocked camera, no camera
+  on the device, the camera already in use by another app, and the page not being served
+  over HTTPS/localhost (which silently blocks camera access in every modern browser, with
+  no permission prompt at all) are now each detected and given their own specific,
+  actionable message, plus a **Try Again** button that retries without losing the uploaded
+  ID or reloading the page.
+
 This verifies "the person at the camera is the same one who enrolled," not "this person is
-who they claim to be" — there's no check against a government-issued ID, so it can't catch
-someone who has someone else enroll on their behalf in the first place. See
-[Known limitations](#known-limitations-by-design) below.
+who they claim to be" — the ID's photo is matched against the live face, but the ID's text
+fields are not independently verified against any authority, so this can't catch a
+convincingly forged document. See [Known limitations](#known-limitations-by-design) below.
 
 ## Session recording
 
@@ -323,6 +411,89 @@ exam and uploads each one as it's produced, so most of the session survives even
 tab crashes. Chunks are stored under `instance/recordings/<attempt_id>/` and listed with
 inline `<video>` players on the admin's attempt-detail page, gated so only the test's
 owning admin can fetch them.
+
+## Real (viewer-local) time, scheduling emails, and automatic reminders
+
+**All notifications go to the email a student registered with** (`User.email`, set at
+registration and not editable from the profile page) — this was already true throughout
+the app (see `notify()` in `app/notifications.py`) and hasn't changed; noted here because
+it's easy to assume otherwise.
+
+**Timestamps now show the viewer's real local time, not a raw UTC number.** Every
+timestamp in this app is stored and entered as naive UTC — that was already consistent,
+but several pages (the calendar, the review queue, the attempt detail page, appeals,
+notification history) rendered it with a plain `strftime` and no timezone label. To
+someone outside UTC that reads as flat-out wrong: a test set for "22:00" looks like 10pm
+local when it's actually 10pm UTC. The fix is `local_time()` (macro in
+`_components.html`) plus `applyLocalTimes()` (script in `base.html`): every timestamp is
+rendered as `<time class="localtime" data-utc="...">` with an explicit, correct "...
+UTC" fallback (right even with JS off or before the page script runs), and a small
+script rewrites it, once, to the viewer's actual real local time and date via the
+browser's own `Intl`/`toLocaleString` — no server-side timezone or locale configuration
+needed. Applied to the student and admin calendars, the student dashboard (which now also
+shows each test's Opens/Closes window), the review queue, the attempt detail page, appeals
+(both sides), and notification history. Admin-facing per-event technical logs (the
+Behavior Timeline, Proctoring Log, session/device detail) are left in plain UTC and
+labeled as such — those correlate with recording timestamps and an admin's own clock
+reference, where converting would do more harm than good. Test scheduling input fields
+(start/end time) are still entered and interpreted as UTC, same as always; the "Opens"/
+"Closes" preview on the student dashboard double-checks that for an admin.
+
+**Scheduling emails now include the date, time, and the test's rules.** "You've been
+assigned a new test" and the starting-soon reminder previously stated only a duration and
+a raw start timestamp. Both now also include the passing marks, attempts allowed, the
+test's open/close window as an explicit date plus a UTC time, and — if the admin set
+any — the test's **Instructions for students** field (the same "rules" shown on the
+pre-exam screen) under "Rules & instructions for this exam," so a student has the actual
+exam rules in their inbox, not just a login link.
+
+**The 1-hour-before reminder now actually fires on its own.** `send_starting_soon_reminders()`
+(dedup'd per student/test via `NotificationLog`, so it's safe to call repeatedly) always
+worked correctly once triggered, but previously the *only* triggers were an admin clicking
+"Send Starting-Soon Reminders Now" on the Notifications page, or an external cron/Task
+Scheduler entry calling `flask send-reminders` — nothing in the app itself ever called it.
+On a deployment without that external cron set up, reminders simply never went out.
+`app/scheduler.py` closes that gap with a small, dependency-free background thread
+(no APScheduler/Celery) started from `create_app`, which re-runs the sweep every
+`REMINDER_SCHEDULER_INTERVAL_SECONDS` (default 300s). It skips itself under `TESTING`,
+under Flask's debug-mode reloader's watcher half (so it doesn't start twice), and can be
+turned off with `ENABLE_BACKGROUND_SCHEDULER=false` to rely solely on the manual button or
+an external cron instead — the dedup means nothing is ever double-sent either way, however
+it's triggered.
+
+**The pre-exam rules now state the actual configured warning limit.** The "you must stay
+in fullscreen..." paragraph shown before a student starts a proctored exam now also says,
+in plain language, how many warnings this specific test allows before the next one
+disqualifies them (see "Warning-based disqualification" above) — reflecting
+`Test.max_warnings`/the platform default, not a generic "after repeated warnings."
+
+## Running behind a reverse proxy, and real URLs in emails
+
+Two related, separately-controlled settings:
+
+- **`APP_BASE_URL`** (e.g. `https://exams.my-college.edu`, no trailing slash) — every link
+  this app emails out (verification, password reset, exam reminders, appeal
+  notifications, ...) is built with `url_for(..., _external=True)`, which without this set
+  derives its host from whatever request triggered it. That's correct behind a properly
+  configured reverse proxy, but it's also exactly why running `flask run` locally produces
+  links like `http://127.0.0.1:5000/...` in real emails — that genuinely is the host the
+  request arrived on, just rarely what you want to send someone. Set `APP_BASE_URL` once a
+  real domain exists and every emailed link uses it regardless of what host actually
+  handled the request — including from the CLI or the background reminder scheduler, which
+  have no incoming request/Host header to go on at all.
+- **`TRUST_PROXY_HEADERS`** (`true`/`false`, default `false`) — only turn this on if the app
+  is actually sitting behind a reverse proxy you control (nginx, a load balancer, ...) that
+  sets `X-Forwarded-*` headers itself. When on, Werkzeug's `ProxyFix` middleware is applied
+  so `request.remote_addr` (and the request's scheme/host) reflect the real client instead
+  of the proxy. This matters beyond convenience: `request.remote_addr` is what this app's
+  per-IP rate limiting (registration, forgot-password, resend-verification), exam-session
+  device tracking, and security-event logging all key off, so behind a real proxy with this
+  left off, every one of those sees the proxy's own IP for every request — indistinguishable
+  from one user, for everyone. The reverse is also true and is why this defaults off rather
+  than on: trusting these headers without an actual proxy in front lets any client spoof its
+  own IP (and bypass those same rate limits) just by sending the header itself. `app.utils
+  .get_client_ip()` and `app.access_control.get_client_ip()` both read `request.remote_addr`
+  for exactly this reason, rather than ever reading `X-Forwarded-For` directly.
 
 ## Email verification, password reset & login security
 
@@ -347,8 +518,12 @@ Limits are tunable via `REGISTER_MAX_PER_IP` / `REGISTER_WINDOW_MINUTES`,
 `RESEND_VERIFICATION_MAX_PER_IP` / `RESEND_VERIFICATION_WINDOW_MINUTES` env vars, and can
 be disabled entirely with `RATE_LIMIT_ENABLED=false` (used by the test suite, since the
 test client's fixed IP would otherwise throttle fixtures that register many accounts).
-If you're behind a reverse proxy, make sure it sets `X-Forwarded-For` correctly — see
-`app.utils.get_client_ip()`.
+If you're behind a reverse proxy, set `TRUST_PROXY_HEADERS=true` (see "Running behind a
+reverse proxy, and real URLs in emails" below) — without it, every IP-based check in this
+app (this rate limiting included) sees the proxy's own address for every request, which
+is as useless as it sounds; blindly trusting the proxy headers without actually being
+behind a proxy is worse, since it would let a client spoof its own IP at will, which is
+exactly why this is explicit opt-in rather than automatic.
 
 Passwords (on registration and reset) must be at least `PASSWORD_MIN_LENGTH` characters
 (8 by default) and include a lowercase letter, an uppercase letter, a number, and a
@@ -462,13 +637,8 @@ count toward `violation_count` (it's the one real violation that ended the exam)
   "Warnings used: X / N" next to the violation count.
 
 Adds two columns (`tests.max_warnings`, `attempts.total_warning_count`) rather than whole
-new tables — the first schema change of that kind in this project, so `app/__init__.py`
-now runs a tiny, dependency-free `_ensure_columns` step after `db.create_all()` at
-startup: `create_all()` only creates tables that don't exist yet, so on an already-running
-deployment it would otherwise leave these two columns missing and turn the very first
-query that touches them into a crash. `_ensure_columns` checks each table's actual columns
-via `sqlalchemy.inspect` and issues a plain `ALTER TABLE ... ADD COLUMN` for anything
-missing; harmless (a no-op) on a fresh install where `create_all()` already added them.
+new tables. See "Upgrading an existing database" below for how those — and any other
+column a previously-deployed database is missing — get added automatically at startup.
 
 ## Live Monitor & Appeals
 
@@ -543,6 +713,11 @@ inherits both, restyling the app means editing those two files rather than each 
   (SIL Open Font License, see `LICENSES.txt` there), so the app makes no third-party font
   requests and works on an offline network.
 - **Icons** are inline SVG (`_icons.html`), not emoji or an icon font.
+- **Password fields** get a show/hide ("eye") toggle automatically (`app/static/js/
+  password-toggle.js`, loaded once from `base.html`) — it finds every `input[type=
+  "password"]` on the page itself, so login, registration, and both change/reset-password
+  forms all get it with no per-template wiring, including a password field added later.
+  Toggling only ever flips the input's `type`; the typed value is never touched.
 - **Accessibility.** Visible keyboard focus, a skip link, `prefers-reduced-motion` respected, and
   `aria-current` on the active navigation item.
 - **Safe rendering of user data.** The live-alert bell builds its DOM with `textContent` — alert
