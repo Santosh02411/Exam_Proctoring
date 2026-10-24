@@ -285,6 +285,50 @@
     })();
   </script>
 
+  <script>
+    (function () {
+      // Real (viewer-local) time — see the local_time() macro in
+      // _components.html. Every <time class="localtime" data-utc="..."> on
+      // the page started out showing its server-rendered, explicitly
+      // labeled UTC fallback; this rewrites each one, once, to the
+      // viewer's actual real local time and date, using their browser's
+      // own timezone (Intl, via toLocaleString) — no server-side
+      // timezone/locale plumbing required. Left untouched (still showing
+      // the correct UTC text) if JS is unavailable or a value fails to
+      // parse, so the display is always honest, just less convenient.
+      function applyLocalTimes(root) {
+        (root || document).querySelectorAll('time.localtime[data-utc]').forEach(function (el) {
+          if (el.dataset.localized) return;
+          var d = new Date(el.getAttribute('data-utc'));
+          if (isNaN(d.getTime())) return;
+          var fmt = el.getAttribute('data-fmt') || 'datetime';
+          var text;
+          if (fmt === 'date') {
+            text = d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+          } else if (fmt === 'time') {
+            text = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+          } else {
+            text = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+              + ', ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+          }
+          el.textContent = text;
+          if (!el.title) el.title = d.toUTCString();
+          el.dataset.localized = '1';
+        });
+      }
+      applyLocalTimes();
+      // Live Monitor and similar pages replace table rows via fetch(); a
+      // MutationObserver picks up any new .localtime elements those add
+      // without every call site needing to remember to re-run this.
+      if (window.MutationObserver) {
+        new MutationObserver(function (mutations) {
+          mutations.forEach(function (m) { if (m.addedNodes.length) applyLocalTimes(); });
+        }).observe(document.body, { childList: true, subtree: true });
+      }
+    })();
+  </script>
+  <script src="{{ url_for('static', filename='js/password-toggle.js') }}"></script>
+
   {% if alerts_on %}
   <script>
     (function () {

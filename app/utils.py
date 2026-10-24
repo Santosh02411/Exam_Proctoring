@@ -151,14 +151,24 @@ def ensure_same_org(obj, org_id=None):
 
 
 def get_client_ip():
-    """Best-effort client IP for rate limiting. Trusts X-Forwarded-For's
-    first entry when present — fine behind a properly configured reverse
-    proxy that sets/overwrites the header, but note that without such a
-    proxy this header can be spoofed by the client. Falls back to the raw
-    socket address otherwise."""
-    forwarded = request.headers.get("X-Forwarded-For", "")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
+    """Best-effort client IP, for rate limiting, exam-session device
+    tracking, and security-event logging alike.
+
+    This used to read X-Forwarded-For directly and trust its first entry
+    unconditionally — meaning a client with no reverse proxy in front of
+    this app at all could bypass every one of those (registration/
+    forgot-password/resend-verification rate limits included) just by
+    sending a different fake X-Forwarded-For value on each request, since
+    nothing here ever confirmed a real, trusted proxy was the one setting
+    it. request.remote_addr is the correct source either way: it's the
+    real socket peer address by default, and becomes the real client's
+    address (with the proxy's own address swapped out) once
+    TRUST_PROXY_HEADERS=true applies Werkzeug's ProxyFix — the one place
+    that header is actually safe to trust, because enabling it is an
+    explicit admin decision that a real proxy is in front, not an
+    assumption this function made on its own. See config.py's
+    TRUST_PROXY_HEADERS and app.access_control.get_client_ip, which never
+    had this bug."""
     return request.remote_addr or "unknown"
 
 

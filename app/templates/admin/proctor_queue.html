@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "_pagination.html" import render_pagination %}
-{% from "_components.html" import meter %}
+{% from "_components.html" import meter, local_time %}
 {% block title %}Review Queue{% endblock %}
 {% block content %}
 {% set rv = review_filter if review_filter != 'all' else None %}
@@ -43,7 +43,7 @@
           </div>
         </td>
         <td data-label="Status"><span class="badge {{ a.status }}">{{ a.status|replace('_',' ')|capitalize }}</span><span class="cell-sub">{{ a.violation_count }} violation{{ '' if a.violation_count == 1 else 's' }}</span></td>
-        <td data-label="Started" class="nowrap">{{ a.started_at.strftime('%b %d') }}<span class="cell-sub mono">{{ a.started_at.strftime('%H:%M') }}</span></td>
+        <td data-label="Started" class="nowrap">{{ local_time(a.started_at) }}</td>
         <td data-label="Review">
           {% set d = decisions.get(a.id) %}
           {% if d %}<span class="badge {{ 'published' if d == 'cleared' else ('inactive' if d == 'confirmed' else 'draft') }}">{{ d|capitalize }}</span>{% else %}<span class="small muted">Not reviewed</span>{% endif %}

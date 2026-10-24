@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Verify your email — Exam Proctoring{% endblock %}
+{% block content %}
+<div class="center-page">
+  <div class="auth-box">
+    <h2>Verify your email</h2>
+    <div class="lead" style="margin-bottom:16px">
+      We sent a 6-digit code to <strong>{{ email }}</strong>. Enter it below to verify your account.
+    </div>
+    <form method="post" novalidate>
+      {{ form.hidden_tag() }}
+      <input type="hidden" name="email" value="{{ email }}">
+      <div class="field">
+        <label for="{{ form.code.id }}">Verification code</label>
+        {{ form.code(placeholder="123456", autocomplete="one-time-code", inputmode="numeric", maxlength="6", autofocus=true, style="letter-spacing:6px;font-size:20px;text-align:center") }}
+        {% for e in form.code.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+      </div>
+      <button type="submit" class="btn" style="width:100%">Verify email</button>
+    </form>
+    <form method="post" action="{{ url_for('auth.resend_verification') }}" style="margin-top:12px;text-align:center">
+      {{ form.hidden_tag() }}
+      <input type="hidden" name="email" value="{{ email }}">
+      <button type="submit" class="btn ghost small">Resend code</button>
+    </form>
+    <div class="small" style="margin-top:16px;text-align:center">
+      <a href="{{ url_for('auth.login') }}">Back to login</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

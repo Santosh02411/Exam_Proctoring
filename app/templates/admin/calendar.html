@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_components.html" import local_time %}
 {% block title %}Calendar{% endblock %}
 {% block content %}
 <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;flex-wrap:wrap;gap:10px">
@@ -27,8 +28,8 @@
         <td class="calendar-day {{ '' if day.in_month else 'calendar-day-outside' }} {{ 'calendar-day-today' if day.date == today }}">
           <div class="calendar-day-num">{{ day.date.day }}</div>
           {% for t in day.tests %}
-          <a class="calendar-event" href="{{ url_for('admin.view_test', test_id=t.id) }}" title="{{ t.title }} — {{ t.start_time.strftime('%H:%M') }}">
-            <span class="mono">{{ t.start_time.strftime('%H:%M') }}</span> {{ t.title }}
+          <a class="calendar-event" href="{{ url_for('admin.view_test', test_id=t.id) }}" title="{{ t.title }} — {{ t.start_time.strftime('%Y-%m-%d %H:%M') }} UTC">
+            <span class="mono">{{ local_time(t.start_time, 'time') }}</span> {{ t.title }}
           </a>
           {% endfor %}
         </td>

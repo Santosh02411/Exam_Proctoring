@@ -1474,16 +1474,54 @@ def confirm_id_match():
     doc_id = data.get("doc_id")
     id_descriptor = data.get("id_descriptor")
     live_descriptor = data.get("live_descriptor")
-    liveness_passed = bool(data.get("liveness_passed"))
     blink_count = data.get("blink_count")
     try:
         blink_count = max(0, int(blink_count))
     except (TypeError, ValueError):
         blink_count = 0
+    try:
+        ear_range = float(data.get("ear_range"))
+    except (TypeError, ValueError):
+        ear_range = 0.0
+    try:
+        sample_count = max(0, int(data.get("sample_count")))
+    except (TypeError, ValueError):
+        sample_count = 0
+
+    # liveness_passed is derived here, from the raw numbers the check
+    # produced, rather than trusted as a client-sent boolean — the browser
+    # is not a trust boundary: anyone can open devtools (or just call this
+    # endpoint directly) and claim liveness_passed: true regardless of
+    # what, if anything, the check actually saw on camera. blink_count/
+    # ear_range/sample_count are the same raw signals app.static.js.
+    # liveness.js's createTracker().finalize() computes; this mirrors its
+    # decision exactly (EAR_RANGE_FALLBACK / MIN_SAMPLES_FOR_RANGE_FALLBACK
+    # there) rather than trusting the client's own "live" verdict.
+    EAR_RANGE_FALLBACK = 0.10
+    MIN_SAMPLES_FOR_RANGE_FALLBACK = 12
+    liveness_passed = blink_count >= 1 or (
+        sample_count >= MIN_SAMPLES_FOR_RANGE_FALLBACK and ear_range >= EAR_RANGE_FALLBACK
+    )
 
     doc = IdentityDocument.query.get(doc_id)
     if not doc or doc.user_id != current_user.id:
         return jsonify({"ok": False, "error": "document not found"}), 404
+
+    # Name/ID number/date of birth as reviewed (and, where OCR missed or
+    # misread something, corrected or filled in by hand) by the student on
+    # the Step 2 review screen — overwrites whatever the automated OCR pass
+    # at upload time found, since this is strictly more reliable: a person
+    # looking at their own ID. These were never used for any automated
+    # match (that's the face descriptor comparison below) — they're purely
+    # for an admin's manual review — so accepting a student's correction
+    # here doesn't weaken anything the system verifies on its own.
+    for field, value, max_len in (
+        ("ocr_name", data.get("name"), 200),
+        ("ocr_id_number", data.get("id_number"), 100),
+        ("ocr_dob", data.get("dob"), 30),
+    ):
+        if isinstance(value, str) and value.strip():
+            setattr(doc, field, value.strip()[:max_len])
 
     if not _validate_descriptor(id_descriptor) or not _validate_descriptor(live_descriptor):
         return jsonify({"ok": False, "error": "expected 128-value descriptor arrays"}), 400

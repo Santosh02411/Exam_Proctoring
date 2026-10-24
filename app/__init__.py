@@ -12,23 +12,49 @@ login_manager.login_message = "Please log in to continue."
 login_manager.login_message_category = "warning"
 
 
-# Columns added to tables that already existed before the column was
-# introduced. db.create_all() only creates whole tables that are missing —
-# on an already-deployed database it silently leaves an existing table's
-# schema untouched, which would otherwise turn a new nullable/defaulted
-# column into a hard crash ("no such column") the moment any query touches
-# it. Each entry is (table, column, DDL type clause); this list only ever
-# grows, and it's safe to list a column that already exists — that table is
-# just skipped. Kept intentionally tiny and dependency-free rather than
-# pulling in a full migration framework for what is, so far, a handful of
-# additive columns.
-_COLUMNS_ADDED_AFTER_INITIAL_RELEASE = [
-    ("tests", "max_warnings", "INTEGER"),
-    ("attempts", "total_warning_count", "INTEGER NOT NULL DEFAULT 0"),
-]
+def _literal_default_sql(column, dialect):
+    """A column's Python-side `default=` as a literal SQL value, or None if
+    it isn't one (a callable like `datetime.utcnow` or `lambda: gen_user_id(...)`
+    can't be expressed as a static SQL DEFAULT — there's no way to ask
+    SQLite to run Python at insert time). Literals (str/int/float/bool) are
+    the common case and cover most columns in this app; the earlier,
+    narrower version of this function hand-wrote exactly one of these
+    ("INTEGER NOT NULL DEFAULT 0") per column, which is exactly the kind of
+    thing this generic version exists to stop anyone needing to remember."""
+    if column.default is None or getattr(column.default, "is_callable", False):
+        return None
+    value = getattr(column.default, "arg", None)
+    if callable(value):
+        return None
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    if isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, str):
+        return "'" + value.replace("'", "''") + "'"
+    return None
 
 
 def _ensure_columns(engine):
+    """Reconcile every model's columns against the live database and add
+    whatever's missing. db.create_all() only creates whole tables that are
+    missing — on an already-deployed database it silently leaves an
+    existing table's columns untouched, so any column a model has gained
+    since that database was first created turns into a hard crash ("no
+    such column: users.totp_secret", say) the instant any query touches
+    it, regardless of how long ago that column was added or how many
+    columns have piled up since.
+
+    This used to be a short hand-maintained list of (table, column, DDL
+    type) tuples — safe, but only as complete as whoever last remembered
+    to add an entry, and a real deployment hit exactly that gap: several
+    `users` columns (2FA, SSO, notification preferences) predated the list
+    entirely and were never in it. This version instead walks every table
+    SQLAlchemy's models define (db.metadata, not a maintained list),
+    compares each one against what the live database actually has, and
+    ALTERs in anything the models have that the table doesn't — so
+    upgrading never again depends on someone remembering to list a column.
+    """
     from sqlalchemy import inspect, text
 
     inspector = inspect(engine)
@@ -36,31 +62,64 @@ def _ensure_columns(engine):
         existing_tables = set(inspector.get_table_names())
     except Exception:
         return
+
     with engine.connect() as conn:
-        for table, column, ddl_type in _COLUMNS_ADDED_AFTER_INITIAL_RELEASE:
-            if table not in existing_tables:
-                continue  # a fresh install: create_all() already made this table with the column
+        for table in db.metadata.sorted_tables:
+            if table.name not in existing_tables:
+                continue  # a fresh install: create_all() already made this table in full
             try:
-                cols = {c["name"] for c in inspector.get_columns(table)}
+                existing_cols = {c["name"] for c in inspector.get_columns(table.name)}
             except Exception:
                 continue
-            if column in cols:
-                continue
-            try:
-                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl_type}"))
-                conn.commit()
-            except Exception:
-                # Best-effort: an unsupported dialect quirk here shouldn't
-                # prevent the app from starting. Worst case, this specific
-                # column's feature behaves as if unset until an admin
-                # applies the ALTER TABLE by hand.
-                pass
+
+            for column in table.columns:
+                if column.name in existing_cols:
+                    continue
+                try:
+                    ddl_type = column.type.compile(dialect=engine.dialect)
+                except Exception:
+                    continue  # an exotic/custom type we can't safely stringify — skip rather than guess
+
+                clause = f"ALTER TABLE {table.name} ADD COLUMN {column.name} {ddl_type}"
+                default_sql = _literal_default_sql(column, engine.dialect)
+                if default_sql is not None:
+                    clause += f" DEFAULT {default_sql}"
+                    if not column.nullable:
+                        clause += " NOT NULL"
+                # else: a callable default (datetime.utcnow, gen_user_id, ...)
+                # or no default at all — added as a plain nullable column
+                # rather than forcing NOT NULL with nothing to backfill
+                # existing rows with, which SQLite would simply refuse.
+
+                try:
+                    conn.execute(text(clause))
+                    conn.commit()
+                except Exception:
+                    # Best-effort: an unsupported dialect quirk here
+                    # shouldn't prevent the app from starting. Worst case,
+                    # this specific column behaves as if unset until an
+                    # admin applies the ALTER TABLE by hand.
+                    pass
 
 
 def create_app(config_object="config.Config"):
     app = Flask(__name__, instance_relative_config=True)
     app.config.from_object(config_object)
     app.config["APP_STARTED_AT"] = time.time()
+
+    # Derived fresh from app.config here, not computed once when config.py
+    # happens to first be imported: APP_BASE_URL might come from the
+    # APP_BASE_URL environment variable (config.Config's default), or be
+    # set directly on a config object (a test config, say) — either way,
+    # by the time app.config.from_object() above has run, app.config["APP_
+    # BASE_URL"] is the final value to act on, so that's what this reads.
+    app_base_url = (app.config.get("APP_BASE_URL") or "").strip().rstrip("/")
+    if app_base_url:
+        from urllib.parse import urlparse
+        parsed = urlparse(app_base_url if "://" in app_base_url else f"//{app_base_url}", scheme="https")
+        if parsed.netloc:
+            app.config["SERVER_NAME"] = parsed.netloc
+            app.config["PREFERRED_URL_SCHEME"] = parsed.scheme or "https"
 
     # Fall back to sane defaults for anything a custom config object (e.g.
     # tests/conftest.py's TestConfig, which predates these settings and
@@ -86,6 +145,15 @@ def create_app(config_object="config.Config"):
     app.config.setdefault("MAX_WARNINGS_BEFORE_TERMINATION", 2)
     app.config.setdefault("APPEAL_WINDOW_DAYS", 14)
     app.config.setdefault("LIVE_MONITOR_NO_SIGNAL_SECONDS", 60)
+    app.config.setdefault("TRUST_PROXY_HEADERS", False)
+
+    if app.config["TRUST_PROXY_HEADERS"]:
+        # Only reached when explicitly opted into (see config.py) — trusts
+        # one layer of X-Forwarded-* headers so request.remote_addr and
+        # url_for(_external=True)'s scheme/host are correct behind a real
+        # reverse proxy, instead of showing the proxy's own address/scheme.
+        from werkzeug.middleware.proxy_fix import ProxyFix
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
     @app.template_filter("from_json")
     def _from_json_filter(value):
@@ -251,5 +319,8 @@ def create_app(config_object="config.Config"):
 
     from app.cli import register_cli
     register_cli(app)
+
+    from app.scheduler import start_background_scheduler
+    start_background_scheduler(app)
 
     return app

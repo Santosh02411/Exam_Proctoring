@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_components.html" import meter %}
+{% from "_components.html" import meter, local_time %}
 {% block title %}Attempt Detail{% endblock %}
 {% block content %}
 <div style="margin-bottom:22px">
@@ -113,7 +113,8 @@
   <div class="small muted" style="margin-bottom:10px">
     Every violation, warning, flagged snapshot, answer change, and recording segment from this attempt, in one
     chronological feed — the backbone of Complete Exam Replay below. Click an entry to jump both the webcam and
-    screen recordings (if available) to that moment and highlight the matching detail on the page.
+    screen recordings (if available) to that moment and highlight the matching detail on the page. Timestamps
+    below are in UTC (matching the recording's own clock), not converted to your local time.
   </div>
   <ul id="behaviorTimeline" class="events-list" style="padding-left:18px;max-height:360px;overflow-y:auto">
     {% for item in timeline.entries %}
@@ -285,8 +286,8 @@
       <dt>Status</dt><dd>{{ attempt.status|replace('_',' ')|capitalize }}</dd>
       <dt>Violations</dt><dd class="mono">{{ attempt.violation_count }}</dd>
       {% if warn_limit and warn_limit > 0 %}<dt>Warnings used</dt><dd class="mono">{{ attempt.total_warning_count }} / {{ warn_limit }}</dd>{% endif %}
-      <dt>Started</dt><dd class="mono">{{ attempt.started_at.strftime('%b %d, %H:%M') }}</dd>
-      {% if attempt.submitted_at %}<dt>Ended</dt><dd class="mono">{{ attempt.submitted_at.strftime('%b %d, %H:%M') }}</dd>{% endif %}
+      <dt>Started</dt><dd class="mono">{{ local_time(attempt.started_at) }}</dd>
+      {% if attempt.submitted_at %}<dt>Ended</dt><dd class="mono">{{ local_time(attempt.submitted_at) }}</dd>{% endif %}
       {% if attempt.score is not none %}<dt>Score</dt><dd class="mono">{{ attempt.score }} / {{ attempt.max_marks() }}</dd>{% endif %}
     </dl>
     <a class="btn ghost small" style="width:100%" href="{{ url_for('admin.export_attempt_report', attempt_id=attempt.id) }}">Download incident report (PDF)</a>

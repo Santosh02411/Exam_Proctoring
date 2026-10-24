@@ -1529,46 +1529,14 @@
   // be anticipated/gamed), pairing a face-match against the enrolled
   // reference with the same blink-based liveness check used at enrollment —
   // catching, for example, someone swapping in a static photo mid-exam.
-  const SPOTCHECK_EAR_THRESHOLD = 0.22;
-
-  function eyeAspectRatio(eye) {
-    const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
-    const vertical1 = dist(eye[1], eye[5]);
-    const vertical2 = dist(eye[2], eye[4]);
-    const horizontal = dist(eye[0], eye[3]);
-    return horizontal ? (vertical1 + vertical2) / (2 * horizontal) : 0;
-  }
-
-  async function runLivenessSample(videoEl, durationMs) {
-    let blinkCount = 0;
-    let eyesWereClosed = false;
-    let lastOpenDescriptor = null;
-    const deadline = Date.now() + durationMs;
-
-    while (Date.now() < deadline) {
-      if (!examActive || examEnded) break;
-      const result = await faceapi
-        .detectSingleFace(videoEl, new faceapi.TinyFaceDetectorOptions())
-        .withFaceLandmarks()
-        .withFaceDescriptor();
-
-      if (result) {
-        const ear = (eyeAspectRatio(result.landmarks.getLeftEye()) + eyeAspectRatio(result.landmarks.getRightEye())) / 2;
-        if (ear < SPOTCHECK_EAR_THRESHOLD) {
-          eyesWereClosed = true;
-        } else {
-          if (eyesWereClosed) blinkCount += 1;
-          eyesWereClosed = false;
-          lastOpenDescriptor = result.descriptor;
-        }
-        if (spotCheckPrompt) spotCheckPrompt.textContent = `Blink naturally… (${blinkCount} blink${blinkCount === 1 ? '' : 's'} detected)`;
-      } else if (spotCheckPrompt) {
-        spotCheckPrompt.textContent = 'No face detected — please look at the camera.';
-      }
-      await new Promise((r) => setTimeout(r, 200));
-    }
-
-    return { blinkCount, live: blinkCount >= 1, descriptor: lastOpenDescriptor };
+  // The actual blink/EAR logic lives in liveness.js (shared with
+  // enroll_face.html) rather than a second copy here — see that file for
+  // why the threshold is adaptive instead of a fixed constant.
+  function runLivenessSample(videoEl, durationMs) {
+    return ExamProctoringLiveness.sampleBlinks(videoEl, durationMs, {
+      onTick: (text) => { if (spotCheckPrompt) spotCheckPrompt.textContent = text; },
+      shouldAbort: () => !examActive || examEnded,
+    });
   }
 
   function scheduleNextSpotCheck() {
@@ -1586,7 +1554,7 @@
     if (spotCheckPrompt) spotCheckPrompt.textContent = 'Starting…';
 
     try {
-      const liveness = await runLivenessSample(camPreview, 6000);
+      const liveness = await runLivenessSample(camPreview, 7000); // a bit longer now that polling is cheap enough to sample it well
       if (!examActive || examEnded) return; // exam ended mid-check — nothing to report
 
       if (!liveness.descriptor) {

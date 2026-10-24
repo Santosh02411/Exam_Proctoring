@@ -2,6 +2,7 @@
 {% block title %}Identity Verification{% endblock %}
 {% block head %}
 <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+<script defer src="{{ url_for('static', filename='js/liveness.js') }}"></script>
 {% endblock %}
 {% block content %}
 <div class="center-page" style="max-width:640px">
@@ -45,17 +46,25 @@
       <h3>Step 2 · Review what we read from your ID</h3>
       <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
         <img id="idPreview" alt="Your uploaded ID" style="width:220px;border-radius:10px;border:1px solid var(--border)">
-        <table class="table" style="flex:1;min-width:220px">
-          <tbody>
-            <tr><td class="small muted">Name</td><td id="ocrName" class="small">—</td></tr>
-            <tr><td class="small muted">ID Number</td><td id="ocrIdNumber" class="small">—</td></tr>
-            <tr><td class="small muted">Date of Birth</td><td id="ocrDob" class="small">—</td></tr>
-          </tbody>
-        </table>
+        <div style="flex:1;min-width:220px;display:flex;flex-direction:column;gap:12px">
+          <div class="field" style="margin:0">
+            <label for="ocrName">Name</label>
+            <input type="text" id="ocrName" placeholder="Type it in if we didn't catch it">
+          </div>
+          <div class="field" style="margin:0">
+            <label for="ocrIdNumber">ID Number</label>
+            <input type="text" id="ocrIdNumber" placeholder="Type it in if we didn't catch it">
+          </div>
+          <div class="field" style="margin:0">
+            <label for="ocrDob">Date of Birth</label>
+            <input type="text" id="ocrDob" placeholder="Type it in if we didn't catch it">
+          </div>
+        </div>
       </div>
       <p class="small muted" style="margin-top:8px">
-        This is automated text extraction (OCR) shown for your own sanity check — it may miss fields on
-        some ID layouts. It doesn't need to be perfect for the next step to work.
+        These are filled in from automated text extraction (OCR) where we could read them — it can miss
+        fields on some ID layouts, so check them against your ID and fix anything wrong or missing before
+        continuing. They're for an admin's review, not graded or matched automatically.
       </p>
       <button id="continueBtn" class="btn" type="button" style="margin-top:8px">Looks right — Continue</button>
     </div>
@@ -67,6 +76,10 @@
       </div>
       <div class="small" style="text-align:center;margin-bottom:10px">
         Camera: <span id="camStatus">Starting…</span> · Model: <span id="modelStatus">Loading…</span>
+      </div>
+      <div id="cameraErrorBox" class="flash flash-error" style="display:none;margin-bottom:14px">
+        <div id="cameraErrorText"></div>
+        <button id="cameraRetryBtn" class="btn small ghost" type="button" style="margin-top:8px">Try Again</button>
       </div>
       <div id="livenessPrompt" class="small" style="text-align:center;font-weight:700;min-height:20px"></div>
       <div id="livenessMsg" class="small" style="text-align:center;min-height:18px"></div>
@@ -102,6 +115,9 @@
   const video = document.getElementById('liveVideo');
   const camStatus = document.getElementById('camStatus');
   const modelStatus = document.getElementById('modelStatus');
+  const cameraErrorBox = document.getElementById('cameraErrorBox');
+  const cameraErrorText = document.getElementById('cameraErrorText');
+  const cameraRetryBtn = document.getElementById('cameraRetryBtn');
   const livenessPrompt = document.getElementById('livenessPrompt');
   const livenessMsg = document.getElementById('livenessMsg');
   const verifyBtn = document.getElementById('verifyBtn');
@@ -139,9 +155,9 @@
       }
       docId = data.doc_id;
       idPreview.src = data.image_url;
-      ocrName.textContent = data.ocr.name || '—';
-      ocrIdNumber.textContent = data.ocr.id_number || '—';
-      ocrDob.textContent = data.ocr.dob || '—';
+      ocrName.value = data.ocr.name || '';
+      ocrIdNumber.value = data.ocr.id_number || '';
+      ocrDob.value = data.ocr.dob || '';
 
       step1.style.display = 'none';
       step2.style.display = '';
@@ -160,16 +176,76 @@
     initModels();
   });
 
-  async function initCamera() {
+  // Distinct camera failures need distinct guidance -- "Permission denied"
+  // for every case (a blocked camera, no camera at all, the camera being
+  // used by another app, or the page simply not being on a secure origin)
+  // left a student stuck with no idea what to actually do about it. Each
+  // case below is genuinely different to fix.
+  function describeCameraError(e) {
+    if (!window.isSecureContext) {
+      return "Your browser only allows camera access on a secure page (https://), or on localhost. "
+        + "If you're reaching this site by its network address (like an IP address) rather than "
+        + "https://, that's why — ask whoever manages this deployment for the right address, or access it over HTTPS.";
+    }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      return "This browser doesn't support camera access on this page. Try a recent version of Chrome, "
+        + "Firefox, or Edge.";
+    }
+    const name = e && e.name;
+    if (name === 'NotAllowedError' || name === 'PermissionDeniedError' || name === 'SecurityError') {
+      return "Camera access was blocked. Click the camera icon (or padlock icon) in your browser's address "
+        + "bar, allow camera access for this site, then click \u201cTry Again\u201d below. If you don't see "
+        + "that icon, check your browser's site settings for this page.";
+    }
+    if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+      return "No camera was found on this device. Plug one in (or check it's enabled), then click "
+        + "\u201cTry Again\u201d.";
+    }
+    if (name === 'NotReadableError' || name === 'TrackStartError') {
+      return "Your camera couldn't be started — it may already be in use by another app or browser tab "
+        + "(Zoom, Teams, another video call, ...). Close anything else using it, then click \u201cTry Again\u201d.";
+    }
+    if (name === 'OverconstrainedError' || name === 'ConstraintNotSatisfiedError') {
+      return "Your camera doesn't support the resolution this page asked for. Click \u201cTry Again\u201d — "
+        + "it will retry without that requirement.";
+    }
+    return "We couldn't access your camera (" + (name || 'unknown error') + "). Click \u201cTry Again\u201d, "
+        + "or try a different browser if this keeps happening.";
+  }
+
+  async function initCamera(opts) {
+    cameraErrorBox.style.display = 'none';
+    camStatus.textContent = 'Starting…';
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240 }, audio: false });
+      // "ideal" (not a hard constraint) so this still works on a camera
+      // that can't do 640x480 natively — but asking for it matters: too
+      // low a capture resolution makes the eye region just a handful of
+      // pixels wide once the face is detected and cropped, which makes
+      // the eye-landmark positions (and therefore the blink signal) too
+      // imprecise to be reliable.
+      const constraints = (opts && opts.noResolutionHint)
+        ? { video: true, audio: false }
+        : { video: { width: { ideal: 640, min: 320 }, height: { ideal: 480, min: 240 } }, audio: false };
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
       video.srcObject = stream;
       camStatus.textContent = 'Ready';
       maybeEnableVerify();
     } catch (e) {
-      camStatus.textContent = 'Permission denied.';
+      console.error('camera init failed', e);
+      camStatus.textContent = (e && e.name) ? e.name.replace(/([A-Z])/g, ' $1').trim() : 'Unavailable';
+      cameraErrorText.textContent = describeCameraError(e);
+      cameraErrorBox.style.display = '';
+      // OverconstrainedError specifically means our resolution hint is the
+      // problem, not camera access itself -- retry without it automatically
+      // rather than making the student hit "Try Again" for something we
+      // already know how to work around.
+      if (e && (e.name === 'OverconstrainedError' || e.name === 'ConstraintNotSatisfiedError') && !(opts && opts.noResolutionHint)) {
+        initCamera({ noResolutionHint: true });
+      }
     }
   }
+
+  cameraRetryBtn.addEventListener('click', () => initCamera());
 
   async function initModels() {
     try {
@@ -190,50 +266,14 @@
   }
 
   // ---------- Liveness: blink detection via eye-aspect-ratio ----------
-  // Standard EAR formula over face-api.js's 6-point eye landmarks (same
-  // convention as dlib's 68-point model). This is a basic liveness signal —
-  // it catches a static printed/on-screen photo (which never blinks), not a
-  // sophisticated video replay or deepfake — and is reported to admins as
-  // such (see liveness_check_failed's weight vs. identity_mismatch's).
-  const EAR_BLINK_THRESHOLD = 0.22;
-
-  function eyeAspectRatio(eye) {
-    const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
-    const vertical1 = dist(eye[1], eye[5]);
-    const vertical2 = dist(eye[2], eye[4]);
-    const horizontal = dist(eye[0], eye[3]);
-    return horizontal ? (vertical1 + vertical2) / (2 * horizontal) : 0;
-  }
-
-  async function runLivenessCheck(durationMs) {
-    let blinkCount = 0;
-    let eyesWereClosed = false;
-    let lastOpenDescriptor = null;
-    const deadline = Date.now() + durationMs;
-
-    while (Date.now() < deadline) {
-      const result = await faceapi
-        .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
-        .withFaceLandmarks()
-        .withFaceDescriptor();
-
-      if (result) {
-        const ear = (eyeAspectRatio(result.landmarks.getLeftEye()) + eyeAspectRatio(result.landmarks.getRightEye())) / 2;
-        if (ear < EAR_BLINK_THRESHOLD) {
-          eyesWereClosed = true;
-        } else {
-          if (eyesWereClosed) blinkCount += 1;
-          eyesWereClosed = false;
-          lastOpenDescriptor = result.descriptor;
-        }
-        livenessPrompt.textContent = `Blink naturally… (${blinkCount} blink${blinkCount === 1 ? '' : 's'} detected)`;
-      } else {
-        livenessPrompt.textContent = 'No face detected — make sure your face is clearly visible.';
-      }
-      await new Promise((r) => setTimeout(r, 150));
-    }
-
-    return { live: blinkCount >= 1, blinkCount, descriptor: lastOpenDescriptor };
+  // The actual EAR/blink logic lives in liveness.js (shared with proctor.js's
+  // in-exam spot checks) — see that file for how the threshold adapts to
+  // this person's own eyes instead of assuming a fixed number works for
+  // everyone, which was the real reason blinks could go undetected.
+  function runLivenessCheck(durationMs) {
+    return ExamProctoringLiveness.sampleBlinks(video, durationMs, {
+      onTick: (text) => { livenessPrompt.textContent = text; },
+    });
   }
 
   verifyBtn.addEventListener('click', async () => {
@@ -260,7 +300,7 @@
         return;
       }
 
-      const liveness = await runLivenessCheck(7000);
+      const liveness = await runLivenessCheck(9000); // a bit longer now that polling is cheap enough to sample it well
       if (!liveness.descriptor) {
         resultBox.style.display = '';
         resultBox.style.borderColor = 'var(--danger)';
@@ -277,10 +317,19 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           doc_id: docId,
+          name: ocrName.value.trim(),
+          id_number: ocrIdNumber.value.trim(),
+          dob: ocrDob.value.trim(),
           id_descriptor: Array.from(idResult.descriptor),
           live_descriptor: Array.from(liveness.descriptor),
-          liveness_passed: liveness.live,
+          // The server derives whether liveness actually passed from these
+          // raw numbers itself -- it does NOT just trust a liveness_passed
+          // boolean computed here in the browser, which anyone could set to
+          // true directly (devtools, curl, ...) regardless of what the
+          // check actually saw. See app.proctoring.confirm_id_match.
           blink_count: liveness.blinkCount,
+          ear_range: liveness.range,
+          sample_count: liveness.sampleCount,
         }),
       });
       const data = await res.json();
@@ -294,7 +343,11 @@
         setTimeout(() => { window.location.href = "{{ url_for('student.dashboard') }}"; }, 1800);
       } else if (data.ok && !data.liveness_passed) {
         resultBox.style.borderColor = 'var(--warning)';
-        resultBox.innerHTML = '<strong>Liveness check not confirmed.</strong><p class="small" style="margin:6px 0 0 0">We didn\'t detect a natural blink — please try again in good lighting, looking directly at the camera.</p>';
+        const pct = (liveness.range * 100).toFixed(0);
+        resultBox.innerHTML = '<strong>Liveness check not confirmed.</strong>'
+          + '<p class="small" style="margin:6px 0 0 0">We didn\'t detect a natural blink or enough natural movement '
+          + '(' + pct + '% eye-openness variation seen) — please try again in good lighting, looking directly at the '
+          + 'camera, and blink a couple of times during the check.</p>';
         verifyBtn.disabled = false;
       } else if (data.ok && !data.face_match_passed) {
         resultBox.style.borderColor = 'var(--danger)';

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_components.html" import local_time %}
 {% block title %}Appeal — {{ test.title }}{% endblock %}
 {% block content %}
 <div style="margin-bottom:16px">
@@ -19,7 +20,7 @@
 {% if appeal %}
 <div class="card" style="max-width:560px">
   <h3 style="margin-top:0">Your appeal</h3>
-  <div class="small" style="margin-bottom:8px">Submitted {{ appeal.created_at.strftime('%Y-%m-%d %H:%M') }} UTC</div>
+  <div class="small" style="margin-bottom:8px">Submitted {{ local_time(appeal.created_at) }}</div>
   <div style="white-space:pre-wrap;margin-bottom:12px">{{ appeal.reason }}</div>
   <span class="badge {{ 'published' if appeal.status == 'granted' else ('inactive' if appeal.status == 'denied' else 'draft') }}">
     {{ 'Pending review' if appeal.status == 'pending' else appeal.status|capitalize }}
