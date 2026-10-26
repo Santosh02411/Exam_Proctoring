@@ -55,25 +55,12 @@
   color-scheme:dark;
 }
 
-/* Sidebar / nav chrome: deep pine in the dark theme (and always on the auth
-   hero); a light surface in the light theme — see the scoped override below. */
+/* Sidebar / nav chrome is deep pine in BOTH themes: stable page chrome. */
 :root{
   --side-bg:#0D2829; --side-text:#CFE2DF; --side-dim:#84A19E; --side-accent:#6FD9C3;
   --side-border:rgba(255,255,255,.08); --side-hover:rgba(255,255,255,.06); --side-active:rgba(111,217,195,.14);
   --side-w:264px;
 }
-
-/* Light theme: the staff sidebar follows the theme instead of staying dark.
-   Scoped to .sidebar so the pine auth hero (which shares these variables)
-   is unaffected. */
-[data-theme="light"] .sidebar{
-  --side-bg:#FFFFFF; --side-text:#2B4348; --side-dim:#6A7F83; --side-accent:#0A7466;
-  --side-border:rgba(20,38,43,.10); --side-hover:rgba(20,38,43,.05); --side-active:rgba(10,116,102,.10);
-  --side-strong:#0D2829; --side-on-accent:#FFFFFF; --side-chip:rgba(20,38,43,.08);
-  --side-avatar:rgba(10,116,102,.12); --side-scroll:rgba(20,38,43,.22);
-  border-right:1px solid var(--border);
-}
-[data-theme="light"] .sidebar .side-count.live{color:#fff}
 
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
@@ -103,26 +90,26 @@ textarea:focus-visible,[tabindex]:focus-visible,summary:focus-visible{
    Staff shell: sidebar + topbar
    ========================================================================== */
 .app{display:grid;grid-template-columns:var(--side-w) minmax(0,1fr);min-height:100vh}
-.sidebar{position:sticky;top:0;height:100vh;overflow-y:auto;background:var(--side-bg);color:var(--side-text);padding:18px 12px 14px;display:flex;flex-direction:column;gap:20px;scrollbar-width:thin;scrollbar-color:var(--side-scroll,rgba(255,255,255,.18)) transparent}
-.side-brand{display:flex;align-items:center;gap:10px;padding:4px 10px 2px;color:var(--side-strong,#fff);text-decoration:none;font-family:var(--font-display);font-weight:600;font-size:20px;letter-spacing:-.01em}
-.side-brand:hover{color:var(--side-strong,#fff)}
-.side-brand .mark{display:grid;place-items:center;width:32px;height:32px;border-radius:9px;background:var(--side-accent);color:var(--side-on-accent,#0D2829)}
+.sidebar{position:sticky;top:0;height:100vh;overflow-y:auto;background:var(--side-bg);color:var(--side-text);padding:18px 12px 14px;display:flex;flex-direction:column;gap:20px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent}
+.side-brand{display:flex;align-items:center;gap:10px;padding:4px 10px 2px;color:#fff;text-decoration:none;font-family:var(--font-display);font-weight:600;font-size:20px;letter-spacing:-.01em}
+.side-brand:hover{color:#fff}
+.side-brand .mark{display:grid;place-items:center;width:32px;height:32px;border-radius:9px;background:var(--side-accent);color:#0D2829}
 .side-brand .brand-logo{max-height:30px;max-width:180px;filter:none}
 .side-nav{display:flex;flex-direction:column;gap:20px;flex:1}
 .side-group{display:flex;flex-direction:column;gap:2px}
 .side-title{font-size:12px;font-weight:600;color:var(--side-dim);padding:0 10px 6px;margin:0}
 .side-link{display:flex;align-items:center;gap:11px;padding:8px 10px;border-radius:9px;color:var(--side-text);text-decoration:none;font-weight:500;font-size:14px;line-height:1.25}
-.side-link:hover{background:var(--side-hover);color:var(--side-strong,#fff)}
+.side-link:hover{background:var(--side-hover);color:#fff}
 .side-link .ico{opacity:.85}
-.side-link[aria-current="page"]{background:var(--side-active);color:var(--side-strong,#fff);box-shadow:inset 3px 0 0 var(--side-accent)}
+.side-link[aria-current="page"]{background:var(--side-active);color:#fff;box-shadow:inset 3px 0 0 var(--side-accent)}
 .side-link[aria-current="page"] .ico{opacity:1;color:var(--side-accent)}
-.side-count{margin-left:auto;font-family:var(--font-mono);font-weight:600;font-size:11.5px;line-height:1;padding:3px 7px;border-radius:999px;background:var(--side-chip,rgba(255,255,255,.12));color:var(--side-strong,#fff)}
-.side-count.alert{background:var(--danger);color:#fff}
-.side-count.live{background:var(--side-accent);color:var(--side-on-accent,#0D2829)}
+.side-count{margin-left:auto;font-family:var(--font-mono);font-weight:600;font-size:11.5px;line-height:1;padding:3px 7px;border-radius:999px;background:rgba(255,255,255,.12);color:#fff}
+.side-count.alert{background:var(--danger)}
+.side-count.live{background:var(--side-accent);color:#0D2829}
 .side-foot{border-top:1px solid var(--side-border);padding-top:14px;display:flex;flex-direction:column;gap:10px}
 .side-user{display:flex;align-items:center;gap:10px;padding:0 8px;min-width:0}
-.avatar{width:34px;height:34px;border-radius:50%;background:var(--side-avatar,rgba(111,217,195,.18));color:var(--side-accent);display:grid;place-items:center;font-weight:700;font-size:13px;flex-shrink:0}
-.side-user-name{color:var(--side-strong,#fff);font-weight:600;font-size:13.5px;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.avatar{width:34px;height:34px;border-radius:50%;background:rgba(111,217,195,.18);color:var(--side-accent);display:grid;place-items:center;font-weight:700;font-size:13px;flex-shrink:0}
+.side-user-name{color:#fff;font-weight:600;font-size:13.5px;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .side-user .badge.role{background:transparent;color:var(--side-dim);padding:0;font-weight:500;font-size:12px}
 .side-user .badge.role::before{display:none}
 .side-scrim{display:none}
@@ -139,7 +126,7 @@ textarea:focus-visible,[tabindex]:focus-visible,summary:focus-visible{
 .theme-toggle-floating{position:fixed;right:16px;bottom:16px;z-index:500;background:var(--card);box-shadow:var(--shadow-elevated)}
 .topbar .theme-toggle .lbl{display:none}
 .side-foot .theme-toggle{border-color:var(--side-border);color:var(--side-text);justify-content:flex-start;width:100%}
-.side-foot .theme-toggle:hover{border-color:var(--side-accent);color:var(--side-strong,#fff)}
+.side-foot .theme-toggle:hover{border-color:var(--side-accent);color:#fff}
 .side-foot .side-link{padding:8px 10px}
 
 /* --- Student shell: calm top bar --- */
@@ -539,7 +526,7 @@ td.actions > :last-child{margin-right:0}
 .side-details summary::-webkit-details-marker{display:none}
 .side-details summary::after{content:"";width:7px;height:7px;border-right:1.75px solid var(--side-dim);border-bottom:1.75px solid var(--side-dim);transform:rotate(-45deg);transition:transform .15s ease;margin-right:4px}
 .side-details[open] summary::after{transform:rotate(45deg)}
-.side-details summary:hover{color:var(--side-strong,#fff)}
+.side-details summary:hover{color:#fff}
 
 /* Nowrap helpers for dense data cells */
 .nowrap{white-space:nowrap}
