@@ -9,29 +9,6 @@
   <a class="btn" href="{{ url_for('organizations.create_organization') }}">+ New Organization</a>
 </div>
 
-{% if pending_requests %}
-<div class="card" style="margin-bottom:16px;border-left:4px solid var(--warning,#d99a00)">
-  <h2 style="margin-top:0">Pending approval ({{ pending_requests|length }})</h2>
-  <div class="small" style="margin-bottom:10px">Self-service organization requests. Nobody from these can log in until you approve.</div>
-  <table class="table">
-    <thead><tr><th>Organization</th><th>Requested by</th><th>Requested</th><th></th></tr></thead>
-    <tbody>
-    {% for r in pending_requests %}
-      <tr>
-        <td>{{ r.org.name }}</td>
-        <td>{% if r.requester %}{{ r.requester.name }} <span class="small">&lt;{{ r.requester.email }}&gt;{% if not r.requester.email_verified %} — email not verified{% endif %}</span>{% endif %}</td>
-        <td class="small">{{ r.org.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
-        <td style="white-space:nowrap">
-          <form method="post" action="{{ url_for('organizations.approve_organization', org_id=r.org.id) }}" style="display:inline">{{ csrf_form.hidden_tag() }}<button class="btn small" type="submit">Approve</button></form>
-          <form method="post" action="{{ url_for('organizations.reject_organization', org_id=r.org.id) }}" style="display:inline">{{ csrf_form.hidden_tag() }}<button class="btn ghost small" type="submit">Reject</button></form>
-        </td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-</div>
-{% endif %}
-
 <div class="kpi-row">
   <div class="kpi"><div class="kpi-value">{{ summaries|length }}</div><div class="kpi-label">Organizations</div></div>
   <div class="kpi"><div class="kpi-value">{{ summaries|sum(attribute='total_users') }}</div><div class="kpi-label">Total Users</div></div>

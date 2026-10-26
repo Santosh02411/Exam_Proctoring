@@ -1,8 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ test.title }} — Proctored Test{% endblock %}
 {% block head %}
-{# face-api is served locally and loaded synchronously: proctor.js calls faceapi.* the moment it runs, so a deferred/CDN copy was always undefined by then ("Face model: Failed to load"). #}
-<script src="{{ url_for('static', filename='vendor/face-api.min.js') }}"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
 {% endblock %}
@@ -103,10 +102,10 @@
     <p class="muted">
       This test is proctored. Your camera and microphone will be monitored throughout the exam —
       video and audio are analyzed locally in your browser, and the session is also recorded for
-      admin review. Your entire screen, which you shared during the pre-check, is recorded for the same review
-      purpose (Complete Exam Replay).{% if not config.get('REQUIRE_SCREEN_SHARE', True) %} Screen sharing is optional for this
-      deployment — the exam still proceeds on the camera/microphone recording if it isn't available.{% else %} If screen sharing
-      stops during the exam, the exam is paused until you share your entire screen again.{% endif %} Your identity will be verified against your
+      admin review. When you click "Start exam" your browser will also ask permission to record
+      your screen for the same review purpose (Complete Exam Replay) — if you decline or your
+      browser doesn't support it, the exam still proceeds on the camera/microphone recording and
+      every other check below exactly as normal. Your identity will be verified against your
       enrolled reference photo before you begin and periodically throughout. You must stay in
       fullscreen; leaving fullscreen, switching tabs, having no face / multiple faces visible,
       sustained looking-away from the screen, a phone/book/extra person detected in frame, or an
@@ -138,7 +137,6 @@
       <div style="flex:1">
         <div><strong>Camera / mic:</strong> <span id="camStatus">Not started</span></div>
         <div><strong>Face model:</strong> <span id="modelStatus">Loading…</span></div>
-        <div><strong>Phone / object detection:</strong> <span id="objStatus">Loading…</span></div>
         <div><strong>Identity check:</strong> <span id="identityStatus">Waiting…</span></div>
         <div><strong>Fullscreen:</strong> <span id="fsStatus">Not entered</span></div>
       </div>
@@ -364,8 +362,7 @@
     referenceDescriptor: {{ reference_descriptor | tojson }},
     faceMatchThreshold: {{ config.FACE_MATCH_THRESHOLD }},
     requireScreenShare: {{ config.get('REQUIRE_SCREEN_SHARE', True) | tojson }},
-    requireFullscreen: {{ config.get('REQUIRE_FULLSCREEN', True) | tojson }},
-    objectModelUrl: {{ config.get('OBJECT_MODEL_URL', '') | tojson }}
+    requireFullscreen: {{ config.get('REQUIRE_FULLSCREEN', True) | tojson }}
   };
 </script>
 <script src="{{ url_for('static', filename='js/liveness.js') }}"></script>

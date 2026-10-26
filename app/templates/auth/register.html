@@ -10,7 +10,7 @@
       <a class="active" href="{{ url_for('auth.register') }}">Register</a>
     </div>
     <h2>Create an account</h2>
-    <p class="auth-sub">Student registration. Staff accounts (admin, examiner, proctor) are created by invitation from your organization's administrator.</p>
+    <p class="auth-sub">Students, examiners, proctors and admins all start here.</p>
     <form method="post" novalidate>
       {{ form.hidden_tag() }}
       <div class="field">
@@ -32,10 +32,20 @@
         {% for e in form.phone.errors %}<div class="errors">{{ e }}</div>{% endfor %}
       </div>
       <div class="field">
+        <label for="{{ form.role.id }}">Register as</label>
+        {{ form.role() }}
+        {% for e in form.role.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+      </div>
+      <div class="field">
         <label for="{{ form.org_choice.id }}">Organization</label>
         {{ form.org_choice() }}
-        <div class="hint">Choose your institution. Setting up a new organization? <a href="{{ url_for('auth.request_organization') }}">Request one here</a> (requires approval).</div>
+        <div class="hint">Join your institution's existing account, or (Admin only) create a new one for it.</div>
         {% for e in form.org_choice.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+      </div>
+      <div class="field" id="new-org-field">
+        <label for="{{ form.new_org_name.id }}">New organization name</label>
+        {{ form.new_org_name(placeholder="e.g. Springfield College of Engineering") }}
+        {% for e in form.new_org_name.errors %}<div class="errors">{{ e }}</div>{% endfor %}
       </div>
       <div class="field">
         <label for="{{ form.password.id }}">Create Password</label>
@@ -65,4 +75,17 @@
   </div>
   </section>
 </div>
+<script>
+  (function () {
+    var orgField = document.getElementById("new-org-field");
+    var orgSelect = document.getElementById("{{ form.org_choice.id }}");
+    function sync() {
+      orgField.style.display = orgSelect.value === "__new__" ? "block" : "none";
+    }
+    if (orgSelect) {
+      orgSelect.addEventListener("change", sync);
+      sync();
+    }
+  })();
+</script>
 {% endblock %}
