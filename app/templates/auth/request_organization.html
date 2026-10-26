@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Request an organization — Exam Proctoring{% endblock %}
+{% block content %}
+<div class="auth-shell">
+  {% include "auth/_hero.html" %}
+  <section class="auth-panel">
+  <div class="auth-box">
+    <div class="auth-tabs">
+      <a href="{{ url_for('auth.login') }}">Login</a>
+      <a href="{{ url_for('auth.register') }}">Register</a>
+    </div>
+    <h2>Request an organization</h2>
+    <p class="auth-sub">Set up Exam Proctoring for your institution. A platform administrator reviews every request — you can log in once it is approved.</p>
+    <form method="post" novalidate>
+      {{ form.hidden_tag() }}
+      <div class="field">
+        <label for="{{ form.org_name.id }}">Organization name</label>
+        {{ form.org_name(placeholder="e.g. Springfield College of Engineering") }}
+        {% for e in form.org_name.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+      </div>
+      <div class="field">
+        <label for="{{ form.name.id }}">Your full name</label>
+        {{ form.name(placeholder="Full Name") }}
+        {% for e in form.name.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+      </div>
+      <div class="field">
+        <label for="{{ form.email.id }}">Your work email</label>
+        {{ form.email(placeholder="Email Address") }}
+        {% for e in form.email.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+      </div>
+      <div class="field">
+        <label for="{{ form.phone.id }}">Mobile Number</label>
+        <div class="phone-group">
+          <div class="phone-prefix">+91</div>
+          {{ form.phone(placeholder="10-digit Mobile Number", maxlength=10) }}
+        </div>
+        {% for e in form.phone.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+      </div>
+      <div class="field">
+        <label for="{{ form.password.id }}">Create Password</label>
+        {{ form.password(placeholder="Create Password") }}
+        <div class="hint">At least 8 characters, with a lowercase letter, an uppercase letter, a number, and a special character.</div>
+        {% for e in form.password.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+      </div>
+      <div class="field">
+        <label class="opt" style="display:flex;align-items:flex-start;gap:8px">
+          {{ form.accepted_terms(required=true) }}
+          <span>I agree to the <a href="{{ url_for('legal.terms') }}" target="_blank" rel="noopener">Terms of Service</a> and <a href="{{ url_for('legal.privacy') }}" target="_blank" rel="noopener">Privacy Policy</a>.</span>
+        </label>
+      </div>
+      <button type="submit" class="btn" style="width:100%;min-height:44px">Submit request</button>
+    </form>
+    <div class="small" style="margin-top:16px;text-align:center"><a href="{{ url_for('auth.register') }}">Student? Register here instead</a></div>
+  </div>
+  </section>
+</div>
+{% endblock %}

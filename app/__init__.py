@@ -4,108 +4,27 @@ import json
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
+from flask_migrate import Migrate
 
 db = SQLAlchemy()
+migrate = Migrate()
 login_manager = LoginManager()
 login_manager.login_view = "auth.login"
 login_manager.login_message = "Please log in to continue."
 login_manager.login_message_category = "warning"
 
 
-def _literal_default_sql(column, dialect):
-    """A column's Python-side `default=` as a literal SQL value, or None if
-    it isn't one (a callable like `datetime.utcnow` or `lambda: gen_user_id(...)`
-    can't be expressed as a static SQL DEFAULT — there's no way to ask
-    SQLite to run Python at insert time). Literals (str/int/float/bool) are
-    the common case and cover most columns in this app; the earlier,
-    narrower version of this function hand-wrote exactly one of these
-    ("INTEGER NOT NULL DEFAULT 0") per column, which is exactly the kind of
-    thing this generic version exists to stop anyone needing to remember."""
-    if column.default is None or getattr(column.default, "is_callable", False):
-        return None
-    value = getattr(column.default, "arg", None)
-    if callable(value):
-        return None
-    if isinstance(value, bool):
-        return "1" if value else "0"
-    if isinstance(value, (int, float)):
-        return str(value)
-    if isinstance(value, str):
-        return "'" + value.replace("'", "''") + "'"
-    return None
-
-
-def _ensure_columns(engine):
-    """Reconcile every model's columns against the live database and add
-    whatever's missing. db.create_all() only creates whole tables that are
-    missing — on an already-deployed database it silently leaves an
-    existing table's columns untouched, so any column a model has gained
-    since that database was first created turns into a hard crash ("no
-    such column: users.totp_secret", say) the instant any query touches
-    it, regardless of how long ago that column was added or how many
-    columns have piled up since.
-
-    This used to be a short hand-maintained list of (table, column, DDL
-    type) tuples — safe, but only as complete as whoever last remembered
-    to add an entry, and a real deployment hit exactly that gap: several
-    `users` columns (2FA, SSO, notification preferences) predated the list
-    entirely and were never in it. This version instead walks every table
-    SQLAlchemy's models define (db.metadata, not a maintained list),
-    compares each one against what the live database actually has, and
-    ALTERs in anything the models have that the table doesn't — so
-    upgrading never again depends on someone remembering to list a column.
-    """
-    from sqlalchemy import inspect, text
-
-    inspector = inspect(engine)
-    try:
-        existing_tables = set(inspector.get_table_names())
-    except Exception:
-        return
-
-    with engine.connect() as conn:
-        for table in db.metadata.sorted_tables:
-            if table.name not in existing_tables:
-                continue  # a fresh install: create_all() already made this table in full
-            try:
-                existing_cols = {c["name"] for c in inspector.get_columns(table.name)}
-            except Exception:
-                continue
-
-            for column in table.columns:
-                if column.name in existing_cols:
-                    continue
-                try:
-                    ddl_type = column.type.compile(dialect=engine.dialect)
-                except Exception:
-                    continue  # an exotic/custom type we can't safely stringify — skip rather than guess
-
-                clause = f"ALTER TABLE {table.name} ADD COLUMN {column.name} {ddl_type}"
-                default_sql = _literal_default_sql(column, engine.dialect)
-                if default_sql is not None:
-                    clause += f" DEFAULT {default_sql}"
-                    if not column.nullable:
-                        clause += " NOT NULL"
-                # else: a callable default (datetime.utcnow, gen_user_id, ...)
-                # or no default at all — added as a plain nullable column
-                # rather than forcing NOT NULL with nothing to backfill
-                # existing rows with, which SQLite would simply refuse.
-
-                try:
-                    conn.execute(text(clause))
-                    conn.commit()
-                except Exception:
-                    # Best-effort: an unsupported dialect quirk here
-                    # shouldn't prevent the app from starting. Worst case,
-                    # this specific column behaves as if unset until an
-                    # admin applies the ALTER TABLE by hand.
-                    pass
-
-
 def create_app(config_object="config.Config"):
     app = Flask(__name__, instance_relative_config=True)
     app.config.from_object(config_object)
     app.config["APP_STARTED_AT"] = time.time()
+
+    # Fail fast (and loudly) on a missing/placeholder SECRET_KEY, bad env
+    # values, etc. — before anything else touches the config. See
+    # app.config_validation for exactly what is enforced per environment.
+    from app.config_validation import validate_config
+    for _warning in validate_config(app):
+        app.logger.warning("config: %s", _warning)
 
     # Derived fresh from app.config here, not computed once when config.py
     # happens to first be imported: APP_BASE_URL might come from the
@@ -177,13 +96,23 @@ def create_app(config_object="config.Config"):
     os.makedirs(app.config["ORG_BRANDING_DIR"], exist_ok=True)
 
     db.init_app(app)
+    # Schema changes are Alembic migrations (see migrations/ and README):
+    # `flask db upgrade` applies them. The app itself NEVER creates tables or
+    # alters columns at startup any more — that used to happen silently, with
+    # failures swallowed. render_as_batch makes ALTERs work on SQLite too.
+    migrate.init_app(app, db, render_as_batch=True, compare_type=True)
     login_manager.init_app(app)
 
     from app.models import User
 
     @login_manager.user_loader
     def load_user(user_id):
-        return db.session.get(User, int(user_id))
+        user = db.session.get(User, int(user_id))
+        # A deactivated/pending account must not keep working on an old
+        # session cookie: returning None logs it out on the next request.
+        if user is None or user.status != "active":
+            return None
+        return user
 
     from app.auth import bp as auth_bp
     from app.admin import bp as admin_bp
@@ -240,6 +169,17 @@ def create_app(config_object="config.Config"):
     got_request_exception.connect(_on_request_exception, app, weak=False)
 
     from app.branding import current_org_branding
+
+    @app.context_processor
+    def _inject_impersonation_flag():
+        """True ONLY for a super_admin mid-support-view. Templates must use
+        this rather than testing the raw session key: that key can linger
+        in the browser's session after a super_admin logs out, and a plain
+        `session.get(...)` check then wrongly put a real examiner/admin who
+        logs in next in "read-only support view" (no Edit/Assign/etc.)."""
+        from app.utils import is_impersonating
+
+        return {"is_impersonating_org": is_impersonating()}
 
     @app.context_processor
     def _inject_org_branding():
@@ -312,10 +252,6 @@ def create_app(config_object="config.Config"):
                 return redirect(url_for("admin.proctor_queue"))
             return redirect(url_for("student.dashboard"))
         return redirect(url_for("auth.login"))
-
-    with app.app_context():
-        db.create_all()
-        _ensure_columns(db.engine)
 
     from app.cli import register_cli
     register_cli(app)

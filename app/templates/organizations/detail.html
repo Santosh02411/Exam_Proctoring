@@ -60,6 +60,17 @@
   {% else %}
   <div class="small">No admins registered for this organization yet.</div>
   {% endif %}
+  {% if summary.org.status == 'active' %}
+  <form method="post" action="{{ url_for('organizations.invite_org_admin', org_id=summary.org.id) }}" style="display:flex;gap:10px;align-items:flex-end;margin-top:14px;flex-wrap:wrap">
+    {{ csrf_form.hidden_tag() }}
+    <div class="field" style="margin-bottom:0;flex:1;min-width:240px">
+      <label for="invite-email">Invite an administrator</label>
+      <input type="email" id="invite-email" name="email" placeholder="admin@institution.edu" required>
+    </div>
+    <input type="hidden" name="role" value="admin">
+    <button class="btn small" type="submit">Send invitation</button>
+  </form>
+  {% endif %}
 </div>
 
 <div class="card">

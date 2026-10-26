@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Accept invitation — Exam Proctoring{% endblock %}
+{% block content %}
+<div class="auth-shell">
+  {% include "auth/_hero.html" %}
+  <section class="auth-panel">
+  <div class="auth-box">
+    <h2>Join {{ invitation.organization.name }}</h2>
+    <p class="auth-sub">You've been invited as <strong>{{ invitation.role|capitalize }}</strong> ({{ invitation.email }}). Choose how you'll sign in.</p>
+    <form method="post" novalidate>
+      {{ form.hidden_tag() }}
+      <div class="field">
+        <label for="{{ form.name.id }}">Full Name</label>
+        {{ form.name(placeholder="Full Name") }}
+        {% for e in form.name.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+      </div>
+      <div class="field">
+        <label for="{{ form.phone.id }}">Mobile Number</label>
+        <div class="phone-group">
+          <div class="phone-prefix">+91</div>
+          {{ form.phone(placeholder="10-digit Mobile Number", maxlength=10) }}
+        </div>
+        {% for e in form.phone.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+      </div>
+      <div class="field">
+        <label for="{{ form.password.id }}">Create Password</label>
+        {{ form.password(placeholder="Create Password") }}
+        <div class="hint">At least 8 characters, with a lowercase letter, an uppercase letter, a number, and a special character.</div>
+        {% for e in form.password.errors %}<div class="errors">{{ e }}</div>{% endfor %}
+      </div>
+      <div class="field">
+        <label class="opt" style="display:flex;align-items:flex-start;gap:8px">
+          {{ form.accepted_terms(required=true) }}
+          <span>I agree to the <a href="{{ url_for('legal.terms') }}" target="_blank" rel="noopener">Terms of Service</a> and <a href="{{ url_for('legal.privacy') }}" target="_blank" rel="noopener">Privacy Policy</a>.</span>
+        </label>
+      </div>
+      <button type="submit" class="btn" style="width:100%;min-height:44px">Create my account</button>
+    </form>
+  </div>
+  </section>
+</div>
+{% endblock %}

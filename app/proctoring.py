@@ -11,7 +11,7 @@ from flask_login import current_user
 from werkzeug.utils import secure_filename
 
 from app import db
-from app.models import Attempt, ProctoringEvent, Recording, Snapshot, IdentityDocument, Test
+from app.models import Attempt, ProctoringEvent, Recording, Snapshot, IdentityDocument, Test, User
 from app.utils import student_required, admin_required
 from app.email_utils import send_email
 from app.notifications import maybe_send_high_risk_alert, notify_exam_warning, channel_allowed
@@ -77,6 +77,10 @@ VALID_EVENT_TYPES = {
     # underway and shouldn't count against a student the same way an
     # in-exam detection does).
     "precheck_completed", "environment_check_clear", "environment_check_flagged",
+    # Entire-screen sharing during the exam (see proctor.js): stopped = the
+    # student ended the share mid-exam (a violation — the exam is paused
+    # behind an overlay until they re-share); resumed = they re-shared.
+    "screen_share_stopped", "screen_share_resumed",
     # Proctoring Quality Score (see app.proctoring.compute_quality_score):
     # a periodic, lightweight technical sample (audio level, resolution) —
     # not a violation signal at all, purely evidence-quality bookkeeping.
@@ -131,6 +135,7 @@ EVENT_WEIGHTS = {
     "connection_lost": 6,
     "audio_violation": 5,
     "fullscreen_exit": 5,
+    "screen_share_stopped": 8,
     "window_blur": 4,
     "ip_out_of_range": 12,
     "location_out_of_range": 9,
@@ -153,6 +158,7 @@ SIGNAL_CATEGORIES = {
     "looking_away": "gaze", "gaze_away": "gaze", "repeated_head_movement": "gaze",
     "audio_violation": "audio",
     "tab_hidden": "window", "fullscreen_exit": "window", "window_blur": "window",
+    "screen_share_stopped": "window",
     "copy_paste_attempt": "window", "dev_tools": "window",
     "phone_detected": "object", "book_detected": "object", "laptop_detected": "object",
     "unauthorized_object_detected": "object", "extra_person_detected": "object",
@@ -206,6 +212,8 @@ EVENT_TYPE_LABELS = {
     "connection_lost": "the connection was lost",
     "audio_violation": "unusual audio or talking was detected",
     "fullscreen_exit": "fullscreen mode was exited",
+    "screen_share_stopped": "screen sharing was stopped during the exam",
+    "screen_share_resumed": "screen sharing was resumed after being stopped",
     "window_blur": "the browser window lost focus",
     "precheck_completed": "completed the pre-exam technical check",
     "environment_check_clear": "pre-exam room scan found nothing of concern",
@@ -1445,8 +1453,18 @@ def upload_id_document():
 def serve_id_document_image(doc_id):
     doc = IdentityDocument.query.get_or_404(doc_id)
     is_owner = current_user.is_authenticated and current_user.id == doc.user_id
-    is_admin = current_user.is_authenticated and current_user.role == "admin"
-    if not is_owner and not is_admin:
+    # An admin may review ID documents only of people in THEIR OWN organization.
+    # (This used to be "any admin", so an admin of organization B could download
+    # the government-ID photos of organization A's students by guessing doc ids.)
+    owner = db.session.get(User, doc.user_id)
+    is_org_admin = (
+        current_user.is_authenticated
+        and current_user.role == "admin"
+        and owner is not None
+        and owner.org_id is not None
+        and owner.org_id == current_user.org_id
+    )
+    if not is_owner and not is_org_admin:
         abort(403)
 
     filepath = os.path.join(current_app.config["ID_DOCUMENT_UPLOAD_DIR"], str(doc.user_id), doc.filename)

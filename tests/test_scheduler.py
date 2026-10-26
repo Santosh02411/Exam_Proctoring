@@ -1,102 +1,223 @@
-"""The in-process background reminder scheduler (app/scheduler.py) — it must
-stay off during tests (see TestConfig.ENABLE_BACKGROUND_SCHEDULER), but the
-decision logic itself (would it start, for a given config?) is worth pinning
-down directly rather than only ever exercising the "off" path."""
+"""Background jobs must be safe with many workers: atomic lease claiming plus
+claim-before-send notification dedup (see app/scheduler.py)."""
 import threading
+from datetime import datetime, timedelta
 
-from app.scheduler import start_background_scheduler
+from tests.conftest import TestConfig, register_and_verify, create_staff
 
 
-class _FakeLogger:
+# ---------- mode / interval decisions (no database needed) ----------
+class _Log:
+    def __init__(self): self.warnings = []
     def info(self, *a, **k): pass
     def exception(self, *a, **k): pass
-    def warning(self, *a, **k): pass
+    def warning(self, *a, **k): self.warnings.append(a)
 
 
-class _FakeApp:
-    """Minimal stand-in so we don't need a real Flask app (and its request
-    context machinery) just to test the startup decision and loop body."""
+class _App:
     def __init__(self, config, debug=False):
-        self.config = config
-        self.debug = debug
-        self.logger = _FakeLogger()
-        self.test_request_context_calls = 0
-
-    def test_request_context(self):
-        app = self
-
-        class _Ctx:
-            def __enter__(self):
-                app.test_request_context_calls += 1
-                return self
-            def __exit__(self, *exc):
-                return False
-        return _Ctx()
+        self.config, self.debug, self.logger = config, debug, _Log()
 
 
-def test_disabled_by_config_does_not_start_a_thread():
-    app = _FakeApp({"ENABLE_BACKGROUND_SCHEDULER": False})
+def test_testing_and_disabled_flags_mean_off():
+    from app.scheduler import resolve_mode
+    assert resolve_mode(_App({"TESTING": True, "SCHEDULER_MODE": "embedded"})) == "off"
+    assert resolve_mode(_App({"ENABLE_BACKGROUND_SCHEDULER": False, "SCHEDULER_MODE": "embedded"})) == "off"
+
+
+def test_default_mode_is_external_in_production_and_embedded_in_development():
+    from app.scheduler import resolve_mode
+    assert resolve_mode(_App({"APP_ENV": "production"})) == "external"
+    assert resolve_mode(_App({"APP_ENV": "development"})) == "embedded"
+    assert resolve_mode(_App({"APP_ENV": "production", "SCHEDULER_MODE": "embedded"})) == "embedded"
+
+
+def test_web_workers_in_external_mode_start_no_thread():
+    from app.scheduler import start_background_scheduler
     before = threading.active_count()
-    result = start_background_scheduler(app)
-    assert result is None
+    assert start_background_scheduler(_App({"APP_ENV": "production"})) is None
     assert threading.active_count() == before
 
 
-def test_testing_flag_prevents_startup_even_if_enabled():
-    app = _FakeApp({"ENABLE_BACKGROUND_SCHEDULER": True, "TESTING": True})
-    assert start_background_scheduler(app) is None
-
-
-def test_debug_watcher_process_is_skipped(monkeypatch):
-    """Flask's reloader runs the app module twice in debug mode; only the
-    child sets WERKZEUG_RUN_MAIN=true. The watcher half must not also start
-    a scheduler thread, or reminders would fire twice as often."""
-    monkeypatch.delenv("WERKZEUG_RUN_MAIN", raising=False)
-    app = _FakeApp({"ENABLE_BACKGROUND_SCHEDULER": True}, debug=True)
-    assert start_background_scheduler(app) is None
-
-
-def test_debug_reloaded_child_process_does_start(monkeypatch):
+def test_embedded_mode_starts_a_daemon_thread_and_honors_interval(monkeypatch):
+    from app.scheduler import start_background_scheduler
     monkeypatch.setenv("WERKZEUG_RUN_MAIN", "true")
-    app = _FakeApp({"ENABLE_BACKGROUND_SCHEDULER": True, "REMINDER_SCHEDULER_INTERVAL_SECONDS": 9999}, debug=True)
+    app = _App({"SCHEDULER_MODE": "embedded", "REMINDER_SCHEDULER_INTERVAL_SECONDS": 9999})
     thread = start_background_scheduler(app)
-    assert thread is not None and thread.is_alive() and thread.daemon
-    assert thread.name == "reminder-scheduler"
+    assert thread is not None and thread.daemon and thread.interval == 9999
 
 
-def test_non_debug_production_style_app_starts_normally():
-    app = _FakeApp({"ENABLE_BACKGROUND_SCHEDULER": True, "REMINDER_SCHEDULER_INTERVAL_SECONDS": 9999}, debug=False)
-    thread = start_background_scheduler(app)
-    assert thread is not None and thread.is_alive()
+def test_debug_reloader_watcher_is_skipped(monkeypatch):
+    from app.scheduler import start_background_scheduler
+    monkeypatch.delenv("WERKZEUG_RUN_MAIN", raising=False)
+    assert start_background_scheduler(_App({"SCHEDULER_MODE": "embedded"}, debug=True)) is None
 
 
-def test_a_deliberately_short_interval_is_honored_not_silently_overridden():
-    """Regression: this used to silently clamp anything below 30s up to 30s
-    with no indication it had happened -- so a configured
-    REMINDER_SCHEDULER_INTERVAL_SECONDS=10 actually ran every 30s instead,
-    and nothing about the app said so. An interval above the genuine-abuse
-    floor (5s) must run at exactly what was configured."""
-    app = _FakeApp({"ENABLE_BACKGROUND_SCHEDULER": True, "REMINDER_SCHEDULER_INTERVAL_SECONDS": 10})
-    thread = start_background_scheduler(app)
-    assert thread.interval == 10, thread.interval
+def test_degenerate_interval_is_floored_with_a_warning():
+    from app.scheduler import interval_seconds
+    app = _App({"REMINDER_SCHEDULER_INTERVAL_SECONDS": 0})
+    assert interval_seconds(app) == 5 and app.logger.warnings
+    assert interval_seconds(_App({"REMINDER_SCHEDULER_INTERVAL_SECONDS": 10})) == 10
 
 
-def test_default_interval_is_honored():
-    app = _FakeApp({"ENABLE_BACKGROUND_SCHEDULER": True})  # no REMINDER_SCHEDULER_INTERVAL_SECONDS set
-    thread = start_background_scheduler(app)
-    assert thread.interval == 300
+# ---------- atomic claiming against a real (file) database ----------
+def _file_app(tmp_path):
+    from app import create_app, db
+
+    class Cfg(TestConfig):
+        SQLALCHEMY_DATABASE_URI = f"sqlite:///{tmp_path / 'sched.db'}"
+
+    app = create_app(config_object=Cfg())
+    with app.app_context():
+        db.create_all()
+    return app
 
 
-def test_only_a_genuinely_degenerate_interval_is_floored_and_a_warning_is_logged():
-    calls = []
-    app = _FakeApp({"ENABLE_BACKGROUND_SCHEDULER": True, "REMINDER_SCHEDULER_INTERVAL_SECONDS": 0})
-    app.logger.warning = lambda *a, **k: calls.append((a, k))
-    thread = start_background_scheduler(app)
-    assert thread.interval == 5, thread.interval
-    assert len(calls) == 1 and "0" in str(calls[0])
+def test_exactly_one_of_many_racing_workers_wins_the_lease(tmp_path):
+    from app.scheduler import claim_lease
+
+    app = _file_app(tmp_path)
+    results, barrier = [], threading.Barrier(8)
+
+    def worker(i):
+        with app.app_context():
+            barrier.wait()
+            results.append(claim_lease("job-x", f"w{i}", 60))
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(8)]
+    [t.start() for t in threads]; [t.join() for t in threads]
+    assert results.count(True) == 1, results
 
 
-def test_negative_interval_is_also_floored():
-    app = _FakeApp({"ENABLE_BACKGROUND_SCHEDULER": True, "REMINDER_SCHEDULER_INTERVAL_SECONDS": -10})
-    thread = start_background_scheduler(app)
-    assert thread.interval == 5
+def test_lease_can_be_reclaimed_after_it_expires(tmp_path):
+    from app.scheduler import claim_lease
+
+    app = _file_app(tmp_path)
+    with app.app_context():
+        t0 = datetime.utcnow()
+        assert claim_lease("job-y", "a", 60, now=t0)
+        assert not claim_lease("job-y", "b", 60, now=t0 + timedelta(seconds=30))
+        assert claim_lease("job-y", "b", 60, now=t0 + timedelta(seconds=61))
+
+
+def test_job_runs_once_per_window_even_if_every_worker_ticks(tmp_path):
+    from app.scheduler import run_job_once
+
+    app = _file_app(tmp_path)
+    runs, barrier = [], threading.Barrier(6)
+
+    def worker():
+        barrier.wait()
+        ran, _ = run_job_once(app, "sweep", lambda: runs.append(1) or 7, interval=300)
+        return ran
+
+    threads = [threading.Thread(target=worker) for _ in range(6)]
+    [t.start() for t in threads]; [t.join() for t in threads]
+    assert len(runs) == 1
+
+
+def test_a_failing_job_is_recorded_and_does_not_raise(tmp_path):
+    from app.models import JobLease
+    from app.scheduler import run_job_once
+
+    app = _file_app(tmp_path)
+
+    def boom():
+        raise RuntimeError("kaboom")
+
+    ran, result = run_job_once(app, "bad", boom, interval=60)
+    assert ran and result is None
+    with app.app_context():
+        assert "kaboom" in JobLease.query.get("bad").last_status
+
+
+def test_run_scheduler_once_cli_skips_when_lease_is_held(tmp_path):
+    from app import db
+    from app.scheduler import claim_lease, REMINDER_JOB
+
+    app = _file_app(tmp_path)
+    with app.app_context():
+        assert claim_lease(REMINDER_JOB, "someone-else", 600)
+    out = app.test_cli_runner().invoke(args=["run-scheduler", "--once"]).output
+    assert "skipped" in out
+
+
+# ---------- duplicate-notification prevention ----------
+def _starting_soon_setup(app, client, n_students=3):
+    from app import db
+    from app.models import Test, TestEligibility, User
+
+    org_admin = create_staff(app, "Adm", "adm@test.com", "9000000001", "admin", "Adminpass1!")
+    ids = []
+    for i in range(n_students):
+        register_and_verify(client, app, f"S{i}", f"s{i}@test.com", f"90000001{i:02d}", "student", "Studpass1!")
+    with app.app_context():
+        admin = User.query.get(org_admin)
+        test = Test(title="Soon", test_code="SOON1", org_id=admin.org_id, created_by=admin.id, status="published",
+                    duration_minutes=30, total_questions=1, passing_marks=1,
+                    start_time=datetime.utcnow() + timedelta(minutes=20))
+        db.session.add(test)
+        db.session.flush()
+        for u in User.query.filter_by(role="student").all():
+            db.session.add(TestEligibility(test_id=test.id, student_id=u.id))
+        db.session.commit()
+        return test.id
+
+
+def test_each_student_gets_exactly_one_reminder_even_when_sweeps_race(tmp_path):
+    from app import create_app, db
+    from app.models import NotificationLog, Test, TestEligibility, User
+    from app.notifications import send_starting_soon_reminders
+
+    app = _file_app(tmp_path)
+    client = app.test_client()
+    _starting_soon_setup(app, client, n_students=4)
+
+    totals, barrier = [], threading.Barrier(5)
+
+    def sweep():
+        with app.app_context():
+            with app.test_request_context():
+                barrier.wait()
+                totals.append(send_starting_soon_reminders())
+
+    threads = [threading.Thread(target=sweep) for _ in range(5)]
+    [t.start() for t in threads]; [t.join() for t in threads]
+
+    with app.app_context():
+        logs = NotificationLog.query.filter_by(notif_type="exam_starting_soon", channel="email").all()
+        per_student = {}
+        for l in logs:
+            per_student[l.user_id] = per_student.get(l.user_id, 0) + 1
+    assert sum(totals) == 4, totals
+    assert len(per_student) == 4 and set(per_student.values()) == {1}
+
+
+def test_a_second_sweep_sends_nothing_new(app, client):
+    from app.notifications import send_starting_soon_reminders
+
+    _starting_soon_setup(app, client, n_students=2)
+    with app.app_context(), app.test_request_context():
+        assert send_starting_soon_reminders() == 2
+        assert send_starting_soon_reminders() == 0
+
+
+def test_a_failed_send_releases_the_claim_so_it_can_be_retried(app, client, monkeypatch):
+    import app.notifications as notifications
+    from app.models import NotificationClaim
+
+    _starting_soon_setup(app, client, n_students=1)
+    real = notifications.notify
+
+    def exploding(*a, **k):
+        raise RuntimeError("smtp down")
+
+    monkeypatch.setattr(notifications, "notify", exploding)
+    with app.app_context(), app.test_request_context():
+        try:
+            notifications.send_starting_soon_reminders()
+        except RuntimeError:
+            pass
+        assert NotificationClaim.query.count() == 0       # claim given back
+        monkeypatch.setattr(notifications, "notify", real)
+        assert notifications.send_starting_soon_reminders() == 1   # retried successfully

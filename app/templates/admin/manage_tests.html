@@ -31,7 +31,7 @@
   </form>
 </div>
 
-{% if session.get('impersonate_org_id') %}
+{% if is_impersonating_org %}
 <div class="card" style="margin-bottom:16px">
   <span class="badge draft">Read-only support view</span> — editing, publishing, and deletion are disabled while impersonating.
 </div>
@@ -63,7 +63,7 @@
         <td class="small">{{ t.created_at.strftime('%Y-%m-%d') }}</td>
         <td>
           <div class="actions">
-            {% if session.get('impersonate_org_id') %}
+            {% if is_impersonating_org %}
             <a class="btn ghost small" href="{{ url_for('admin.view_results', test_id=t.id) }}">Results</a>
             <a class="btn ghost small" href="{{ url_for('admin.test_analytics', test_id=t.id) }}">Analytics</a>
             {% else %}

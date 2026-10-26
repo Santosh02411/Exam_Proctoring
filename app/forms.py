@@ -29,21 +29,17 @@ def validate_password_complexity(form, field):
 
 
 class RegisterForm(FlaskForm):
+    """PUBLIC registration — students only. There is deliberately no role
+    field: admin/examiner/proctor accounts can only be created through a
+    staff invitation (app.invitations) or the CLI, and a new organization
+    only through the approval-gated request flow (RequestOrganizationForm).
+    A `role` value posted by hand is ignored/refused by the route."""
     name = StringField("Full Name", validators=[DataRequired(), Length(max=120)])
     email = StringField("Email", validators=[DataRequired(), Email(), Length(max=150)])
     phone = StringField("Mobile Number", validators=[DataRequired(), Regexp(r"^\d{10}$", message="Enter exactly 10 digits")])
-    role = SelectField("Register as", choices=[
-        ("student", "Student"), ("examiner", "Examiner"), ("proctor", "Proctor"), ("admin", "Admin"),
-    ], validators=[DataRequired()])
-    # Multi-tenancy: which Organization this account belongs to. Choices are
-    # populated in the route (from the current list of active
-    # Organizations, plus a "create a new one" option) since they're
-    # DB-dependent. Optional here — a blank/omitted submission falls back to
-    # the shared Default Organization (see app.auth._resolve_registration_org),
-    # so this stays backward-compatible with anything that posts the older,
-    # org-less registration form.
+    # Which active Organization to join as a student. Choices are populated
+    # in the route; blank falls back to the shared Default Organization.
     org_choice = SelectField("Organization", validators=[Optional()])
-    new_org_name = StringField("New organization name", validators=[Optional(), Length(max=150)])
     password = PasswordField("Password", validators=[
         DataRequired(),
         Length(min=PASSWORD_MIN_LENGTH, message=f"Min {PASSWORD_MIN_LENGTH} characters"),
@@ -54,13 +50,49 @@ class RegisterForm(FlaskForm):
         validators=[Optional()],
     )
 
-    def validate_new_org_name(self, field):
-        if self.org_choice.data != "__new__":
-            return
-        if self.role.data != "admin":
-            raise ValidationError("Only an Admin account can create a new organization.")
-        if not (field.data or "").strip():
-            raise ValidationError("Enter a name for the new organization.")
+
+class RequestOrganizationForm(FlaskForm):
+    """Ask to set up a NEW organization. Creates a *pending* organization and
+    a pending admin account that cannot log in until a super_admin approves."""
+    org_name = StringField("Organization name", validators=[DataRequired(), Length(max=150)])
+    name = StringField("Your full name", validators=[DataRequired(), Length(max=120)])
+    email = StringField("Your work email", validators=[DataRequired(), Email(), Length(max=150)])
+    phone = StringField("Mobile Number", validators=[DataRequired(), Regexp(r"^\d{10}$", message="Enter exactly 10 digits")])
+    password = PasswordField("Password", validators=[
+        DataRequired(),
+        Length(min=PASSWORD_MIN_LENGTH, message=f"Min {PASSWORD_MIN_LENGTH} characters"),
+        validate_password_complexity,
+    ])
+    accepted_terms = BooleanField(
+        "I have read and agree to the Terms of Service and Privacy Policy",
+        validators=[Optional()],
+    )
+
+
+class AcceptInvitationForm(FlaskForm):
+    name = StringField("Full Name", validators=[DataRequired(), Length(max=120)])
+    phone = StringField("Mobile Number", validators=[DataRequired(), Regexp(r"^\d{10}$", message="Enter exactly 10 digits")])
+    password = PasswordField("Password", validators=[
+        DataRequired(),
+        Length(min=PASSWORD_MIN_LENGTH, message=f"Min {PASSWORD_MIN_LENGTH} characters"),
+        validate_password_complexity,
+    ])
+    accepted_terms = BooleanField(
+        "I have read and agree to the Terms of Service and Privacy Policy",
+        validators=[Optional()],
+    )
+
+
+class CsrfForm(FlaskForm):
+    """No fields — exists only so plain POST buttons (approve/reject/revoke,
+    ...) get real CSRF validation: render {{ csrf_form.hidden_tag() }} in the
+    <form> and call CsrfForm().validate_on_submit() in the route."""
+
+
+class InviteStaffForm(FlaskForm):
+    email = StringField("Email", validators=[DataRequired(), Email(), Length(max=150)])
+    role = SelectField("Role", choices=[("examiner", "Examiner"), ("proctor", "Proctor"), ("admin", "Admin")],
+                       validators=[DataRequired()])
 
 
 class LoginForm(FlaskForm):
@@ -283,6 +315,15 @@ class PlatformRetentionPolicyForm(RetentionPolicyForm):
 
 class ForgotPasswordForm(FlaskForm):
     email = StringField("Email", validators=[DataRequired(), Email()])
+
+
+class OtpForm(FlaskForm):
+    """The 6-digit code emailed for password reset / email verification
+    (see app.otp)."""
+    code = StringField("6-digit code", validators=[
+        DataRequired(),
+        Regexp(r"^\s*\d{6}\s*$", message="Enter the 6-digit code from your email."),
+    ])
 
 
 class ResetPasswordForm(FlaskForm):

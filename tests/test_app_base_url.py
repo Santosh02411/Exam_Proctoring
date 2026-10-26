@@ -46,8 +46,8 @@ def test_app_base_url_overrides_every_external_link(tmp_path):
     with app.test_request_context():
         from flask import url_for
         assert url_for("auth.login", _external=True) == "https://exams.my-college.edu/login"
-        assert url_for("auth.verify_email", token="tok123", _external=True) == \
-            "https://exams.my-college.edu/verify-email/tok123"
+        assert url_for("auth.verify_email", _external=True) == \
+            "https://exams.my-college.edu/verify-email"
 
 
 def test_app_base_url_works_with_no_request_at_all(tmp_path):

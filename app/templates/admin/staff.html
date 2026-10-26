@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Staff &amp; invitations{% endblock %}
+{% block content %}
+<div style="margin-bottom:16px">
+  <a class="small" href="{{ url_for('admin.dashboard') }}">&larr; Dashboard</a>
+  <h1 style="margin-top:8px">Staff &amp; invitations</h1>
+  <div class="small">Admins, examiners and proctors can only join your organization through an invitation. Public registration creates students only.</div>
+</div>
+
+<div class="card" style="margin-bottom:16px">
+  <h3 style="margin-top:0">Invite someone</h3>
+  <form method="post" action="{{ url_for('admin.invite_staff') }}" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+    {{ form.hidden_tag() }}
+    <div class="field" style="margin-bottom:0;flex:1;min-width:240px">
+      <label for="{{ form.email.id }}">Email</label>
+      {{ form.email(placeholder="name@institution.edu") }}
+    </div>
+    <div class="field" style="margin-bottom:0">
+      <label for="{{ form.role.id }}">Role</label>
+      {{ form.role() }}
+    </div>
+    <button type="submit" class="btn">Send invitation</button>
+  </form>
+</div>
+
+<div class="card" style="margin-bottom:16px">
+  <h3 style="margin-top:0">Current staff</h3>
+  <table>
+    <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for u in staff_members %}
+      <tr><td>{{ u.name }}</td><td>{{ u.email }}</td><td>{{ u.role|capitalize }}</td><td>{{ u.status }}</td></tr>
+    {% else %}
+      <tr><td colspan="4" class="small">No staff yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h3 style="margin-top:0">Invitations</h3>
+  <table>
+    <thead><tr><th>Email</th><th>Role</th><th>Status</th><th>Sent</th><th>Expires</th><th></th></tr></thead>
+    <tbody>
+    {% for i in invites %}
+      <tr>
+        <td>{{ i.email }}</td><td>{{ i.role|capitalize }}</td><td>{{ i.status }}</td>
+        <td>{{ i.created_at.strftime('%Y-%m-%d %H:%M') }}</td><td>{{ i.expires_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td style="white-space:nowrap">
+          {% if i.status in ('pending', 'expired') %}
+          <form method="post" action="{{ url_for('admin.resend_invitation', invitation_id=i.id) }}" style="display:inline">{{ form.hidden_tag() }}<button class="btn ghost small" type="submit">Resend</button></form>
+          {% endif %}
+          {% if i.status == 'pending' %}
+          <form method="post" action="{{ url_for('admin.revoke_invitation', invitation_id=i.id) }}" style="display:inline">{{ form.hidden_tag() }}<button class="btn ghost small" type="submit">Revoke</button></form>
+          {% endif %}
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="small">No invitations yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

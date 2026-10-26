@@ -8,7 +8,7 @@
     <div class="small">Code: <strong>{{ test.test_code }}</strong> · <span class="badge {{ test.status }}">{{ test.status|capitalize }}</span></div>
   </div>
   <div class="actions">
-    {% if session.get('impersonate_org_id') %}
+    {% if is_impersonating_org %}
     <span class="badge draft">Read-only support view</span>
     <a class="btn" href="{{ url_for('admin.view_results', test_id=test.id) }}">View Results</a>
     {% else %}

@@ -34,6 +34,7 @@ from app.utils import (
     org_scope, ensure_same_org, is_super_admin, current_org_id, is_impersonating,
 )
 from app.activity_log import log_activity
+from app import invitations as invitations_module
 from app.email_utils import send_email
 from app.notifications import (
     notify_exam_scheduled, notify_result_published_if_now_complete, send_starting_soon_reminders,
@@ -842,7 +843,7 @@ def pick_from_bank(test_id):
     ensure_same_org(test)
 
     if request.method == "POST":
-        item_ids = [int(i) for i in request.form.getlist("item_ids")]
+        item_ids = [i for i in (_to_int(v) for v in request.form.getlist("item_ids")) if i is not None]
         added = 0
         for item in org_scope(QuestionBankItem.query, QuestionBankItem).filter(QuestionBankItem.id.in_(item_ids)).all():
             db.session.add(Question(
@@ -1084,7 +1085,9 @@ def reorder_sections(test_id):
     ensure_same_org(test)
     order = request.form.getlist("section_id")
     for index, sid in enumerate(order):
-        Section.query.filter_by(id=int(sid), test_id=test_id).update({"order_index": index})
+        if _to_int(sid) is None:
+            continue
+        Section.query.filter_by(id=_to_int(sid), test_id=test_id).update({"order_index": index})
     db.session.commit()
     flash("Section order updated.", "success")
     return redirect(url_for("admin.manage_sections", test_id=test_id))
@@ -1102,7 +1105,9 @@ def assign_students(test_id):
         should_notify = request.form.get("notify") == "on"
         added = 0
         for sid in student_ids:
-            sid = int(sid)
+            sid = _to_int(sid)
+            if sid is None:
+                continue
             # Only ever assign students from this test's own organization —
             # student_ids comes from a form the browser could tamper with,
             # so this can't just trust the posted list.
@@ -2064,7 +2069,9 @@ def add_cohort_student(cohort_id):
     student_ids = request.form.getlist("student_ids")
     added = 0
     for sid in student_ids:
-        sid = int(sid)
+        sid = _to_int(sid)
+        if sid is None:
+            continue
         student = User.query.filter_by(id=sid, role="student", org_id=cohort.org_id).first()
         if not student:
             continue
@@ -2313,6 +2320,107 @@ def export_users():
     filename = f"user_roster_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.csv"
     response.headers["Content-Disposition"] = f"attachment; filename={filename}"
     return response
+
+
+def _to_int(value):
+    """Tolerant int(): ids come from browser-editable form fields, so junk like
+    "abc" must be skipped, not crash the request with a 500."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+@bp.route("/staff")
+@admin_required
+def manage_staff():
+    """This organization's admins/examiners/proctors, plus the invitations
+    that are the only way to add more (see app.invitations)."""
+    from app.forms import InviteStaffForm
+    from app.models import StaffInvitation
+
+    org_id = current_user.org_id
+    staff = (
+        User.query.filter(User.org_id == org_id, User.role.in_(invitations_module.STAFF_ROLES))
+        .order_by(User.role, User.name).all()
+    )
+    invites = (
+        StaffInvitation.query.filter_by(org_id=org_id).order_by(StaffInvitation.created_at.desc()).limit(50).all()
+    )
+    return render_template("admin/staff.html", staff_members=staff, invites=invites, form=InviteStaffForm())
+
+
+@bp.route("/staff/invite", methods=["POST"])
+@admin_required
+def invite_staff():
+    from app.forms import InviteStaffForm
+
+    form = InviteStaffForm()
+    if not form.validate_on_submit():
+        flash("Enter a valid email address and choose a role.", "error")
+        return redirect(url_for("admin.manage_staff"))
+    org = db.session.get(Organization, current_user.org_id)
+    try:
+        invitation, raw = invitations_module.create_invitation(current_user, org, form.email.data, form.role.data)
+    except invitations_module.InvitationError as exc:
+        flash(str(exc), "error")
+        return redirect(url_for("admin.manage_staff"))
+    sent, dev_link = invitations_module.deliver(invitation, raw)
+    log_activity("invited_staff", f"Invited {invitation.email} as {invitation.role}")
+    if sent:
+        flash(f"Invitation sent to {invitation.email} as {invitation.role}. The link expires in "
+              f"{current_app.config.get('INVITATION_TTL_HOURS', 72)} hours.", "success")
+    else:
+        flash("The invitation was created but the email could not be sent. Check the mail settings, "
+              "then use Resend.", "warning")
+    if dev_link:
+        flash(f"(Dev mode — no SMTP configured) Invitation link: {dev_link}", "info")
+    return redirect(url_for("admin.manage_staff"))
+
+
+@bp.route("/staff/invitations/<int:invitation_id>/revoke", methods=["POST"])
+@admin_required
+def revoke_invitation(invitation_id):
+    from app.models import StaffInvitation
+
+    from app.forms import CsrfForm
+    if not CsrfForm().validate_on_submit():
+        abort(400)
+    invitation = StaffInvitation.query.get_or_404(invitation_id)
+    ensure_same_org(invitation)
+    if invitations_module.revoke(invitation):
+        log_activity("revoked_invitation", f"Revoked invitation for {invitation.email}")
+        flash("Invitation revoked.", "success")
+    else:
+        flash("That invitation is no longer pending.", "info")
+    return redirect(url_for("admin.manage_staff"))
+
+
+@bp.route("/staff/invitations/<int:invitation_id>/resend", methods=["POST"])
+@admin_required
+def resend_invitation(invitation_id):
+    from app.models import StaffInvitation
+
+    from app.forms import CsrfForm
+    if not CsrfForm().validate_on_submit():
+        abort(400)
+    old = StaffInvitation.query.get_or_404(invitation_id)
+    ensure_same_org(old)
+    if old.accepted_at:
+        flash("That invitation was already accepted.", "info")
+        return redirect(url_for("admin.manage_staff"))
+    org = db.session.get(Organization, current_user.org_id)
+    try:
+        invitation, raw = invitations_module.create_invitation(current_user, org, old.email, old.role)
+    except invitations_module.InvitationError as exc:
+        flash(str(exc), "error")
+        return redirect(url_for("admin.manage_staff"))
+    sent, dev_link = invitations_module.deliver(invitation, raw)
+    flash("A fresh invitation was sent." if sent else "Could not send the email; check the mail settings.",
+          "success" if sent else "warning")
+    if dev_link:
+        flash(f"(Dev mode — no SMTP configured) Invitation link: {dev_link}", "info")
+    return redirect(url_for("admin.manage_staff"))
 
 
 @bp.route("/users/import", methods=["GET", "POST"])
