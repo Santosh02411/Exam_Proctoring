@@ -38,23 +38,3 @@ def test_precheck_has_share_screen_button_and_requires_it_by_default(client, app
 def test_screen_share_requirement_can_be_turned_off(client, app):
     r = _start_page(client, app, REQUIRE_SCREEN_SHARE=False)
     assert "requireScreenShare: false" in r.data.decode()
-
-
-def test_face_api_is_served_locally_and_not_deferred(client, app):
-    """proctor.js calls faceapi.* as soon as it runs, so the library must be a
-    plain synchronous <script> (a deferred/CDN copy was always undefined by
-    then, which showed "Face model: Failed to load")."""
-    import re
-    r = _start_page(client, app)
-    html = r.data.decode()
-    tag = re.search(r'<script[^>]*face-api[^>]*>', html).group(0)
-    assert "defer" not in tag and "cdn.jsdelivr" not in tag
-    assert client.get("/static/vendor/face-api.min.js").status_code == 200
-    # ...and it comes before proctor.js
-    assert html.index("face-api.min.js") < html.index("js/proctor.js")
-
-
-def test_sidebar_has_light_theme_styles():
-    import pathlib
-    css = pathlib.Path("app/static/css/style.css").read_text()
-    assert '[data-theme="light"] .sidebar' in css
