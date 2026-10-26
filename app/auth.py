@@ -5,11 +5,7 @@ from flask import Blueprint, render_template, redirect, url_for, flash, request,
 from flask_login import login_user, logout_user, login_required, current_user
 
 from app import db
-from app.forms import (
-    RegisterForm, LoginForm, ForgotPasswordForm, ResetPasswordForm, TwoFactorLoginForm, OtpForm,
-    RequestOrganizationForm, AcceptInvitationForm,
-)
-from app import invitations
+from app.forms import RegisterForm, LoginForm, ForgotPasswordForm, ResetPasswordForm, TwoFactorLoginForm, OtpForm
 from app.models import User, Organization, gen_user_id
 from app.email_utils import send_email
 from app.captcha import generate_captcha, verify_captcha
@@ -59,11 +55,19 @@ def _unique_slug(name):
 
 
 def _resolve_registration_org(form):
-    """The Organization a self-registering STUDENT joins: the chosen active
-    organization, or the shared Default Organization if none was chosen.
-    (Creating an organization is a separate, approval-gated flow — see
-    request_organization — and staff accounts are invitation-only.)"""
+    """Turn RegisterForm's org_choice/new_org_name into an Organization to
+    attach the new user to. "__new__" (admin role only, enforced by the
+    form's own validator) creates a fresh tenant with this user as its
+    first admin — the normal way a new institution's account gets
+    bootstrapped. A specific org id joins that (active) organization. Blank
+    or anything else falls back to the Default Organization, so this never
+    blocks a registration that doesn't engage with the org picker at all."""
     choice = (form.org_choice.data or "").strip()
+    if choice == "__new__":
+        org = Organization(name=form.new_org_name.data.strip(), slug=_unique_slug(form.new_org_name.data), status="active")
+        db.session.add(org)
+        db.session.flush()
+        return org
     if choice.isdigit():
         org = Organization.query.get(int(choice))
         if org and org.status == "active":
@@ -72,21 +76,12 @@ def _resolve_registration_org(form):
 
 
 def _org_choices():
-    return [
+    choices = [
         (str(o.id), o.name)
         for o in Organization.query.filter_by(status="active").order_by(Organization.name).all()
     ]
-
-
-def _dev_echo(mode, text):
-    """Show an emailed secret on screen — ONLY when no SMTP is configured AND
-    the app is running in development/testing. In production this is never
-    allowed (see app.config_validation): echoing a reset/verification code to
-    whoever typed an email address would defeat the point of emailing it."""
-    from app.config_validation import dev_mail_fallback_allowed
-
-    if mode == "logged" and dev_mail_fallback_allowed(current_app.config):
-        flash(f"(Dev mode — no SMTP configured) {text}", "info")
+    choices.append(("__new__", "+ Create a new organization (Admin only)"))
+    return choices
 
 
 def _send_verification_email(user):
@@ -114,30 +109,17 @@ def _send_reset_email(user):
 
 @bp.route("/register", methods=["GET", "POST"])
 def register():
-    """Public self-registration. Creates STUDENT accounts only. Any attempt to
-    pick a privileged role (a hand-edited form field) is refused outright —
-    admin/examiner/proctor accounts exist only via staff invitations, and
-    new organizations only via the approval-gated request flow."""
     if current_user.is_authenticated:
         return redirect(url_for("index"))
 
     form = RegisterForm()
     form.org_choice.choices = _org_choices()
 
-    if request.method == "POST":
-        requested_role = (request.form.get("role") or "student").strip().lower()
-        if requested_role != "student":
-            flash(
-                "Public registration is for students only. Admin, examiner and proctor accounts are "
-                "created by invitation from your organization's administrator.",
-                "error",
-            )
-            return render_template("auth/register.html", form=form), 403
-        if is_rate_limited(
-            "register", current_app.config["REGISTER_MAX_PER_IP"], current_app.config["REGISTER_WINDOW_MINUTES"]
-        ):
-            flash("Too many registration attempts from this network. Please try again later.", "error")
-            return render_template("auth/register.html", form=form)
+    if request.method == "POST" and is_rate_limited(
+        "register", current_app.config["REGISTER_MAX_PER_IP"], current_app.config["REGISTER_WINDOW_MINUTES"]
+    ):
+        flash("Too many registration attempts from this network. Please try again later.", "error")
+        return render_template("auth/register.html", form=form)
 
     if form.validate_on_submit():
         existing = User.query.filter_by(email=form.email.data.lower().strip()).first()
@@ -146,16 +128,23 @@ def register():
         else:
             org = _resolve_registration_org(form)
             user = User(
-                user_id=gen_user_id("student"),
+                user_id=gen_user_id(form.role.data),
                 name=form.name.data.strip(),
                 email=form.email.data.lower().strip(),
                 phone=form.phone.data.strip(),
-                role="student",
+                role=form.role.data,
                 status="active",
                 email_verified=False,
                 org_id=org.id,
             )
             user.set_password(form.password.data)
+            # Recorded only when actually ticked — see app.forms.RegisterForm's
+            # accepted_terms field for why this isn't a hard server-side
+            # requirement (kept Optional for backward compatibility with
+            # anything posting the older, checkbox-less form), and
+            # app.legal for the pages themselves. A registration that
+            # didn't tick the box simply has no consent timestamp, which is
+            # the honest state — not a fabricated "accepted" default.
             if form.accepted_terms.data:
                 user.terms_accepted_at = datetime.utcnow()
                 user.terms_version_accepted = current_app.config["TERMS_VERSION"]
@@ -165,114 +154,14 @@ def register():
             code, mode = _send_verification_email(user)
             session[PENDING_VERIFY_EMAIL_KEY] = user.email
             flash(
-                f"Registration successful under {org.name}! "
+                f"Registration successful as {form.role.data} under {org.name}! "
                 "We emailed you a 6-digit code — enter it below to verify your email.",
                 "success",
             )
-            _dev_echo(mode, f"Verification code: {code}")
+            if mode == "logged":
+                flash(f"(Dev mode — no SMTP configured) Verification code: {code}", "info")
             return redirect(url_for("auth.verify_email"))
     return render_template("auth/register.html", form=form)
-
-
-@bp.route("/request-organization", methods=["GET", "POST"])
-def request_organization():
-    """Ask for a NEW organization. Nothing here grants any access: it creates
-    a *pending* organization plus a pending administrator account, neither of
-    which can do anything until a platform super_admin approves the request
-    (organizations.approve_organization)."""
-    if current_user.is_authenticated:
-        return redirect(url_for("index"))
-    form = RequestOrganizationForm()
-
-    if request.method == "POST" and is_rate_limited(
-        "register", current_app.config["REGISTER_MAX_PER_IP"], current_app.config["REGISTER_WINDOW_MINUTES"]
-    ):
-        flash("Too many requests from this network. Please try again later.", "error")
-        return render_template("auth/request_organization.html", form=form)
-
-    if form.validate_on_submit():
-        email = form.email.data.lower().strip()
-        org_name = form.org_name.data.strip()
-        if User.query.filter_by(email=email).first():
-            flash("Email already registered!", "error")
-        elif Organization.query.filter_by(name=org_name).first():
-            flash("An organization with that name already exists or has already been requested.", "error")
-        else:
-            org = Organization(name=org_name, slug=_unique_slug(org_name), status="pending")
-            db.session.add(org)
-            db.session.flush()
-            user = User(
-                user_id=gen_user_id("admin"), name=form.name.data.strip(), email=email,
-                phone=form.phone.data.strip(), role="admin",
-                status="pending_approval",      # cannot log in until the org is approved
-                email_verified=False, org_id=org.id,
-            )
-            user.set_password(form.password.data)
-            if form.accepted_terms.data:
-                user.terms_accepted_at = datetime.utcnow()
-                user.terms_version_accepted = current_app.config["TERMS_VERSION"]
-            db.session.add(user)
-            db.session.commit()
-
-            _notify_super_admins_of_request(org, user)
-            code, mode = _send_verification_email(user)
-            session[PENDING_VERIFY_EMAIL_KEY] = user.email
-            flash(
-                f"Request received for '{org.name}'. Verify your email with the code we sent; a platform "
-                "administrator must then approve the organization before you can log in.",
-                "success",
-            )
-            _dev_echo(mode, f"Verification code: {code}")
-            return redirect(url_for("auth.verify_email"))
-    return render_template("auth/request_organization.html", form=form)
-
-
-def _notify_super_admins_of_request(org, user):
-    """Best-effort email to every active super_admin about a pending request."""
-    try:
-        for sa in User.query.filter_by(role="super_admin", status="active").all():
-            send_email(
-                sa.email,
-                f"Organization approval requested: {org.name}",
-                f"{user.name} <{user.email}> has asked to create the organization '{org.name}'.\n\n"
-                f"Review it under Organizations → Pending approval:\n"
-                f"{url_for('organizations.list_organizations', _external=True)}",
-            )
-    except Exception:
-        current_app.logger.exception("could not notify super admins of organization request")
-
-
-@bp.route("/invite/<token>", methods=["GET", "POST"])
-def accept_invitation(token):
-    """Accept a staff invitation: choose name/phone/password. The role and
-    organization are whatever the invitation says — nothing about them is
-    read from this form. Single use; expires; revocable."""
-    if current_user.is_authenticated:
-        flash("You are already logged in. Log out to accept an invitation.", "info")
-        return redirect(url_for("index"))
-    if request.method == "POST" and is_rate_limited(
-        "accept_invite", current_app.config.get("INVITE_ACCEPT_MAX_PER_IP", 20), 15
-    ):
-        flash("Too many attempts from this network. Please try again later.", "error")
-        return redirect(url_for("auth.login"))
-
-    invitation = invitations.find_open(token)
-    if not invitation:
-        flash("This invitation link is invalid, expired or has already been used. Ask your administrator for a new one.", "error")
-        return redirect(url_for("auth.login"))
-
-    form = AcceptInvitationForm()
-    if form.validate_on_submit():
-        try:
-            user = invitations.accept(
-                invitation, form.name.data, form.phone.data, form.password.data, bool(form.accepted_terms.data)
-            )
-        except invitations.InvitationError as exc:
-            flash(str(exc), "error")
-            return redirect(url_for("auth.login"))
-        flash(f"Welcome, {user.name}! Your {invitations.ROLE_LABELS[user.role]} account is ready — log in.", "success")
-        return redirect(url_for("auth.login"))
-    return render_template("auth/accept_invitation.html", form=form, invitation=invitation)
 
 
 @bp.route("/verify-email", methods=["GET", "POST"])
@@ -329,7 +218,8 @@ def resend_verification():
         else:
             code, mode = _send_verification_email(user)
             flash("Verification code sent to your email.", "success")
-            _dev_echo(mode, f"Verification code: {code}")
+            if mode == "logged":
+                flash(f"(Dev mode — no SMTP configured) Verification code: {code}", "info")
         return redirect(url_for("auth.verify_email"))
     # Don't reveal whether the account exists.
     flash("If that account exists and is unverified, a new code has been sent.", "info")
@@ -354,12 +244,8 @@ def login():
             flash(f"Too many failed attempts. Try again in about {remaining} minute(s).", "error")
         elif not user:
             flash("No account found with that email!", "error")
-        elif user.status == "pending_approval":
-            flash("Your organization request is awaiting approval by a platform administrator.", "warning")
         elif user.status != "active":
             flash("Account is not active!", "error")
-        elif user.org_id is not None and getattr(db.session.get(Organization, user.org_id), "status", "active") in ("pending", "rejected"):
-            flash("Your organization has not been approved.", "error")
         elif not user.check_password(form.password.data):
             user.failed_login_attempts += 1
             if user.failed_login_attempts >= MAX_FAILED_ATTEMPTS:
@@ -466,7 +352,8 @@ def forgot_password():
         # exists, so this can't be used to probe which emails are registered.
         if user and not otp.seconds_until_resend(user.email, otp.PURPOSE_RESET):
             code, mode = _send_reset_email(user)
-            _dev_echo(mode, f"Reset code: {code}")
+            if mode == "logged":
+                flash(f"(Dev mode — no SMTP configured) Reset code: {code}", "info")
         session[PENDING_RESET_EMAIL_KEY] = email
         session.pop(RESET_OTP_ID_KEY, None)
         flash("If that email is registered, a 6-digit reset code has been sent.", "success")
@@ -495,7 +382,8 @@ def resend_reset_code():
             flash(f"A code was just sent. You can request another in {wait} second(s).", "info")
             return redirect(url_for("auth.reset_password"))
         code, mode = _send_reset_email(user)
-        _dev_echo(mode, f"Reset code: {code}")
+        if mode == "logged":
+            flash(f"(Dev mode — no SMTP configured) Reset code: {code}", "info")
     session.pop(RESET_OTP_ID_KEY, None)
     flash("If that email is registered, a new 6-digit code has been sent.", "success")
     return redirect(url_for("auth.reset_password"))

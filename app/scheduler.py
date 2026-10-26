@@ -1,179 +1,74 @@
-"""Background jobs — safe with any number of web workers.
+"""A tiny, dependency-free background scheduler for exam-starting-soon
+reminders (see app.notifications.send_starting_soon_reminders).
 
-The old design started a daemon thread inside EVERY process that imported the
-app, so `gunicorn --workers 3` ran the reminder sweep three times per
-interval (and Flask's reloader, a second copy of the app, etc.). Two things
-fix that, and both are needed:
+Why this exists: that function has always existed and worked correctly, but
+until now the only ways to trigger it were an admin clicking "Send
+Starting-Soon Reminders Now", or an external cron/Task Scheduler entry
+calling `flask send-reminders` — nothing in the app itself ever called it on
+its own. On a deployment without that external cron set up (the common
+case for anyone who just runs the app), the result is that the "reminder
+1 hour before the test" feature silently never fires in real time, even
+though every piece of it works once triggered. This module closes that gap
+by running the same sweep on a periodic background thread inside the app
+process itself, so reminders go out automatically without any extra
+infrastructure.
 
-1. Atomic job claiming (JobLease). Before a job runs, the process must win a
-   single conditional UPDATE on its lease row
-   (`UPDATE job_leases SET locked_until=... WHERE name=? AND locked_until<=now`).
-   The database guarantees exactly one UPDATE sees rowcount==1 per window, no
-   matter how many processes race — across threads, Gunicorn workers and
-   containers alike. The lease is held for ~the job's interval, so the
-   others' ticks in that window are no-ops.
-
-2. Duplicate-notification prevention (NotificationClaim, in
-   app.notifications). Even if a job were somehow run twice, each
-   (student, test, kind) reminder is *claimed* by inserting a UNIQUE row
-   before it is sent, so it can only ever be sent once.
-
-Where the loop runs is a deployment choice (SCHEDULER_MODE):
-  external (production default) — web workers run NO scheduler; run exactly
-      one dedicated process: `flask run-scheduler` (see docker-compose.yml).
-  embedded (development default) — each process runs a thread; safe thanks
-      to the lease, but wasteful with many workers.
-  off — nothing runs (use `flask run-scheduler --once` from cron).
+Deliberately NOT a dependency (no APScheduler, no Celery): one daemon
+thread, one sleep loop, one try/except so a bad sweep never kills it.
 """
 
 import os
-import signal
-import socket
 import threading
 import time
-from datetime import datetime, timedelta
-
-from sqlalchemy.exc import IntegrityError
-
-from app import db
-from app.models import JobLease
-
-REMINDER_JOB = "starting-soon-reminders"
-
-
-def owner_id():
-    return f"{socket.gethostname()}:{os.getpid()}:{threading.get_ident()}"
-
-
-def resolve_mode(app):
-    """external | embedded | off — explicit SCHEDULER_MODE wins; otherwise
-    embedded in development and external in production. The legacy
-    ENABLE_BACKGROUND_SCHEDULER=false still means off."""
-    if not app.config.get("ENABLE_BACKGROUND_SCHEDULER", True) or app.config.get("TESTING"):
-        return "off"
-    mode = str(app.config.get("SCHEDULER_MODE") or "").strip().lower()
-    if mode in ("external", "embedded", "off"):
-        return mode
-    return "embedded" if app.config.get("APP_ENV") == "development" else "external"
-
-
-def interval_seconds(app):
-    configured = int(app.config.get("REMINDER_SCHEDULER_INTERVAL_SECONDS", 300))
-    interval = max(configured, 5)
-    if interval != configured:
-        app.logger.warning(
-            "scheduler: REMINDER_SCHEDULER_INTERVAL_SECONDS=%s is below the 5s floor; using 5s", configured
-        )
-    return interval
-
-
-def claim_lease(name, owner, ttl_seconds, now=None):
-    """Try to become the one runner of job `name` for the next ttl_seconds.
-    True iff THIS caller won. Safe under any concurrency: the claim is one
-    conditional UPDATE, and the row is created with an insert whose unique
-    primary key makes a simultaneous double-create fail harmlessly."""
-    now = now or datetime.utcnow()
-    if db.session.get(JobLease, name) is None:
-        try:
-            db.session.add(JobLease(name=name, locked_until=datetime(1970, 1, 1)))
-            db.session.commit()
-        except IntegrityError:
-            db.session.rollback()  # another process created it first — fine
-    won = (
-        db.session.query(JobLease)
-        .filter(JobLease.name == name, JobLease.locked_until <= now)
-        .update(
-            {"locked_by": owner, "locked_until": now + timedelta(seconds=ttl_seconds), "last_started_at": now},
-            synchronize_session=False,
-        )
-    )
-    db.session.commit()
-    return won == 1
-
-
-def record_result(name, owner, status):
-    db.session.query(JobLease).filter(JobLease.name == name, JobLease.locked_by == owner).update(
-        {"last_finished_at": datetime.utcnow(), "last_status": (status or "")[:300]}, synchronize_session=False
-    )
-    db.session.commit()
-
-
-def run_job_once(app, name, func, interval):
-    """Claim `name` and, only if won, run func(). Returns (ran, result).
-    The lease is held for 80% of the interval (not released on completion), so
-    other workers' timers firing in the same window cannot re-run it."""
-    with app.app_context():
-        owner = owner_id()
-        ttl = max(int(interval * 0.8), 1)
-        if not claim_lease(name, owner, ttl):
-            return False, None
-        try:
-            result = func()
-            record_result(name, owner, f"ok: {result}")
-            return True, result
-        except Exception as exc:
-            db.session.rollback()
-            record_result(name, owner, f"error: {type(exc).__name__}: {exc}")
-            app.logger.exception("scheduler: job %s failed", name)
-            return True, None
-
-
-def _reminder_job(app):
-    def run():
-        from app.notifications import send_starting_soon_reminders
-
-        # notify()/url_for(_external=True) need a request context even outside a request.
-        with app.test_request_context():
-            sent = send_starting_soon_reminders()
-        if sent:
-            app.logger.info("scheduler: sent %d starting-soon reminder(s)", sent)
-        return sent
-
-    return run
-
-
-def tick(app):
-    """One scheduler pass over every periodic job."""
-    return run_job_once(app, REMINDER_JOB, _reminder_job(app), interval_seconds(app))
-
-
-def run_forever(app, stop_event=None):
-    """The dedicated scheduler loop (`flask run-scheduler`). Stops cleanly on
-    SIGTERM/SIGINT."""
-    stop = stop_event or threading.Event()
-    if threading.current_thread() is threading.main_thread():
-        for sig in (signal.SIGTERM, signal.SIGINT):
-            signal.signal(sig, lambda *_: stop.set())
-    interval = interval_seconds(app)
-    app.logger.info("scheduler: running (every %ds) as %s", interval, owner_id())
-    while not stop.is_set():
-        tick(app)
-        stop.wait(interval)
-    app.logger.info("scheduler: stopped")
 
 
 def start_background_scheduler(app):
-    """Called from create_app. Starts the in-process thread ONLY in embedded
-    mode (and not in the Flask reloader's watcher process). In external/off
-    mode this does nothing — a dedicated process runs the jobs."""
-    mode = resolve_mode(app)
-    if mode != "embedded":
-        if mode == "external":
-            app.logger.info("scheduler: external mode — this process does not run background jobs "
-                            "(run `flask run-scheduler` as a single dedicated process)")
-        return None
+    """Start the reminder sweep loop, unless explicitly disabled or running
+    in a context where it would be wrong to (tests, or the watcher half of
+    Flask's debug-mode auto-reloader, which would otherwise start this
+    twice — once in the watcher process and once in the reloaded child)."""
+    if not app.config.get("ENABLE_BACKGROUND_SCHEDULER", True):
+        return
+    if app.config.get("TESTING"):
+        return
     if app.debug and os.environ.get("WERKZEUG_RUN_MAIN") != "true":
-        return None  # the reloader's watcher process; the reloaded child starts it
+        # Debug mode's reloader: this is the watcher process: the actual
+        # app code (and this thread) belongs in the reloaded child only.
+        return
 
-    interval = interval_seconds(app)
+    configured_interval = int(app.config.get("REMINDER_SCHEDULER_INTERVAL_SECONDS", 300))
+    # A floor only against a genuine misconfiguration (0, a negative number,
+    # or a typo) that would otherwise spin this loop in a tight busy-cycle —
+    # NOT a silent override of a deliberately short interval. A mismatch
+    # between what was configured and what actually runs is exactly the
+    # kind of "the time is wrong" surprise this file exists to prevent, so
+    # if clamping happens at all, it's logged, never silent.
+    interval = max(configured_interval, 5)
+    if interval != configured_interval:
+        app.logger.warning(
+            "background scheduler: REMINDER_SCHEDULER_INTERVAL_SECONDS=%s is below the 5s floor; using 5s instead",
+            configured_interval,
+        )
 
     def _loop():
         while True:
             time.sleep(interval)
-            tick(app)  # lease-guarded: duplicate threads/workers cannot double-run
+            try:
+                from app.notifications import send_starting_soon_reminders
+                # notify()/url_for(_external=True) need a request context
+                # even outside a real request, same as the CLI command.
+                with app.test_request_context():
+                    sent = send_starting_soon_reminders()
+                if sent:
+                    app.logger.info("background scheduler: sent %d starting-soon reminder(s)", sent)
+            except Exception:
+                # A bad sweep (a DB hiccup, a transient SMTP failure inside
+                # notify() already catches its own errors) must never kill
+                # this thread — there's no supervisor to restart it.
+                app.logger.exception("background scheduler: reminder sweep failed")
 
-    thread = threading.Thread(target=_loop, name="embedded-scheduler", daemon=True)
-    thread.interval = interval
+    thread = threading.Thread(target=_loop, name="reminder-scheduler", daemon=True)
+    thread.interval = interval  # exposed (mainly for tests) so "what interval is this actually using" is never a guess
     thread.start()
-    app.logger.info("scheduler: embedded thread started (every %ds, lease-guarded)", interval)
+    app.logger.info("background scheduler: started (every %ds)", interval)
     return thread

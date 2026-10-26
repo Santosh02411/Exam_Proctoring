@@ -11,7 +11,7 @@ from flask_login import current_user
 from werkzeug.utils import secure_filename
 
 from app import db
-from app.models import Attempt, ProctoringEvent, Recording, Snapshot, IdentityDocument, Test, User
+from app.models import Attempt, ProctoringEvent, Recording, Snapshot, IdentityDocument, Test
 from app.utils import student_required, admin_required
 from app.email_utils import send_email
 from app.notifications import maybe_send_high_risk_alert, notify_exam_warning, channel_allowed
@@ -1453,18 +1453,8 @@ def upload_id_document():
 def serve_id_document_image(doc_id):
     doc = IdentityDocument.query.get_or_404(doc_id)
     is_owner = current_user.is_authenticated and current_user.id == doc.user_id
-    # An admin may review ID documents only of people in THEIR OWN organization.
-    # (This used to be "any admin", so an admin of organization B could download
-    # the government-ID photos of organization A's students by guessing doc ids.)
-    owner = db.session.get(User, doc.user_id)
-    is_org_admin = (
-        current_user.is_authenticated
-        and current_user.role == "admin"
-        and owner is not None
-        and owner.org_id is not None
-        and owner.org_id == current_user.org_id
-    )
-    if not is_owner and not is_org_admin:
+    is_admin = current_user.is_authenticated and current_user.role == "admin"
+    if not is_owner and not is_admin:
         abort(403)
 
     filepath = os.path.join(current_app.config["ID_DOCUMENT_UPLOAD_DIR"], str(doc.user_id), doc.filename)
