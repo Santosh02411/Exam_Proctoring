@@ -1,46 +1,22 @@
-x-app-env: &app-env
-  APP_ENV: production
-  # REQUIRED — compose refuses to start if these are unset (no insecure defaults).
-  SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY (python -c "import secrets; print(secrets.token_urlsafe(48))")}
-  APP_BASE_URL: ${APP_BASE_URL:?Set APP_BASE_URL to the public https:// URL}
-  MAIL_SERVER: ${MAIL_SERVER:?Set MAIL_SERVER (verification/reset codes and invitations are emailed)}
-  MAIL_SENDER: ${MAIL_SENDER:?Set MAIL_SENDER}
-  DATABASE_URL: ${DATABASE_URL:-}
-  ALLOW_SQLITE_IN_PRODUCTION: ${ALLOW_SQLITE_IN_PRODUCTION:-false}
-  MAX_VIOLATIONS: ${MAX_VIOLATIONS:-5}
-  FACE_MATCH_THRESHOLD: ${FACE_MATCH_THRESHOLD:-0.6}
-  MAIL_PORT: ${MAIL_PORT:-587}
-  MAIL_USE_TLS: ${MAIL_USE_TLS:-true}
-  MAIL_USERNAME: ${MAIL_USERNAME:-}
-  MAIL_PASSWORD: ${MAIL_PASSWORD:-}
-  TRUST_PROXY_HEADERS: ${TRUST_PROXY_HEADERS:-false}
-  SCHEDULER_MODE: external
-
 services:
   web:
     build: .
     ports:
       - "8000:8000"
     environment:
-      <<: *app-env
-      RUN_MIGRATIONS: "true"      # this service owns `flask db upgrade`
+      - SECRET_KEY=${SECRET_KEY:-change-this-in-production}
+      - DATABASE_URL=${DATABASE_URL:-}
+      - MAX_VIOLATIONS=${MAX_VIOLATIONS:-5}
+      - FACE_MATCH_THRESHOLD=${FACE_MATCH_THRESHOLD:-0.6}
+      - MAIL_SERVER=${MAIL_SERVER:-}
+      - MAIL_PORT=${MAIL_PORT:-587}
+      - MAIL_USE_TLS=${MAIL_USE_TLS:-true}
+      - MAIL_USERNAME=${MAIL_USERNAME:-}
+      - MAIL_PASSWORD=${MAIL_PASSWORD:-}
+      - MAIL_SENDER=${MAIL_SENDER:-no-reply@exam-proctoring.local}
     volumes:
+      # Persist the SQLite DB, recordings, and snapshots across container restarts.
       - exam_instance:/app/instance
-
-  # Exactly ONE of these. It runs the periodic jobs (exam-starting-soon
-  # reminders). Jobs are lease-claimed and reminders claim-deduplicated, so an
-  # accidental extra copy is harmless — but pointless.
-  scheduler:
-    build: .
-    command: ["flask", "run-scheduler"]
-    environment:
-      <<: *app-env
-      RUN_MIGRATIONS: "false"
-    volumes:
-      - exam_instance:/app/instance
-    depends_on:
-      - web
-    restart: unless-stopped
 
 volumes:
   exam_instance:

@@ -32,10 +32,9 @@ number of production-readiness features the original never had.
 
 **Roles**: `student` → `examiner`/`proctor` → `admin` (an organization's own admin,
 scoped to that org — see Multi-tenancy below) → `super_admin` (platform operator, not
-tied to any organization). Public registration creates **students only**; admins,
-examiners and proctors join by invitation, a new organization needs a super admin's
-approval, and `super_admin` is only created via `flask create-super-admin` (see
-*Accounts, roles & organizations* below).
+tied to any organization). Registration lets you join an existing organization or —
+admin role only — create a new one, bootstrapping that org's first admin; `super_admin`
+is never self-serve, only created via `flask create-super-admin`.
 
 **Admin** (scoped to their own organization)
 - Register/login as admin (email verification + CAPTCHA + rate-limited login)
@@ -176,7 +175,7 @@ exam_proctoring_python/
 │   ├── captcha.py                                      # simple session-based math CAPTCHA
 │   ├── email_utils.py                                   # SMTP send + outbox.log/flash fallback, tokens
 │   ├── activity_log.py                                   # admin audit-trail helper
-│   ├── cli.py                                             # seed-admin / create-super-admin / run-scheduler / schema-status /
+│   ├── cli.py                                             # init-db / seed-admin / create-super-admin /
 │   │                                                        # backup-db / apply-retention /
 │   │                                                        # check-health-alerts / send-reminders
 │   ├── static/
@@ -189,78 +188,31 @@ exam_proctoring_python/
 │                                                         # organizations/, system_ops/)
 ```
 
-## Configuration & startup validation
+## Upgrading an existing database
 
-`APP_ENV` selects how strict startup is (`app/config_validation.py`):
+`db.create_all()` (run at every startup) only creates whole tables that don't exist yet —
+on a database from a previous version of this app, it silently leaves every table that
+*does* already exist completely untouched. If a newer version of the code has added a
+column to one of those tables, the very first query that touches it fails with
+`OperationalError: no such column: ...`, no matter how long ago that column was added or
+how many have piled up since.
 
-| `APP_ENV` | Behaviour |
-|---|---|
-| `production` (**the default if unset**) | Refuses to start unless `SECRET_KEY` is strong (≥32 chars, not a placeholder), `APP_BASE_URL` is an `https://` URL, `MAIL_SERVER` is configured, CSRF is on and debug is off. Cookies are forced `Secure`/`HttpOnly`/`SameSite=Lax`. |
-| `development` | Relaxed. A missing `SECRET_KEY` gets a random per-process one (sessions reset on restart); emailed codes/links are echoed on screen when no SMTP is configured. |
+`app/__init__.py` closes that gap with `_ensure_columns`, which runs right after
+`db.create_all()` on every startup: it walks every table the models define, compares each
+one's columns against what the live database actually has (via `sqlalchemy.inspect`), and
+issues a plain `ALTER TABLE ... ADD COLUMN` for anything missing — the full set, not a
+specific list, so upgrading never depends on anyone having remembered to add an entry for
+a particular feature. It's a no-op (and safe to run on every boot) once the database is
+current, which is also exactly what happens on a brand-new install, where `create_all()`
+already created every column up front.
 
-There is **no built-in default secret** and no default admin password. Every problem is listed at once, e.g.:
-
-```
-Refusing to start: invalid configuration for APP_ENV=production:
-  - SECRET_KEY is not set.
-  - APP_BASE_URL is not set ...
-Generate a secret key with:  python -c "import secrets; print(secrets.token_urlsafe(48))"
-```
-
-Malformed numeric variables (`MAX_VIOLATIONS=five`) are reported by name. In production, emailed codes are **never** shown on screen —
-that would let anyone read the password-reset code for any address they typed in.
-
-## Database migrations
-
-The schema is owned by **Flask-Migrate/Alembic** (`migrations/`). The app never creates or alters tables at startup.
-
-```bash
-flask db upgrade          # new database, or after pulling a newer version
-flask schema-status       # shows database vs. code revision; exits non-zero if behind
-flask db migrate -m "..." # after changing models: generate a revision, REVIEW it, commit it
-```
-
-* **Existing database created by an older version** (the old `create_all()` + column patcher): back it up, then
-  `flask db stamp 0001_baseline && flask db upgrade`.
-* `wsgi.py` refuses to serve (with exact instructions) if the database isn't at the latest revision;
-  the Docker entrypoint runs `flask db upgrade` first and **aborts the container if it fails**.
-* A failing migration logs `MIGRATION FAILED (database was at revision …)` and exits non-zero. PostgreSQL rolls the
-  failed revision back entirely; SQLite DDL isn't transactional, so take a backup first (`flask backup-db`).
-* A test (`tests/test_migrations.py`) fails if the models and migrations drift apart.
-
-## Background jobs (scheduler)
-
-Web workers **do not** run background jobs in production (`SCHEDULER_MODE=external`, the default). Run exactly one
-dedicated process — `flask run-scheduler` (the `scheduler` service in `docker-compose.yml`). For cron-style use:
-`flask run-scheduler --once`. `SCHEDULER_MODE=embedded` (the development default) runs a thread per process.
-
-Even if several copies run, nothing is duplicated:
-
-1. **Atomic job claiming** — each tick must win a single conditional `UPDATE` on a `job_leases` row; exactly one
-   process/worker/container wins per window.
-2. **Duplicate-notification prevention** — a reminder for (student, test) is *claimed* by inserting a UNIQUE
-   `notification_claims` row *before* it is sent; a failed send releases the claim so the next sweep retries.
-
-## Accounts, roles & organizations
-
-| Role | How it is created |
-|---|---|
-| `student` | Public registration (`/register`) — the **only** thing public registration can create. |
-| `admin` / `examiner` / `proctor` | **Invitation only.** An org admin (Admin → *Staff & invites*) or a super admin (organization page) invites one email address into one role in one organization. The single-use, expiring (`INVITATION_TTL_HOURS`, default 72) link is emailed; only its SHA-256 hash is stored; role and organization come from the invitation, never from the form. |
-| new organization + its first admin | `/request-organization` creates a **pending** organization and a pending admin who cannot log in until a super admin **approves** it (Organizations → *Pending approval*). Or a super admin creates the organization and invites its admin. |
-| `super_admin` | `flask create-super-admin` only. Never invitable, never registrable. |
-
-Deactivating a user (or a pending/rejected organization) also ends their existing sessions. The CLI has no default passwords:
-`flask seed-admin` / `flask create-super-admin` prompt for one (and enforce the same complexity rules as the web forms).
-
-## Multi-tenant authorization audit
-
-`tests/test_tenant_isolation.py` builds two organizations with realistic data and, logged in as every kind of Org-B user
-(and anonymous, and a super admin impersonating B), requests **every route in the app that takes an id** using Org-A's ids.
-A route passes only if it refuses (never 2xx), never echoes Org-A data, and leaves every Org-A row unchanged. The route
-list comes from `app.url_map`, so a new route with an id that isn't covered fails the suite. It also checks ids smuggled in
-JSON/form bodies, the live alert feed, the LMS API keys, and same-org student-to-student access. Routes that are public on
-purpose (certificate verification by unguessable code, org logos) are listed with a justification in the test.
+This is deliberately a reconciliation step, not a real migration framework — it only ever
+*adds* missing columns, never renames, drops, or changes a column's type, and a column
+whose model default can't be expressed as plain SQL (for example `datetime.utcnow`, a
+Python callable) is added as nullable rather than guessing a value for existing rows. If
+you're running this app and `flask` commands or pages start throwing `no such column`
+errors after pulling a newer version, that's this step doing its job on the next startup —
+just run the app (or any `flask` CLI command) once and retry.
 
 ## Setup (development)
 
@@ -270,45 +222,55 @@ python3 -m venv venv
 source venv/bin/activate          # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
-cp .env.example .env               # keep APP_ENV=development; set SECRET_KEY if you like
+cp .env.example .env               # edit SECRET_KEY etc. if you like
 
 export FLASK_APP=run.py            # Windows (cmd): set FLASK_APP=run.py
-flask db upgrade                   # creates the schema under instance/
-flask seed-admin                   # prompts for email + password
-# Optional: a platform-level operator for Organizations + Operations
-flask create-super-admin --email platform@example.com
+flask init-db                      # creates the SQLite schema under instance/
+flask seed-admin --email admin@example.com --password 'Admin123!'
+# Optional: a platform-level operator account for Organizations + Operations
+# (System Monitoring & Operations) — see the Multi-tenancy section below.
+flask create-super-admin --email platform@example.com --password 'Platform123!'
 
 python run.py                      # http://localhost:5000
 ```
 
 Then:
-1. Log in as the seeded admin and invite your examiners/proctors from *Staff & invites* (in development the invitation link is shown on screen).
-2. Students register themselves at `/register`.
-3. As admin: create a test → add questions (or import a CSV) → assign it to a student → publish it.
-4. Log in as that student, enroll your face once, then take the proctored test.
+1. Log in as the seeded admin (or register a new admin/student from the login screen).
+2. As admin: create a test → add questions (or import a CSV) → assign it to a student → publish it.
+3. Log in as that student, enroll your face once, then take the proctored test.
+4. Optionally, log in as the super_admin to see the Organizations and Operations areas.
 
 ## Running the tests
 
 ```bash
-pip install -r requirements.txt
-pytest -q
+pip install -r requirements.txt   # includes pytest
+pytest                             # or: pytest -v
 ```
+
+The suite uses an in-memory SQLite database per test (no `instance/` pollution) and covers:
+registration/verification, CAPTCHA + login lockout, password reset, test creation and CSV
+import, the full exam-taking flow (including negative marking and randomized order),
+retake limits, accessibility extra time, the activity log, proctoring violation/termination
+logic, identity-mismatch events, snapshot storage, and recording upload/playback access control.
+
+One file, `tests/test_liveness_js.py`, runs a small pure-JavaScript test
+(`tests/js/test_liveness.mjs`) for the blink/liveness decision algorithm via `node` as a
+subprocess, so it's covered directly rather than only through a browser. It's skipped
+automatically if `node` isn't on `PATH` — everything else needs only Python/pip.
 
 ## Deployment (production)
 
 ```bash
-export SECRET_KEY=... APP_BASE_URL=https://exams.example.edu MAIL_SERVER=... MAIL_SENDER=...
-docker compose up --build         # compose refuses to start if the required variables are unset
+docker compose up --build
 ```
 
 or without Docker:
 
 ```bash
 pip install -r requirements.txt
-export APP_ENV=production SECRET_KEY=... APP_BASE_URL=... DATABASE_URL=... MAIL_SERVER=... MAIL_SENDER=...
-flask db upgrade
+export SECRET_KEY=... DATABASE_URL=... MAIL_SERVER=...
+flask init-db
 gunicorn --bind 0.0.0.0:8000 --workers 3 --timeout 120 wsgi:app
-flask run-scheduler               # in ONE separate process/service
 ```
 
 Put a real reverse proxy (nginx, Caddy, a cloud load balancer) in front of Gunicorn for
@@ -764,11 +726,11 @@ inherits both, restyling the app means editing those two files rather than each 
 ## Multi-tenancy (Institution / Organization Management)
 
 Every `Test`, `QuestionBankItem`, and non-`super_admin` `User` belongs to exactly one
-`Organization`. A self-registering student joins an existing (active) organization from a
-dropdown (or the shared "Default Organization" if none is chosen). A brand-new
-institution is created through the approval-gated *request an organization* flow (or by a
-super admin), and its staff are added by invitation — see *Accounts, roles &
-organizations* above.
+`Organization`. Registration lets a new account join an existing (active) organization
+from a dropdown, or — admin role only — create a brand-new one, which is how a new
+institution bootstraps its first admin. A registration that doesn't specify an
+organization at all falls back to a shared "Default Organization", so the flow stays
+backward-compatible with anything that posts the older, org-less form.
 
 Every list query and fetch-by-id route in `app/admin.py` is scoped to the caller's
 organization (`app.utils.org_scope` / `ensure_same_org`) — an org's admin/examiner/
@@ -925,5 +887,3 @@ The pre-check has a **Share my entire screen** button (required; a tab/window is
 opens fullscreen automatically when the student clicks *Start exam*, and leaving fullscreen or
 stopping the share mid-exam pauses the exam behind an overlay until fixed. Set
 `REQUIRE_SCREEN_SHARE=false` / `REQUIRE_FULLSCREEN=false` to make either optional (e.g. kiosk labs).
-#   D a t a L e n s - A I  
- 
