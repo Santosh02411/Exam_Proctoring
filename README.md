@@ -871,19 +871,3 @@ every missing piece natively in Python, fixes the broken model bundle, and adds 
 production-readiness features (rate limiting, CAPTCHA, randomization, retakes, negative
 marking, accessibility accommodations, bulk import, an audit log, an automated test suite,
 and a Docker/Gunicorn deployment path) that the original never had at all.
-
-
-## Password reset & email verification (OTP)
-Both flows now use an emailed 6-digit code instead of a link. After registering (or clicking
-"Send verification code" on login, or requesting a password reset) a code is emailed; type it into
-the page that opens. For password reset the same page then shows the new-password form once the
-code checks out. Codes expire after `OTP_TTL_MINUTES` (10), are single-use, lock after
-`OTP_MAX_ATTEMPTS` (5) wrong tries, and can be re-sent after `OTP_RESEND_COOLDOWN_SECONDS` (30).
-With no SMTP configured, the code is shown on screen and written to `instance/outbox.log` (dev mode).
-Authenticator-app (TOTP) 2FA at login is unchanged.
-
-## Screen sharing & fullscreen
-The pre-check has a **Share my entire screen** button (required; a tab/window is rejected), the exam
-opens fullscreen automatically when the student clicks *Start exam*, and leaving fullscreen or
-stopping the share mid-exam pauses the exam behind an overlay until fixed. Set
-`REQUIRE_SCREEN_SHARE=false` / `REQUIRE_FULLSCREEN=false` to make either optional (e.g. kiosk labs).

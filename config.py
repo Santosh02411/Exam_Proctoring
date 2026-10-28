@@ -129,18 +129,6 @@ class Config:
     RESEND_VERIFICATION_MAX_PER_IP = int(os.environ.get("RESEND_VERIFICATION_MAX_PER_IP", 5))
     RESEND_VERIFICATION_WINDOW_MINUTES = int(os.environ.get("RESEND_VERIFICATION_WINDOW_MINUTES", 15))
 
-    # Email OTP codes (password reset + email verification — see app.otp).
-    OTP_TTL_MINUTES = int(os.environ.get("OTP_TTL_MINUTES", 10))
-    OTP_MAX_ATTEMPTS = int(os.environ.get("OTP_MAX_ATTEMPTS", 5))
-    OTP_RESEND_COOLDOWN_SECONDS = int(os.environ.get("OTP_RESEND_COOLDOWN_SECONDS", 30))
-
-    # Pre-exam environment requirements enforced by proctor.js: the student
-    # must share their ENTIRE screen (not a tab/window) and the exam must
-    # run fullscreen. Set either to "false" for lab/kiosk machines that
-    # block getDisplayMedia, in which case that step becomes optional.
-    REQUIRE_SCREEN_SHARE = os.environ.get("REQUIRE_SCREEN_SHARE", "true").lower() == "true"
-    REQUIRE_FULLSCREEN = os.environ.get("REQUIRE_FULLSCREEN", "true").lower() == "true"
-
     # Password complexity policy, enforced on registration and password reset.
     PASSWORD_MIN_LENGTH = int(os.environ.get("PASSWORD_MIN_LENGTH", 8))
 
