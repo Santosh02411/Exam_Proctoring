@@ -144,6 +144,7 @@ def _complete_sso_login(provider, userinfo):
         session[twofa.PENDING_2FA_SESSION_KEY] = user.id
         return redirect(url_for("auth.login_verify_2fa"))
 
+    session.pop("impersonate_org_id", None)
     login_user(user)
     security.register_login(user)
     flash(f"Welcome, {user.name}!", "success")

@@ -4,22 +4,62 @@ from app import db
 from app.models import User, Organization
 
 
+def _require_strong_password(password):
+    """Same complexity rules as the web forms (8+ chars, upper, lower, digit,
+    special) so a CLI-created admin can't be given a trivially weak password."""
+    import re
+
+    problems = []
+    if len(password) < 8:
+        problems.append("at least 8 characters")
+    if not re.search(r"[a-z]", password):
+        problems.append("a lowercase letter")
+    if not re.search(r"[A-Z]", password):
+        problems.append("an uppercase letter")
+    if not re.search(r"\d", password):
+        problems.append("a number")
+    if not re.search(r"[^A-Za-z0-9]", password):
+        problems.append("a special character")
+    if problems:
+        raise click.ClickException("Password too weak — it needs " + ", ".join(problems) + ".")
+
+
 def register_cli(app):
     @app.cli.command("init-db")
     def init_db():
-        """Create all tables."""
-        db.create_all()
-        click.echo("Database tables created.")
+        """Removed: schema is managed by migrations now."""
+        raise click.ClickException(
+            "init-db has been removed — the schema is managed by Alembic migrations.\n"
+            "  New database:      flask db upgrade\n"
+            "  Existing database: flask db stamp 0001_baseline && flask db upgrade   (back it up first)\n"
+            "  Check status:      flask schema-status"
+        )
+
+    @app.cli.command("schema-status")
+    def schema_status_cmd():
+        """Show the database's migration revision vs. the code's latest, and
+        exit non-zero if they differ."""
+        from app.db_schema import schema_status
+
+        current, head = schema_status(app)
+        click.echo(f"database revision: {current or '(none — unmigrated database)'}")
+        click.echo(f"latest revision:   {head}")
+        if current != head:
+            raise click.ClickException("Database is NOT up to date. Run: flask db upgrade")
+        click.echo("OK — database is up to date.")
 
     @app.cli.command("seed-admin")
     @click.option("--name", default="Admin User")
-    @click.option("--email", default="admin@example.com")
-    @click.option("--password", default="Admin123!")
+    @click.option("--email", prompt=True)
+    # No default password: a well-known default ("Admin123!") is a published
+    # credential. Omit --password to be prompted (input hidden).
+    @click.option("--password", prompt=True, hide_input=True, confirmation_prompt=True)
     @click.option("--phone", default="9999999999")
     @click.option("--org", default="Default Organization", help="Organization this admin belongs to (created if it doesn't exist).")
     def seed_admin(name, email, password, phone, org):
         """Create a default admin account (under the given organization,
         creating it if needed) if the account doesn't exist yet."""
+        _require_strong_password(password)
         if User.query.filter_by(email=email).first():
             click.echo(f"User {email} already exists.")
             return
@@ -50,13 +90,14 @@ def register_cli(app):
     @app.cli.command("create-super-admin")
     @click.option("--name", default="Platform Admin")
     @click.option("--email", required=True)
-    @click.option("--password", required=True)
+    @click.option("--password", prompt=True, hide_input=True, confirmation_prompt=True)
     @click.option("--phone", default="9999999999")
     def create_super_admin(name, email, password, phone):
         """Create a platform-level super_admin account — manages
         Organizations (tenants) themselves, not any one org's exams. Not
         reachable via public registration by design, so this is the only
         way to create one."""
+        _require_strong_password(password)
         if User.query.filter_by(email=email).first():
             click.echo(f"User {email} already exists.")
             return
@@ -122,6 +163,22 @@ def register_cli(app):
                 click.echo(f"ALERT [{a.severity}] {a.alert_type}: {a.message}")
         else:
             click.echo("No new alerts.")
+
+    @app.cli.command("run-scheduler")
+    @click.option("--once", is_flag=True, help="Run one pass and exit (for cron) instead of looping forever.")
+    def run_scheduler(once):
+        """The dedicated background-job process. Run EXACTLY ONE of these per
+        deployment (the web workers run no jobs in production). Jobs are
+        lease-claimed and reminders are claim-deduplicated, so an accidental
+        second copy is harmless — just wasteful."""
+        from app import scheduler
+
+        if once:
+            ran, result = scheduler.tick(app)
+            click.echo(f"scheduler pass: {'ran' if ran else 'skipped (another process holds the lease)'}"
+                       + (f", sent {result} reminder(s)" if result else ""))
+            return
+        scheduler.run_forever(app)
 
     @app.cli.command("send-reminders")
     @click.option("--window-minutes", default=None, type=int,

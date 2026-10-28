@@ -13,13 +13,13 @@ role's surface can't touch the other's data model of what it's allowed to
 see.
 """
 
-from flask import Blueprint, render_template, redirect, url_for, flash, request, Response, session
+from flask import Blueprint, render_template, redirect, url_for, flash, request, Response, session, abort
 from flask_login import current_user
 import json
 from datetime import datetime
 
 from app import db
-from app.forms import OrganizationForm, RetentionPolicyForm, BrandingForm
+from app.forms import OrganizationForm, RetentionPolicyForm, BrandingForm, CsrfForm
 from app.models import Organization, User, Test, Attempt
 from app.utils import super_admin_required
 from app.activity_log import log_activity
@@ -38,9 +38,14 @@ def _org_summary(org):
 @bp.route("/")
 @super_admin_required
 def list_organizations():
-    orgs = Organization.query.order_by(Organization.name).all()
+    orgs = Organization.query.filter(Organization.status.notin_(["pending", "rejected"])).order_by(Organization.name).all()
     summaries = [_org_summary(o) for o in orgs]
-    return render_template("organizations/list.html", summaries=summaries)
+    pending = Organization.query.filter_by(status="pending").order_by(Organization.created_at).all()
+    pending_requests = []
+    for o in pending:
+        requester = User.query.filter_by(org_id=o.id, role="admin").order_by(User.id).first()
+        pending_requests.append({"org": o, "requester": requester})
+    return render_template("organizations/list.html", summaries=summaries, pending_requests=pending_requests, csrf_form=CsrfForm())
 
 
 @bp.route("/create", methods=["GET", "POST"])
@@ -70,7 +75,7 @@ def view_organization(org_id):
     summary = _org_summary(org)
     admins = User.query.filter_by(org_id=org.id, role="admin").order_by(User.name).all()
     recent_tests = Test.query.filter_by(org_id=org.id).order_by(Test.created_at.desc()).limit(10).all()
-    return render_template("organizations/detail.html", summary=summary, admins=admins, recent_tests=recent_tests)
+    return render_template("organizations/detail.html", summary=summary, admins=admins, recent_tests=recent_tests, csrf_form=CsrfForm())
 
 
 @bp.route("/<int:org_id>/edit", methods=["GET", "POST"])
@@ -84,7 +89,8 @@ def edit_organization(org_id):
             flash("An organization with that name already exists.", "error")
         else:
             org.name = form.name.data.strip()
-            org.status = form.status.data
+            if org.status not in ("pending", "rejected"):  # those change only via approve/reject
+                org.status = form.status.data
             db.session.commit()
             log_activity("updated_organization", f"Updated organization '{org.name}'")
             flash("Organization updated.", "success")
@@ -102,10 +108,93 @@ def toggle_organization_status(org_id):
     lockout, since the latter would need its own explicit, harder-to-
     reverse confirmation flow."""
     org = Organization.query.get_or_404(org_id)
+    if org.status in ("pending", "rejected"):
+        flash("This organization request has to be approved or rejected, not toggled.", "error")
+        return redirect(url_for("organizations.list_organizations"))
     org.status = "inactive" if org.status == "active" else "active"
     db.session.commit()
     log_activity("toggled_organization_status", f"Set organization '{org.name}' to {org.status}")
     flash(f"Organization '{org.name}' is now {org.status}.", "success")
+    return redirect(url_for("organizations.view_organization", org_id=org.id))
+
+
+@bp.route("/<int:org_id>/approve", methods=["POST"])
+@super_admin_required
+def approve_organization(org_id):
+    """Approve a self-service organization request: the org becomes active
+    and its pending administrator can log in."""
+    from app.email_utils import send_email
+
+    if not CsrfForm().validate_on_submit():
+        abort(400)
+    org = Organization.query.get_or_404(org_id)
+    if org.status != "pending":
+        flash("That organization is not awaiting approval.", "info")
+        return redirect(url_for("organizations.list_organizations"))
+    org.status = "active"
+    org.reviewed_at = datetime.utcnow()
+    org.reviewed_by_id = current_user.id
+    admins = User.query.filter_by(org_id=org.id, role="admin", status="pending_approval").all()
+    for a in admins:
+        a.status = "active"
+    db.session.commit()
+    log_activity("approved_organization", f"Approved organization '{org.name}'")
+    for a in admins:
+        try:
+            send_email(a.email, f"Your organization '{org.name}' was approved",
+                       f"Hi {a.name},\n\n'{org.name}' has been approved. You can now log in at "
+                       f"{url_for('auth.login', _external=True)}.")
+        except Exception:
+            pass
+    flash(f"Approved '{org.name}'.", "success")
+    return redirect(url_for("organizations.list_organizations"))
+
+
+@bp.route("/<int:org_id>/reject", methods=["POST"])
+@super_admin_required
+def reject_organization(org_id):
+    if not CsrfForm().validate_on_submit():
+        abort(400)
+    org = Organization.query.get_or_404(org_id)
+    if org.status != "pending":
+        flash("That organization is not awaiting approval.", "info")
+        return redirect(url_for("organizations.list_organizations"))
+    org.status = "rejected"
+    org.reviewed_at = datetime.utcnow()
+    org.reviewed_by_id = current_user.id
+    for a in User.query.filter_by(org_id=org.id, status="pending_approval").all():
+        a.status = "inactive"
+    db.session.commit()
+    log_activity("rejected_organization", f"Rejected organization '{org.name}'")
+    flash(f"Rejected '{org.name}'.", "success")
+    return redirect(url_for("organizations.list_organizations"))
+
+
+@bp.route("/<int:org_id>/invite-admin", methods=["POST"])
+@super_admin_required
+def invite_org_admin(org_id):
+    """A super_admin invites the (first or an additional) administrator of an
+    active organization — the controlled alternative to anyone registering as
+    an admin."""
+    from app.forms import InviteStaffForm
+    from app import invitations
+
+    org = Organization.query.get_or_404(org_id)
+    form = InviteStaffForm()
+    if not form.validate_on_submit():
+        flash("Enter a valid email address.", "error")
+        return redirect(url_for("organizations.view_organization", org_id=org.id))
+    try:
+        invitation, raw = invitations.create_invitation(current_user, org, form.email.data, "admin")
+    except invitations.InvitationError as exc:
+        flash(str(exc), "error")
+        return redirect(url_for("organizations.view_organization", org_id=org.id))
+    sent, dev_link = invitations.deliver(invitation, raw)
+    log_activity("invited_org_admin", f"Invited {invitation.email} as admin of '{org.name}'")
+    flash(f"Admin invitation sent to {invitation.email}." if sent else
+          "Invitation created, but the email could not be sent. Check the mail settings.", "success" if sent else "warning")
+    if dev_link:
+        flash(f"(Dev mode — no SMTP configured) Invitation link: {dev_link}", "info")
     return redirect(url_for("organizations.view_organization", org_id=org.id))
 
 

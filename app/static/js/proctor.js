@@ -8,6 +8,7 @@
   const camPreview = document.getElementById('camPreview');
   const camStatus = document.getElementById('camStatus');
   const modelStatus = document.getElementById('modelStatus');
+  const objStatus = document.getElementById('objStatus');
   const identityStatus = document.getElementById('identityStatus');
   const fsStatus = document.getElementById('fsStatus');
   const examArea = document.getElementById('examArea');
@@ -502,6 +503,9 @@
 
   async function initFaceModel() {
     try {
+      if (typeof faceapi === 'undefined') {
+        throw new Error('face-api library did not load');
+      }
       await faceapi.nets.tinyFaceDetector.loadFromUri(cfg.modelsUrl);
       await faceapi.nets.faceLandmark68Net.loadFromUri(cfg.modelsUrl);
       await faceapi.nets.faceLandmark68TinyNet.loadFromUri(cfg.modelsUrl);
@@ -509,7 +513,7 @@
       modelStatus.textContent = 'Ready';
       maybeEnableVerify();
     } catch (e) {
-      modelStatus.textContent = 'Failed to load — proctoring model unavailable.';
+      modelStatus.textContent = 'Failed to load — proctoring model unavailable (' + ((e && e.message) || 'unknown error') + '). Refresh the page; if it persists, contact your administrator.';
       console.error(e);
     }
   }
@@ -520,11 +524,22 @@
     // proctoring, not a hard requirement — if the CDN is slow/blocked, the
     // exam still proceeds on face/tab/fullscreen checks alone rather than
     // blocking the student from starting.
+    // The status line makes a silent failure visible: previously a blocked
+    // CDN just meant phones were never detected and nobody was told.
+    const setObj = (t) => { if (objStatus) objStatus.textContent = t; };
     try {
-      if (typeof cocoSsd === 'undefined') { cocoModelFailed = true; return; }
-      cocoModel = await cocoSsd.load({ base: 'lite_mobilenet_v2' });
+      if (typeof cocoSsd === 'undefined' || typeof tf === 'undefined') {
+        cocoModelFailed = true;
+        setObj('Unavailable — the detection library could not be downloaded (check internet / firewall access to cdn.jsdelivr.net).');
+        return;
+      }
+      const opts = { base: 'lite_mobilenet_v2' };
+      if (cfg.objectModelUrl) opts.modelUrl = cfg.objectModelUrl; // self-hosted model.json
+      cocoModel = await cocoSsd.load(opts);
+      setObj('Ready');
     } catch (e) {
       cocoModelFailed = true;
+      setObj('Unavailable — model download failed (' + ((e && e.message) || 'network error') + '). Phones will NOT be detected.');
       console.warn('object detection model unavailable', e);
     }
   }
@@ -541,7 +556,7 @@
   // hardware — they're surfaced so the student can fix what they can
   // before starting, not as a hard gate.
   // =====================================================================
-  const precheckState = { camera: false, mic: false, browser: false, speaker: null, network: null, display: null };
+  const precheckState = { camera: false, mic: false, browser: false, speaker: null, network: null, display: null, screen: false, screenSurface: null };
   let micAnalyser = null;
   let micAudioCtx = null;
   let micLevelRaf = null;
@@ -556,7 +571,8 @@
 
   function maybeEnablePrecheckContinue() {
     if (!precheckContinue) return;
-    precheckContinue.disabled = !(precheckState.camera && precheckState.mic && precheckState.browser);
+    precheckContinue.disabled = !(precheckState.camera && precheckState.mic && precheckState.browser &&
+      (!cfg.requireScreenShare || precheckState.screen));
   }
 
   function precheckOnCameraFailed() {
@@ -645,6 +661,7 @@
     const required = {
       'Camera/mic access': !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia),
       'Screen recording': typeof MediaRecorder !== 'undefined',
+      ...(cfg.requireScreenShare ? { 'Screen sharing (use a desktop browser)': !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) } : {}),
       'Fullscreen mode': !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen),
     };
     const missing = Object.keys(required).filter((k) => !required[k]);
@@ -661,35 +678,129 @@
     maybeEnablePrecheckContinue();
   }
 
-  async function runDisplayCheck() {
+  // ---------------------------------------------------------------------
+  // Entire-screen sharing. The old "Screen / display" row used the Window
+  // Management API (getScreenDetails), which only counts monitors, needs
+  // its own obscure permission prompt, and never actually asked the student
+  // to share anything — so it just showed "Permission not granted —
+  // skipped". This asks for real screen capture (getDisplayMedia) from a
+  // button click (browsers require a user gesture), insists on the ENTIRE
+  // screen rather than a tab/window, and keeps the stream so the exam
+  // recording reuses it instead of prompting a second time.
+  // ---------------------------------------------------------------------
+  const SURFACE_LABELS = { monitor: 'entire screen', window: 'a window', browser: 'a browser tab' };
+
+  // Prompts the student to share. Resolves { ok: true } with the stream
+  // already adopted as `screenStream`, or { ok: false, message }.
+  async function acquireScreenStream() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+      return { ok: false, message: 'Screen sharing is not supported in this browser — use desktop Chrome, Edge, or Firefox.' };
+    }
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { displaySurface: 'monitor', frameRate: 5 },
+        audio: false,
+        // Chromium hints: pre-select "Entire screen", hide the exam tab
+        // itself as a choice, and don't let the student swap surfaces
+        // later. Browsers that don't know these just ignore them.
+        monitorTypeSurfaces: 'include',
+        selfBrowserSurface: 'exclude',
+        surfaceSwitching: 'exclude',
+        preferCurrentTab: false,
+      });
+    } catch (e) {
+      const denied = e && (e.name === 'NotAllowedError' || e.name === 'AbortError');
+      return {
+        ok: false,
+        message: denied
+          ? 'Screen sharing was cancelled or blocked — click the button and choose “Entire Screen”, then Share.'
+          : 'Could not start screen sharing: ' + ((e && e.message) || 'unknown error'),
+      };
+    }
+    const track = stream.getVideoTracks()[0];
+    const surface = track && track.getSettings ? track.getSettings().displaySurface : undefined;
+    // Chromium/Firefox report which kind of surface was picked. If it was
+    // reported and isn't the whole monitor, reject it. (Where the browser
+    // doesn't report it, there's nothing to check, so accept.)
+    if (surface && surface !== 'monitor') {
+      stream.getTracks().forEach((t) => t.stop());
+      return {
+        ok: false,
+        message: `You shared ${SURFACE_LABELS[surface] || surface} — please choose “Entire Screen”.`,
+      };
+    }
+    if (screenStream) {
+      screenStream.getTracks().forEach((t) => { t.onended = null; t.stop(); });
+    }
+    screenStream = stream;
+    precheckState.screenSurface = surface || 'unknown';
+    track.addEventListener('ended', onScreenShareEnded);
+    return { ok: true };
+  }
+
+  function onScreenShareEnded() {
+    if (screenMediaRecorder && screenMediaRecorder.state !== 'inactive') {
+      try { screenMediaRecorder.stop(); } catch (e) { /* noop */ }
+    }
+    if (examEnded) return;
+    if (examActive) {
+      // Mid-exam: pause behind a blocking overlay until they re-share.
+      reportEvent('screen_share_stopped', 'violation', 'Student stopped sharing their screen');
+      const ov = document.getElementById('screenShareLostOverlay');
+      if (ov) ov.style.display = 'flex';
+    } else {
+      // Still in the pre-check: just mark it not-shared so Continue locks.
+      precheckState.screen = false;
+      setCheckIcon('pcIconDisplay', cfg.requireScreenShare ? 'fail' : 'warn');
+      const detail = document.getElementById('pcDisplayDetail');
+      if (detail) detail.textContent = 'Screen sharing stopped — click the button to share again.';
+      const btn = document.getElementById('pcShareScreen');
+      if (btn) { btn.disabled = false; btn.textContent = 'Share my entire screen'; }
+      maybeEnablePrecheckContinue();
+    }
+  }
+
+  function runDisplayCheck() {
     const detail = document.getElementById('pcDisplayDetail');
-    // The Window Management API (getScreenDetails) is the only way to see
-    // connected-display *count* from the browser, and it's Chromium-only,
-    // requires its own permission prompt, and is frequently unavailable —
-    // this is intentionally treated as informational-only (never blocks
-    // continuing) since most students on a supported single-monitor setup
-    // will simply see "not available in this browser", not a failure.
-    if (typeof window.getScreenDetails !== 'function') {
-      setCheckIcon('pcIconDisplay', 'warn');
-      if (detail) detail.textContent = 'Multi-monitor detection not supported in this browser — skipped.';
-      precheckState.display = null;
+    const btn = document.getElementById('pcShareScreen');
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+      setCheckIcon('pcIconDisplay', cfg.requireScreenShare ? 'fail' : 'warn');
+      if (detail) detail.textContent = 'Screen sharing is not supported in this browser — use desktop Chrome, Edge, or Firefox.';
+      if (btn) btn.disabled = true;
       return;
     }
-    try {
-      const details = await window.getScreenDetails();
-      const count = details.screens ? details.screens.length : 1;
-      precheckState.display = count;
-      if (count > 1) {
-        setCheckIcon('pcIconDisplay', 'warn');
-        if (detail) detail.textContent = `${count} displays detected — some exams don't allow a second monitor.`;
-      } else {
-        setCheckIcon('pcIconDisplay', 'pass');
-        if (detail) detail.textContent = 'Single display';
+    setCheckIcon('pcIconDisplay', 'warn');
+    if (!btn) return;
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      if (detail) detail.textContent = 'Waiting for you to choose a screen…';
+      const res = await acquireScreenStream();
+      if (!res.ok) {
+        precheckState.screen = false;
+        setCheckIcon('pcIconDisplay', cfg.requireScreenShare ? 'fail' : 'warn');
+        if (detail) detail.textContent = res.message;
+        btn.disabled = false;
+        maybeEnablePrecheckContinue();
+        return;
       }
-    } catch (e) {
-      setCheckIcon('pcIconDisplay', 'warn');
-      if (detail) detail.textContent = 'Permission not granted — skipped.';
-    }
+      const s = screenStream.getVideoTracks()[0].getSettings();
+      const dims = s.width && s.height ? ` (${s.width}x${s.height})` : '';
+      // window.screen.isExtended (Chromium) reveals a multi-monitor setup
+      // without any permission prompt.
+      const multi = window.screen && window.screen.isExtended === true;
+      precheckState.display = multi ? 2 : 1;
+      precheckState.screen = true;
+      setCheckIcon('pcIconDisplay', multi ? 'warn' : 'pass');
+      if (detail) {
+        detail.textContent = multi
+          ? `Entire screen shared${dims} — a second display seems to be connected; some exams don't allow that.`
+          : `Entire screen shared${dims}`;
+      }
+      btn.textContent = 'Change shared screen';
+      btn.disabled = false;
+      maybeEnablePrecheckContinue();
+    });
   }
 
   async function runNetworkSpeedTest() {
@@ -757,6 +868,11 @@
 
   if (precheckContinue) {
     precheckContinue.addEventListener('click', () => {
+      // Fullscreen needs a user gesture; this click is the earliest one, so
+      // the rest of the setup (room scan, identity check) happens fullscreen
+      // and the student never has to enter it by hand. Start exam re-enters
+      // it if they leave in the meantime.
+      if (cfg.requireFullscreen && !document.fullscreenElement) enterFullscreen();
       if (micLevelRaf) cancelAnimationFrame(micLevelRaf);
       if (micAudioCtx) { try { micAudioCtx.close(); } catch (e) {} }
       const track = sharedStream && sharedStream.getVideoTracks()[0];
@@ -767,6 +883,8 @@
         speaker_confirmed: precheckState.speaker,
         network_mbps: precheckState.network,
         display_count: precheckState.display,
+        screen_shared: precheckState.screen,
+        screen_surface: precheckState.screenSurface,
       };
       reportEvent('precheck_completed', 'info', JSON.stringify(summary));
       precheckOverlay.style.display = 'none';
@@ -848,7 +966,7 @@
   }
 
   function maybeEnableVerify() {
-    if (sharedStream && faceapi.nets.tinyFaceDetector.isLoaded && faceapi.nets.faceRecognitionNet.isLoaded) {
+    if (sharedStream && typeof faceapi !== 'undefined' && faceapi.nets.tinyFaceDetector.isLoaded && faceapi.nets.faceRecognitionNet.isLoaded) {
       if (cfg.referenceDescriptor) {
         verifyIdentityBtn.disabled = false;
       } else {
@@ -905,14 +1023,37 @@
   });
 
   // ---------- exam lifecycle ----------
+  async function enterFullscreen() {
+    const el = document.documentElement;
+    try {
+      if (el.requestFullscreen) await el.requestFullscreen();
+      else if (el.webkitRequestFullscreen) await el.webkitRequestFullscreen();
+    } catch (e) { /* fall through to the check below */ }
+    return !!(document.fullscreenElement || document.webkitFullscreenElement);
+  }
+
   async function startExam() {
     if (!identityVerified) return;
 
-    try {
-      await document.documentElement.requestFullscreen();
+    // Fullscreen is entered here, straight from the "Start exam" click —
+    // browsers only allow requestFullscreen() inside a user gesture, so
+    // this must be the first thing that happens (before any await on
+    // something slow), and it's why the screen-share prompt was moved
+    // earlier, into the pre-check.
+    const gotFullscreen = await enterFullscreen();
+    if (gotFullscreen) {
       fsStatus.textContent = 'Entered';
-    } catch (e) {
+    } else if (cfg.requireFullscreen) {
+      fsStatus.textContent = 'Fullscreen is required — click “Start exam” again and allow fullscreen.';
+      return;
+    } else {
       fsStatus.textContent = 'Could not enter fullscreen — continuing anyway.';
+    }
+
+    if (cfg.requireScreenShare && !(screenStream && screenStream.active)) {
+      fsStatus.textContent = 'Screen sharing is not active — go back through the pre-check and share your entire screen.';
+      try { if (document.fullscreenElement) await document.exitFullscreen(); } catch (e) { /* noop */ }
+      return;
     }
 
     consentOverlay.style.display = 'none';
@@ -1195,8 +1336,14 @@
   // apart) before being logged as a violation, the same debounce margin
   // used for no_face, to cut down on single-frame false positives (glare,
   // a hand near the face, etc.)
-  const OBJECT_CHECK_INTERVAL_MS = 5000;
-  const OBJECT_CONFIDENCE_THRESHOLD = 0.6;
+  const OBJECT_CHECK_INTERVAL_MS = 3000;
+  // COCO-SSD "lite" gives phones noticeably lower confidence than larger
+  // objects — a phone held in a hand, tilted, or partly out of frame
+  // typically scores 0.3–0.5, so the old 0.6 bar almost never fired. Phones
+  // get a lower bar (and still need 2 consecutive checks), everything else
+  // keeps a stricter one to avoid false alarms.
+  const OBJECT_CONFIDENCE_THRESHOLD = 0.5;
+  const PHONE_CONFIDENCE_THRESHOLD = 0.3;
   const OBJECT_STREAK_REQUIRED = 2;
   // Any laptop in the camera frame is suspicious by construction — the
   // student's own exam device is a screen/keyboard they're typing into,
@@ -1212,7 +1359,8 @@
       if (!cocoModel) return; // still loading, or failed to load — skip silently
       try {
         const predictions = await cocoModel.detect(camPreview);
-        const relevant = predictions.filter((p) => p.score >= OBJECT_CONFIDENCE_THRESHOLD);
+        const relevant = predictions.filter((p) =>
+          p.score >= (p.class === 'cell phone' ? PHONE_CONFIDENCE_THRESHOLD : OBJECT_CONFIDENCE_THRESHOLD));
 
         const phoneSeen = relevant.some((p) => p.class === 'cell phone');
         const bookSeen = relevant.some((p) => p.class === 'book');
@@ -1270,6 +1418,22 @@
   const YAW_RATIO_THRESHOLD = 0.18;
   const PITCH_RATIO_THRESHOLD = 0.16;
   const HEAD_POSE_STREAK_REQUIRED = 3;
+  const LOOKING_AWAY_REPORT_COOLDOWN_MS = 60000;
+  // Personal baseline: nobody's head sits at exactly yaw 0 / pitch 0 while
+  // looking at their screen (webcam above/below/beside the monitor, seat
+  // position, glasses...). The first few samples of the exam — taken while
+  // the student is settling in and looking at the first question — set
+  // their "center", and everything after is measured against it instead of
+  // against an absolute zero that real setups never match.
+  const HEAD_BASELINE_SAMPLES = 3;
+  const headBaseline = { yaw: [], pitch: [], ready: false, yawC: 0, pitchC: 0 };
+  let lastLookingAwayReportAt = 0;
+
+  function median(arr) {
+    const a = [...arr].sort((x, y) => x - y);
+    const m = Math.floor(a.length / 2);
+    return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+  }
 
   function estimateYawRatio(landmarks) {
     const jaw = landmarks.getJawOutline();
@@ -1346,7 +1510,7 @@
       const directions = [...new Set(headDirectionHistory.map((h) => h.direction))];
       reportEvent(
         'repeated_head_movement',
-        'violation',
+        'warning',
         `${headDirectionHistory.length} separate head-turn excursions (${directions.join('/')}) within the last minute`
       );
       lastRepeatedMovementReportAt = now;
@@ -1363,8 +1527,20 @@
           .detectSingleFace(camPreview, new faceapi.TinyFaceDetectorOptions())
           .withFaceLandmarks(true);
         if (!result) { lookingAwayStreak = 0; return; } // no_face is already handled separately
-        const yawRatio = estimateYawRatio(result.landmarks);
-        const pitchRatio = estimatePitchRatio(result.landmarks);
+        const rawYaw = estimateYawRatio(result.landmarks);
+        const rawPitch = estimatePitchRatio(result.landmarks);
+        if (!headBaseline.ready) {
+          headBaseline.yaw.push(rawYaw);
+          headBaseline.pitch.push(rawPitch);
+          if (headBaseline.yaw.length >= HEAD_BASELINE_SAMPLES) {
+            headBaseline.yawC = median(headBaseline.yaw);
+            headBaseline.pitchC = median(headBaseline.pitch);
+            headBaseline.ready = true;
+          }
+          return; // still calibrating — never flag during the first few samples
+        }
+        const yawRatio = rawYaw - headBaseline.yawC;
+        const pitchRatio = rawPitch - headBaseline.pitchC;
 
         recordHeadDirectionSample(classifyHeadDirection(yawRatio, pitchRatio));
 
@@ -1372,10 +1548,15 @@
         if (Math.abs(yawRatio) >= YAW_RATIO_THRESHOLD || Math.abs(pitchRatio) >= PITCH_RATIO_THRESHOLD) {
           lookingAwayStreak += 1;
           if (lookingAwayStreak >= HEAD_POSE_STREAK_REQUIRED) {
-            reportEvent(
-              'looking_away', 'violation',
-              `Sustained head turn away from screen (yaw ${yawRatio.toFixed(2)}, pitch ${pitchRatio.toFixed(2)})`
-            );
+            // Cooldown: one sustained turn is one incident, not a new
+            // violation every 15 seconds for as long as it lasts.
+            if (Date.now() - lastLookingAwayReportAt >= LOOKING_AWAY_REPORT_COOLDOWN_MS) {
+              reportEvent(
+                'looking_away', 'violation',
+                `Sustained head turn away from screen (yaw ${yawRatio.toFixed(2)}, pitch ${pitchRatio.toFixed(2)})`
+              );
+              lastLookingAwayReportAt = Date.now();
+            }
             lookingAwayStreak = 0;
           }
         } else {
@@ -1401,8 +1582,24 @@
   // tracking, but it's a genuine, honest eye-position signal rather than
   // a head-pose proxy relabeled as "gaze."
   const GAZE_CHECK_INTERVAL_MS = 1000;
-  const GAZE_OFFSET_THRESHOLD = 0.22; // fraction of eye width/height counted as "off-center"
-  const GAZE_AWAY_STREAK_REQUIRED = 4; // ~4 consecutive seconds off-center before flagging
+  // The dark-pixel iris estimate is noisy (eyelashes, eyebrows, glasses,
+  // webcam noise on a ~30px-wide eye crop), and its vertical component moves
+  // whenever someone simply reads down the screen — so:
+  //  - it's measured against the student's OWN baseline (their first
+  //    samples while looking at the screen), not an absolute center,
+  //  - only horizontal drift counts (vertical is too unreliable),
+  //  - it must persist ~8 seconds, and
+  //  - after a report there's a 60s cooldown, so one long glance can't
+  //    stack up five "violations" in twenty seconds.
+  // It is reported as a *warning* (visible to reviewers, adds to the
+  // suspicion score) and never ends an attempt on its own; an admin can
+  // still escalate it per-test in the proctoring policy.
+  const GAZE_OFFSET_THRESHOLD = 0.30; // fraction of eye width, relative to baseline
+  const GAZE_AWAY_STREAK_REQUIRED = 8; // consecutive seconds off-center before flagging
+  const GAZE_REPORT_COOLDOWN_MS = 60000;
+  const GAZE_BASELINE_SAMPLES = 8;
+  const gazeBaseline = { dx: [], ready: false, dxC: 0 };
+  let lastGazeReportAt = 0;
   let gazeAwayStreak = 0;
   let gazeCanvas = null;
   let gazeCtx = null;
@@ -1486,17 +1683,28 @@
         const samples = [leftOffset, rightOffset].filter(Boolean);
         if (!samples.length) { gazeAwayStreak = 0; return; }
 
-        const avgDx = samples.reduce((s, o) => s + o.dx, 0) / samples.length;
-        const avgDy = samples.reduce((s, o) => s + o.dy, 0) / samples.length;
+        const rawDx = samples.reduce((s, o) => s + o.dx, 0) / samples.length;
+        if (!gazeBaseline.ready) {
+          gazeBaseline.dx.push(rawDx);
+          if (gazeBaseline.dx.length >= GAZE_BASELINE_SAMPLES) {
+            gazeBaseline.dxC = median(gazeBaseline.dx);
+            gazeBaseline.ready = true;
+          }
+          return; // calibrating — never flag during the first few seconds
+        }
+        const avgDx = rawDx - gazeBaseline.dxC;
 
-        if (Math.abs(avgDx) >= GAZE_OFFSET_THRESHOLD || Math.abs(avgDy) >= GAZE_OFFSET_THRESHOLD) {
+        if (Math.abs(avgDx) >= GAZE_OFFSET_THRESHOLD) {
           gazeAwayStreak += 1;
           if (gazeAwayStreak >= GAZE_AWAY_STREAK_REQUIRED) {
             const seconds = Math.round((gazeAwayStreak * GAZE_CHECK_INTERVAL_MS) / 1000);
-            reportEvent(
-              'gaze_away', 'violation',
-              `Eyes drifted off-screen for ~${seconds}s (offset dx=${avgDx.toFixed(2)}, dy=${avgDy.toFixed(2)})`
-            );
+            if (Date.now() - lastGazeReportAt >= GAZE_REPORT_COOLDOWN_MS) {
+              reportEvent(
+                'gaze_away', 'warning',
+                `Eyes drifted off-screen for ~${seconds}s (horizontal offset ${avgDx.toFixed(2)} from baseline)`
+              );
+              lastGazeReportAt = Date.now();
+            }
             gazeAwayStreak = 0;
           }
         } else {
@@ -1742,31 +1950,26 @@
   // permission prompt (which some lab/kiosk machines lock down entirely)
   // could block a student from an otherwise-legitimate attempt.
   async function startScreenRecording() {
-    if (typeof MediaRecorder === 'undefined' || !navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
-      console.warn('Screen capture not supported in this browser — replay will only have the webcam track.');
+    if (typeof MediaRecorder === 'undefined') {
+      console.warn('MediaRecorder not supported — replay will only have the webcam track.');
       return;
     }
-    try {
-      screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 5 }, audio: false });
-    } catch (e) {
-      console.warn('Screen recording declined or unavailable — continuing with webcam recording only.', e);
-      return;
+    // Normally the entire screen was already shared during the pre-check
+    // (see acquireScreenStream). Only if screen sharing isn't required on
+    // this deployment and the student skipped it do we still try to ask
+    // here — a decline is then non-fatal, exactly as before.
+    if (!(screenStream && screenStream.active)) {
+      if (cfg.requireScreenShare) return; // startExam() already refused to begin without it
+      const res = await acquireScreenStream();
+      if (!res.ok) {
+        console.warn('Screen recording declined or unavailable — continuing with webcam recording only.', res.message);
+        return;
+      }
     }
+    beginScreenRecorder();
+  }
 
-    // If the student stops sharing mid-exam (browser-native "Stop
-    // sharing" control), just end that track cleanly rather than trying
-    // to re-prompt mid-exam — a re-prompt would itself be a distracting
-    // interruption, and the webcam recording keeps covering the rest of
-    // the attempt regardless.
-    const [track] = screenStream.getVideoTracks();
-    if (track) {
-      track.addEventListener('ended', () => {
-        if (screenMediaRecorder && screenMediaRecorder.state !== 'inactive') {
-          try { screenMediaRecorder.stop(); } catch (e) { /* noop */ }
-        }
-      });
-    }
-
+  function beginScreenRecorder() {
     const mimeCandidates = ['video/webm;codecs=vp8', 'video/webm'];
     const mimeType = mimeCandidates.find(m => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(m)) || '';
 
@@ -1784,6 +1987,27 @@
       }
     };
     screenMediaRecorder.start(30000);
+  }
+
+  // Mid-exam: student stopped sharing → overlay → this re-share button.
+  const screenShareLostBtn = document.getElementById('screenShareLostBtn');
+  if (screenShareLostBtn) {
+    screenShareLostBtn.addEventListener('click', async () => {
+      const msg = document.getElementById('screenShareLostMsg');
+      screenShareLostBtn.disabled = true;
+      if (msg) msg.textContent = '';
+      const res = await acquireScreenStream();
+      screenShareLostBtn.disabled = false;
+      if (!res.ok) {
+        if (msg) msg.textContent = res.message;
+        return;
+      }
+      beginScreenRecorder();
+      document.getElementById('screenShareLostOverlay').style.display = 'none';
+      reportEvent('screen_share_resumed', 'info', 'Student resumed sharing their screen');
+      // Sharing may have dropped us out of fullscreen — bring it back.
+      if (cfg.requireFullscreen && !document.fullscreenElement) enterFullscreen();
+    });
   }
 
   // IP Allowlisting / Geofencing (see app.access_control.check_geofence):
@@ -1958,10 +2182,29 @@
     }
   });
 
+  const fullscreenLostOverlay = document.getElementById('fullscreenLostOverlay');
+  const fullscreenLostBtn = document.getElementById('fullscreenLostBtn');
+  if (fullscreenLostBtn) {
+    fullscreenLostBtn.addEventListener('click', async () => {
+      if (await enterFullscreen() && fullscreenLostOverlay) fullscreenLostOverlay.style.display = 'none';
+    });
+  }
+
   document.addEventListener('fullscreenchange', () => {
-    if (examActive && !examEnded && !document.fullscreenElement) {
+    if (!examActive) {
+      fsStatus.textContent = document.fullscreenElement ? 'Entered' : 'Not entered';
+      return;
+    }
+    if (examEnded) return;
+    if (!document.fullscreenElement) {
       fsStatus.textContent = 'Exited';
       reportEvent('fullscreen_exit', 'violation', 'Student exited fullscreen mode');
+      // Re-entering needs a click (browser rule), so block the exam behind
+      // an overlay whose button does exactly that.
+      if (cfg.requireFullscreen && fullscreenLostOverlay) fullscreenLostOverlay.style.display = 'flex';
+    } else {
+      fsStatus.textContent = 'Entered';
+      if (fullscreenLostOverlay) fullscreenLostOverlay.style.display = 'none';
     }
   });
 
@@ -1991,6 +2234,9 @@
   // ---------- init ----------
   initCamera();
   initFaceModel();
-  initObjectModel();
+  // tf.js / coco-ssd are <script defer> CDN scripts, which only run once the
+  // document has finished parsing — after this file — so wait for them.
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initObjectModel);
+  else initObjectModel();
   startConnectionMonitoring();
 })();

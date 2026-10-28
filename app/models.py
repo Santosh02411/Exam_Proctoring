@@ -27,8 +27,20 @@ class Organization(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(150), unique=True, nullable=False)
     slug = db.Column(db.String(60), unique=True, nullable=False, index=True)
-    status = db.Column(db.String(20), nullable=False, default="active")  # active | inactive
+    # active | inactive | pending | rejected. "pending" = a self-service "request
+    # an organization" signup awaiting a super_admin's approval (see
+    # app.auth.request_organization / app.organizations.approve_organization);
+    # a pending/rejected org's users cannot log in.
+    status = db.Column(db.String(20), nullable=False, default="active")
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    # Who approved/rejected a requested organization, and when (NULL for orgs
+    # created directly by a super_admin or the seed CLI).
+    reviewed_at = db.Column(db.DateTime, nullable=True)
+    reviewed_by_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", use_alter=True, name="fk_organizations_reviewed_by_id_users"),
+        nullable=True,
+    )
 
     # Org-level branding/theming (see app.branding). Both optional — an
     # org with neither set just gets the platform's default look. The logo
@@ -72,7 +84,8 @@ class Organization(db.Model):
     # means "no IP restriction," same as before this feature existed.
     ip_allowlist = db.Column(db.Text, nullable=True)
 
-    users = db.relationship("User", backref="organization", lazy=True)
+    # foreign_keys is explicit because organizations.reviewed_by_id also points at users.
+    users = db.relationship("User", backref="organization", lazy=True, foreign_keys="User.org_id")
     tests = db.relationship("Test", backref="organization", lazy=True)
 
     def __repr__(self):
@@ -924,6 +937,29 @@ class IpRateLimit(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
 
 
+class EmailOtp(db.Model):
+    """A short-lived, single-use numeric code emailed to someone proving
+    they control an address — used for password reset and email
+    verification instead of a clickable link (see app.otp). Only an HMAC
+    of the code is stored, never the code itself. Each row dies on
+    expiry, after too many wrong guesses (attempts), or once consumed;
+    `redeemed` marks that the follow-up action a verified code unlocks
+    (setting the new password) has already been used, so a verified
+    reset session can't be replayed."""
+
+    __tablename__ = "email_otps"
+
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(150), nullable=False, index=True)
+    purpose = db.Column(db.String(30), nullable=False)  # password_reset | email_verify
+    code_hash = db.Column(db.String(64), nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    attempts = db.Column(db.Integer, nullable=False, default=0)
+    consumed_at = db.Column(db.DateTime, nullable=True)
+    redeemed = db.Column(db.Boolean, nullable=False, default=False)
+
+
 class AdminActivityLog(db.Model):
     """Audit trail of admin actions (who created/edited/deleted/published what
     and when), so multiple admins sharing the system can see a history of changes."""
@@ -1351,3 +1387,75 @@ class AttemptReview(db.Model):
     __table_args__ = (db.UniqueConstraint("attempt_id", name="uq_attempt_review_attempt"),)
 
     DECISIONS = ("cleared", "confirmed", "escalated")
+
+
+class StaffInvitation(db.Model):
+    """The ONLY way an admin, examiner or proctor account comes into
+    existence (besides the seed/super-admin CLI): an existing admin of the
+    organization (or a super_admin) invites a specific email address into a
+    specific role in a specific organization. The invitee follows the emailed
+    link, sets their name/phone/password, and gets exactly the role and org
+    recorded here — nothing about role or org is ever taken from a public
+    form. Only a SHA-256 hash of the link token is stored (a database leak
+    can't be replayed as live invitations); invitations expire, are single
+    use, and can be revoked."""
+
+    __tablename__ = "staff_invitations"
+
+    id = db.Column(db.Integer, primary_key=True)
+    org_id = db.Column(db.Integer, db.ForeignKey("organizations.id"), nullable=False, index=True)
+    email = db.Column(db.String(150), nullable=False, index=True)
+    role = db.Column(db.String(20), nullable=False)  # admin | examiner | proctor
+    token_hash = db.Column(db.String(64), nullable=False, unique=True, index=True)
+    invited_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    accepted_at = db.Column(db.DateTime, nullable=True)
+    accepted_user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    revoked_at = db.Column(db.DateTime, nullable=True)
+
+    organization = db.relationship("Organization", foreign_keys=[org_id])
+    invited_by = db.relationship("User", foreign_keys=[invited_by_id])
+
+    @property
+    def status(self):
+        if self.accepted_at:
+            return "accepted"
+        if self.revoked_at:
+            return "revoked"
+        if self.expires_at < datetime.utcnow():
+            return "expired"
+        return "pending"
+
+
+class JobLease(db.Model):
+    """A named, time-limited lock for a periodic background job (see
+    app.scheduler). A worker may run the job only after atomically flipping
+    this row's locked_until into the future with a single conditional UPDATE
+    — so with any number of Gunicorn workers/containers/scheduler processes,
+    exactly one wins each tick."""
+
+    __tablename__ = "job_leases"
+
+    name = db.Column(db.String(60), primary_key=True)
+    locked_by = db.Column(db.String(120), nullable=True)
+    locked_until = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    last_started_at = db.Column(db.DateTime, nullable=True)
+    last_finished_at = db.Column(db.DateTime, nullable=True)
+    last_status = db.Column(db.String(300), nullable=True)
+
+
+class NotificationClaim(db.Model):
+    """One row per (student, test, kind) notification that has been claimed
+    for sending. The UNIQUE constraint makes "send this reminder exactly once"
+    a database guarantee instead of a check-then-act race: inserting the claim
+    first means only one process can ever proceed to send it."""
+
+    __tablename__ = "notification_claims"
+    __table_args__ = (db.UniqueConstraint("user_id", "test_id", "kind", name="uq_notification_claim"),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    test_id = db.Column(db.Integer, db.ForeignKey("tests.id"), nullable=False, index=True)
+    kind = db.Column(db.String(40), nullable=False)
+    claimed_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)

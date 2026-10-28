@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% block title %}{{ test.title }} — Proctored Test{% endblock %}
 {% block head %}
-<script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+{# face-api is served locally and loaded synchronously: proctor.js calls faceapi.* the moment it runs, so a deferred/CDN copy was always undefined by then ("Face model: Failed to load"). #}
+<script src="{{ url_for('static', filename='vendor/face-api.min.js') }}"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
 {% endblock %}
@@ -51,13 +52,20 @@
         </div>
         <div class="check-row">
           <div class="check-icon pending" id="pcIconDisplay">•</div>
-          <div style="flex:1"><div class="check-label">Screen / display</div><div class="check-detail" id="pcDisplayDetail">Checking…</div></div>
+          <div style="flex:1">
+            <div class="check-label">Screen sharing</div>
+            <div class="check-detail screen-share-btn-row">
+              <button type="button" class="btn ghost small" id="pcShareScreen">Share my entire screen</button>
+              <span id="pcDisplayDetail" class="small muted">Required — in the popup, choose “Entire Screen”, then click Share.</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
     <div class="small muted" style="margin-top:14px" id="pcOverallHint">
-      Camera, microphone, and browser compatibility must pass to continue. Speaker and network results are shown
-      for your information — you can continue even if your connection looks slow.
+      Camera, microphone, browser compatibility{% if config.get('REQUIRE_SCREEN_SHARE', True) %} and <strong>entire-screen sharing</strong>{% endif %} must pass to continue.
+      Speaker and network results are shown for your information — you can continue even if your connection looks slow.
+      The exam then opens in fullscreen automatically when you start it.
     </div>
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">
       <a href="{{ url_for('student.dashboard') }}" class="btn ghost">Cancel</a>
@@ -95,10 +103,10 @@
     <p class="muted">
       This test is proctored. Your camera and microphone will be monitored throughout the exam —
       video and audio are analyzed locally in your browser, and the session is also recorded for
-      admin review. When you click "Start exam" your browser will also ask permission to record
-      your screen for the same review purpose (Complete Exam Replay) — if you decline or your
-      browser doesn't support it, the exam still proceeds on the camera/microphone recording and
-      every other check below exactly as normal. Your identity will be verified against your
+      admin review. Your entire screen, which you shared during the pre-check, is recorded for the same review
+      purpose (Complete Exam Replay).{% if not config.get('REQUIRE_SCREEN_SHARE', True) %} Screen sharing is optional for this
+      deployment — the exam still proceeds on the camera/microphone recording if it isn't available.{% else %} If screen sharing
+      stops during the exam, the exam is paused until you share your entire screen again.{% endif %} Your identity will be verified against your
       enrolled reference photo before you begin and periodically throughout. You must stay in
       fullscreen; leaving fullscreen, switching tabs, having no face / multiple faces visible,
       sustained looking-away from the screen, a phone/book/extra person detected in frame, or an
@@ -130,6 +138,7 @@
       <div style="flex:1">
         <div><strong>Camera / mic:</strong> <span id="camStatus">Not started</span></div>
         <div><strong>Face model:</strong> <span id="modelStatus">Loading…</span></div>
+        <div><strong>Phone / object detection:</strong> <span id="objStatus">Loading…</span></div>
         <div><strong>Identity check:</strong> <span id="identityStatus">Waiting…</span></div>
         <div><strong>Fullscreen:</strong> <span id="fsStatus">Not entered</span></div>
       </div>
@@ -143,6 +152,23 @@
 </div>
 
 <video id="camPreview" autoplay muted playsinline></video>
+
+<div id="screenShareLostOverlay" role="alertdialog" aria-modal="true">
+  <div id="screenShareLostBox">
+    <h3 style="margin-top:0">Screen sharing stopped</h3>
+    <p class="small">Your screen is no longer being shared. This has been logged. Share your <strong>entire screen</strong> again to continue the exam.</p>
+    <div id="screenShareLostMsg" class="small" style="color:var(--warning);min-height:18px;margin-bottom:10px"></div>
+    <button type="button" class="btn" id="screenShareLostBtn">Share entire screen</button>
+  </div>
+</div>
+
+<div id="fullscreenLostOverlay" role="alertdialog" aria-modal="true">
+  <div id="fullscreenLostBox">
+    <h3 style="margin-top:0">Fullscreen required</h3>
+    <p class="small">You left fullscreen mode. This has been logged. Return to fullscreen to continue the exam.</p>
+    <button type="button" class="btn" id="fullscreenLostBtn">Return to fullscreen</button>
+  </div>
+</div>
 
 <div id="spotCheckOverlay" role="dialog" aria-modal="true">
   <div id="spotCheckBox">
@@ -336,7 +362,10 @@
     reportIssueUrl: "{{ url_for('proctoring.report_issue') }}",
     modelsUrl: "{{ url_for('static', filename='models') }}",
     referenceDescriptor: {{ reference_descriptor | tojson }},
-    faceMatchThreshold: {{ config.FACE_MATCH_THRESHOLD }}
+    faceMatchThreshold: {{ config.FACE_MATCH_THRESHOLD }},
+    requireScreenShare: {{ config.get('REQUIRE_SCREEN_SHARE', True) | tojson }},
+    requireFullscreen: {{ config.get('REQUIRE_FULLSCREEN', True) | tojson }},
+    objectModelUrl: {{ config.get('OBJECT_MODEL_URL', '') | tojson }}
   };
 </script>
 <script src="{{ url_for('static', filename='js/liveness.js') }}"></script>

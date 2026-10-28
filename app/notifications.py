@@ -311,19 +311,55 @@ def send_starting_soon_reminders(window_minutes=None, org_id=None):
             ).first()
             if already_notified:
                 continue
+            # Claim BEFORE sending: a UNIQUE (user, test, kind) row means that of
+            # any number of processes racing here (several workers, the CLI, the
+            # admin button), exactly one gets to send. The check above is just a
+            # cheap fast path; this claim is the real guarantee.
+            if not _claim_notification(student.id, test.id, "exam_starting_soon"):
+                continue
 
             minutes_until = max(int((test.start_time - now).total_seconds() // 60), 0)
-            notify(student, "exam_starting_soon", {
-                "student_name": student.name, "test_title": test.title,
-                "start_date": test.start_time.strftime("%Y-%m-%d"),
-                "start_time": test.start_time.strftime("%H:%M UTC"),
-                "duration_minutes": test.duration_minutes,
-                "minutes_until": minutes_until,
-                "instructions": (test.instructions or "").strip() or None,
-                "dashboard_url": url_for("student.dashboard", _external=True),
-            }, test=test)
+            try:
+                notify(student, "exam_starting_soon", {
+                    "student_name": student.name, "test_title": test.title,
+                    "start_date": test.start_time.strftime("%Y-%m-%d"),
+                    "start_time": test.start_time.strftime("%H:%M UTC"),
+                    "duration_minutes": test.duration_minutes,
+                    "minutes_until": minutes_until,
+                    "instructions": (test.instructions or "").strip() or None,
+                    "dashboard_url": url_for("student.dashboard", _external=True),
+                }, test=test)
+            except Exception:
+                # Sending blew up before anything went out: give the claim back
+                # so the next sweep can retry instead of silently skipping this
+                # student forever.
+                _release_notification_claim(student.id, test.id, "exam_starting_soon")
+                raise
             sent += 1
     return sent
+
+
+def _claim_notification(user_id, test_id, kind):
+    """Atomically reserve the right to send (user, test, kind) exactly once.
+    Returns True only for the single caller whose INSERT succeeded; any
+    concurrent/later caller hits the UNIQUE constraint and gets False."""
+    from sqlalchemy.exc import IntegrityError
+    from app.models import NotificationClaim
+
+    db.session.add(NotificationClaim(user_id=user_id, test_id=test_id, kind=kind))
+    try:
+        db.session.commit()
+        return True
+    except IntegrityError:
+        db.session.rollback()
+        return False
+
+
+def _release_notification_claim(user_id, test_id, kind):
+    from app.models import NotificationClaim
+
+    NotificationClaim.query.filter_by(user_id=user_id, test_id=test_id, kind=kind).delete()
+    db.session.commit()
 
 
 def _pending_grading(attempt):
