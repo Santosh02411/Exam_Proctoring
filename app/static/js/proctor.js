@@ -502,6 +502,9 @@
 
   async function initFaceModel() {
     try {
+      if (typeof faceapi === 'undefined') {
+        throw new Error('face-api library did not load');
+      }
       await faceapi.nets.tinyFaceDetector.loadFromUri(cfg.modelsUrl);
       await faceapi.nets.faceLandmark68Net.loadFromUri(cfg.modelsUrl);
       await faceapi.nets.faceLandmark68TinyNet.loadFromUri(cfg.modelsUrl);
@@ -509,7 +512,7 @@
       modelStatus.textContent = 'Ready';
       maybeEnableVerify();
     } catch (e) {
-      modelStatus.textContent = 'Failed to load — proctoring model unavailable.';
+      modelStatus.textContent = 'Failed to load — proctoring model unavailable (' + ((e && e.message) || 'unknown error') + '). Refresh the page; if it persists, contact your administrator.';
       console.error(e);
     }
   }
@@ -853,6 +856,11 @@
 
   if (precheckContinue) {
     precheckContinue.addEventListener('click', () => {
+      // Fullscreen needs a user gesture; this click is the earliest one, so
+      // the rest of the setup (room scan, identity check) happens fullscreen
+      // and the student never has to enter it by hand. Start exam re-enters
+      // it if they leave in the meantime.
+      if (cfg.requireFullscreen && !document.fullscreenElement) enterFullscreen();
       if (micLevelRaf) cancelAnimationFrame(micLevelRaf);
       if (micAudioCtx) { try { micAudioCtx.close(); } catch (e) {} }
       const track = sharedStream && sharedStream.getVideoTracks()[0];
@@ -946,7 +954,7 @@
   }
 
   function maybeEnableVerify() {
-    if (sharedStream && faceapi.nets.tinyFaceDetector.isLoaded && faceapi.nets.faceRecognitionNet.isLoaded) {
+    if (sharedStream && typeof faceapi !== 'undefined' && faceapi.nets.tinyFaceDetector.isLoaded && faceapi.nets.faceRecognitionNet.isLoaded) {
       if (cfg.referenceDescriptor) {
         verifyIdentityBtn.disabled = false;
       } else {
@@ -2104,7 +2112,11 @@
   }
 
   document.addEventListener('fullscreenchange', () => {
-    if (!examActive || examEnded) return;
+    if (!examActive) {
+      fsStatus.textContent = document.fullscreenElement ? 'Entered' : 'Not entered';
+      return;
+    }
+    if (examEnded) return;
     if (!document.fullscreenElement) {
       fsStatus.textContent = 'Exited';
       reportEvent('fullscreen_exit', 'violation', 'Student exited fullscreen mode');
@@ -2143,6 +2155,9 @@
   // ---------- init ----------
   initCamera();
   initFaceModel();
-  initObjectModel();
+  // tf.js / coco-ssd are <script defer> CDN scripts, which only run once the
+  // document has finished parsing — after this file — so wait for them.
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initObjectModel);
+  else initObjectModel();
   startConnectionMonitoring();
 })();
