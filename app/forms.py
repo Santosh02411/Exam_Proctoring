@@ -285,15 +285,6 @@ class ForgotPasswordForm(FlaskForm):
     email = StringField("Email", validators=[DataRequired(), Email()])
 
 
-class OtpForm(FlaskForm):
-    """The 6-digit code emailed for password reset / email verification
-    (see app.otp)."""
-    code = StringField("6-digit code", validators=[
-        DataRequired(),
-        Regexp(r"^\s*\d{6}\s*$", message="Enter the 6-digit code from your email."),
-    ])
-
-
 class ResetPasswordForm(FlaskForm):
     password = PasswordField("New Password", validators=[
         DataRequired(),

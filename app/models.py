@@ -924,29 +924,6 @@ class IpRateLimit(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
 
 
-class EmailOtp(db.Model):
-    """A short-lived, single-use numeric code emailed to someone proving
-    they control an address — used for password reset and email
-    verification instead of a clickable link (see app.otp). Only an HMAC
-    of the code is stored, never the code itself. Each row dies on
-    expiry, after too many wrong guesses (attempts), or once consumed;
-    `redeemed` marks that the follow-up action a verified code unlocks
-    (setting the new password) has already been used, so a verified
-    reset session can't be replayed."""
-
-    __tablename__ = "email_otps"
-
-    id = db.Column(db.Integer, primary_key=True)
-    email = db.Column(db.String(150), nullable=False, index=True)
-    purpose = db.Column(db.String(30), nullable=False)  # password_reset | email_verify
-    code_hash = db.Column(db.String(64), nullable=False)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-    expires_at = db.Column(db.DateTime, nullable=False)
-    attempts = db.Column(db.Integer, nullable=False, default=0)
-    consumed_at = db.Column(db.DateTime, nullable=True)
-    redeemed = db.Column(db.Boolean, nullable=False, default=False)
-
-
 class AdminActivityLog(db.Model):
     """Audit trail of admin actions (who created/edited/deleted/published what
     and when), so multiple admins sharing the system can see a history of changes."""

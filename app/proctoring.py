@@ -77,10 +77,6 @@ VALID_EVENT_TYPES = {
     # underway and shouldn't count against a student the same way an
     # in-exam detection does).
     "precheck_completed", "environment_check_clear", "environment_check_flagged",
-    # Entire-screen sharing during the exam (see proctor.js): stopped = the
-    # student ended the share mid-exam (a violation — the exam is paused
-    # behind an overlay until they re-share); resumed = they re-shared.
-    "screen_share_stopped", "screen_share_resumed",
     # Proctoring Quality Score (see app.proctoring.compute_quality_score):
     # a periodic, lightweight technical sample (audio level, resolution) —
     # not a violation signal at all, purely evidence-quality bookkeeping.
@@ -135,7 +131,6 @@ EVENT_WEIGHTS = {
     "connection_lost": 6,
     "audio_violation": 5,
     "fullscreen_exit": 5,
-    "screen_share_stopped": 8,
     "window_blur": 4,
     "ip_out_of_range": 12,
     "location_out_of_range": 9,
@@ -158,7 +153,6 @@ SIGNAL_CATEGORIES = {
     "looking_away": "gaze", "gaze_away": "gaze", "repeated_head_movement": "gaze",
     "audio_violation": "audio",
     "tab_hidden": "window", "fullscreen_exit": "window", "window_blur": "window",
-    "screen_share_stopped": "window",
     "copy_paste_attempt": "window", "dev_tools": "window",
     "phone_detected": "object", "book_detected": "object", "laptop_detected": "object",
     "unauthorized_object_detected": "object", "extra_person_detected": "object",
@@ -212,8 +206,6 @@ EVENT_TYPE_LABELS = {
     "connection_lost": "the connection was lost",
     "audio_violation": "unusual audio or talking was detected",
     "fullscreen_exit": "fullscreen mode was exited",
-    "screen_share_stopped": "screen sharing was stopped during the exam",
-    "screen_share_resumed": "screen sharing was resumed after being stopped",
     "window_blur": "the browser window lost focus",
     "precheck_completed": "completed the pre-exam technical check",
     "environment_check_clear": "pre-exam room scan found nothing of concern",

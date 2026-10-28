@@ -242,17 +242,6 @@ def create_app(config_object="config.Config"):
     from app.branding import current_org_branding
 
     @app.context_processor
-    def _inject_impersonation_flag():
-        """True ONLY for a super_admin mid-support-view. Templates must use
-        this rather than testing the raw session key: that key can linger
-        in the browser's session after a super_admin logs out, and a plain
-        `session.get(...)` check then wrongly put a real examiner/admin who
-        logs in next in "read-only support view" (no Edit/Assign/etc.)."""
-        from app.utils import is_impersonating
-
-        return {"is_impersonating_org": is_impersonating()}
-
-    @app.context_processor
     def _inject_org_branding():
         return {"org_branding": current_org_branding()}
 

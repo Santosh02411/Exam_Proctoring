@@ -502,9 +502,6 @@
 
   async function initFaceModel() {
     try {
-      if (typeof faceapi === 'undefined') {
-        throw new Error('face-api library did not load');
-      }
       await faceapi.nets.tinyFaceDetector.loadFromUri(cfg.modelsUrl);
       await faceapi.nets.faceLandmark68Net.loadFromUri(cfg.modelsUrl);
       await faceapi.nets.faceLandmark68TinyNet.loadFromUri(cfg.modelsUrl);
@@ -512,7 +509,7 @@
       modelStatus.textContent = 'Ready';
       maybeEnableVerify();
     } catch (e) {
-      modelStatus.textContent = 'Failed to load — proctoring model unavailable (' + ((e && e.message) || 'unknown error') + '). Refresh the page; if it persists, contact your administrator.';
+      modelStatus.textContent = 'Failed to load — proctoring model unavailable.';
       console.error(e);
     }
   }
@@ -544,7 +541,7 @@
   // hardware — they're surfaced so the student can fix what they can
   // before starting, not as a hard gate.
   // =====================================================================
-  const precheckState = { camera: false, mic: false, browser: false, speaker: null, network: null, display: null, screen: false, screenSurface: null };
+  const precheckState = { camera: false, mic: false, browser: false, speaker: null, network: null, display: null };
   let micAnalyser = null;
   let micAudioCtx = null;
   let micLevelRaf = null;
@@ -559,8 +556,7 @@
 
   function maybeEnablePrecheckContinue() {
     if (!precheckContinue) return;
-    precheckContinue.disabled = !(precheckState.camera && precheckState.mic && precheckState.browser &&
-      (!cfg.requireScreenShare || precheckState.screen));
+    precheckContinue.disabled = !(precheckState.camera && precheckState.mic && precheckState.browser);
   }
 
   function precheckOnCameraFailed() {
@@ -649,7 +645,6 @@
     const required = {
       'Camera/mic access': !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia),
       'Screen recording': typeof MediaRecorder !== 'undefined',
-      ...(cfg.requireScreenShare ? { 'Screen sharing (use a desktop browser)': !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) } : {}),
       'Fullscreen mode': !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen),
     };
     const missing = Object.keys(required).filter((k) => !required[k]);
@@ -666,129 +661,35 @@
     maybeEnablePrecheckContinue();
   }
 
-  // ---------------------------------------------------------------------
-  // Entire-screen sharing. The old "Screen / display" row used the Window
-  // Management API (getScreenDetails), which only counts monitors, needs
-  // its own obscure permission prompt, and never actually asked the student
-  // to share anything — so it just showed "Permission not granted —
-  // skipped". This asks for real screen capture (getDisplayMedia) from a
-  // button click (browsers require a user gesture), insists on the ENTIRE
-  // screen rather than a tab/window, and keeps the stream so the exam
-  // recording reuses it instead of prompting a second time.
-  // ---------------------------------------------------------------------
-  const SURFACE_LABELS = { monitor: 'entire screen', window: 'a window', browser: 'a browser tab' };
-
-  // Prompts the student to share. Resolves { ok: true } with the stream
-  // already adopted as `screenStream`, or { ok: false, message }.
-  async function acquireScreenStream() {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
-      return { ok: false, message: 'Screen sharing is not supported in this browser — use desktop Chrome, Edge, or Firefox.' };
-    }
-    let stream;
-    try {
-      stream = await navigator.mediaDevices.getDisplayMedia({
-        video: { displaySurface: 'monitor', frameRate: 5 },
-        audio: false,
-        // Chromium hints: pre-select "Entire screen", hide the exam tab
-        // itself as a choice, and don't let the student swap surfaces
-        // later. Browsers that don't know these just ignore them.
-        monitorTypeSurfaces: 'include',
-        selfBrowserSurface: 'exclude',
-        surfaceSwitching: 'exclude',
-        preferCurrentTab: false,
-      });
-    } catch (e) {
-      const denied = e && (e.name === 'NotAllowedError' || e.name === 'AbortError');
-      return {
-        ok: false,
-        message: denied
-          ? 'Screen sharing was cancelled or blocked — click the button and choose “Entire Screen”, then Share.'
-          : 'Could not start screen sharing: ' + ((e && e.message) || 'unknown error'),
-      };
-    }
-    const track = stream.getVideoTracks()[0];
-    const surface = track && track.getSettings ? track.getSettings().displaySurface : undefined;
-    // Chromium/Firefox report which kind of surface was picked. If it was
-    // reported and isn't the whole monitor, reject it. (Where the browser
-    // doesn't report it, there's nothing to check, so accept.)
-    if (surface && surface !== 'monitor') {
-      stream.getTracks().forEach((t) => t.stop());
-      return {
-        ok: false,
-        message: `You shared ${SURFACE_LABELS[surface] || surface} — please choose “Entire Screen”.`,
-      };
-    }
-    if (screenStream) {
-      screenStream.getTracks().forEach((t) => { t.onended = null; t.stop(); });
-    }
-    screenStream = stream;
-    precheckState.screenSurface = surface || 'unknown';
-    track.addEventListener('ended', onScreenShareEnded);
-    return { ok: true };
-  }
-
-  function onScreenShareEnded() {
-    if (screenMediaRecorder && screenMediaRecorder.state !== 'inactive') {
-      try { screenMediaRecorder.stop(); } catch (e) { /* noop */ }
-    }
-    if (examEnded) return;
-    if (examActive) {
-      // Mid-exam: pause behind a blocking overlay until they re-share.
-      reportEvent('screen_share_stopped', 'violation', 'Student stopped sharing their screen');
-      const ov = document.getElementById('screenShareLostOverlay');
-      if (ov) ov.style.display = 'flex';
-    } else {
-      // Still in the pre-check: just mark it not-shared so Continue locks.
-      precheckState.screen = false;
-      setCheckIcon('pcIconDisplay', cfg.requireScreenShare ? 'fail' : 'warn');
-      const detail = document.getElementById('pcDisplayDetail');
-      if (detail) detail.textContent = 'Screen sharing stopped — click the button to share again.';
-      const btn = document.getElementById('pcShareScreen');
-      if (btn) { btn.disabled = false; btn.textContent = 'Share my entire screen'; }
-      maybeEnablePrecheckContinue();
-    }
-  }
-
-  function runDisplayCheck() {
+  async function runDisplayCheck() {
     const detail = document.getElementById('pcDisplayDetail');
-    const btn = document.getElementById('pcShareScreen');
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
-      setCheckIcon('pcIconDisplay', cfg.requireScreenShare ? 'fail' : 'warn');
-      if (detail) detail.textContent = 'Screen sharing is not supported in this browser — use desktop Chrome, Edge, or Firefox.';
-      if (btn) btn.disabled = true;
+    // The Window Management API (getScreenDetails) is the only way to see
+    // connected-display *count* from the browser, and it's Chromium-only,
+    // requires its own permission prompt, and is frequently unavailable —
+    // this is intentionally treated as informational-only (never blocks
+    // continuing) since most students on a supported single-monitor setup
+    // will simply see "not available in this browser", not a failure.
+    if (typeof window.getScreenDetails !== 'function') {
+      setCheckIcon('pcIconDisplay', 'warn');
+      if (detail) detail.textContent = 'Multi-monitor detection not supported in this browser — skipped.';
+      precheckState.display = null;
       return;
     }
-    setCheckIcon('pcIconDisplay', 'warn');
-    if (!btn) return;
-    btn.addEventListener('click', async () => {
-      btn.disabled = true;
-      if (detail) detail.textContent = 'Waiting for you to choose a screen…';
-      const res = await acquireScreenStream();
-      if (!res.ok) {
-        precheckState.screen = false;
-        setCheckIcon('pcIconDisplay', cfg.requireScreenShare ? 'fail' : 'warn');
-        if (detail) detail.textContent = res.message;
-        btn.disabled = false;
-        maybeEnablePrecheckContinue();
-        return;
+    try {
+      const details = await window.getScreenDetails();
+      const count = details.screens ? details.screens.length : 1;
+      precheckState.display = count;
+      if (count > 1) {
+        setCheckIcon('pcIconDisplay', 'warn');
+        if (detail) detail.textContent = `${count} displays detected — some exams don't allow a second monitor.`;
+      } else {
+        setCheckIcon('pcIconDisplay', 'pass');
+        if (detail) detail.textContent = 'Single display';
       }
-      const s = screenStream.getVideoTracks()[0].getSettings();
-      const dims = s.width && s.height ? ` (${s.width}x${s.height})` : '';
-      // window.screen.isExtended (Chromium) reveals a multi-monitor setup
-      // without any permission prompt.
-      const multi = window.screen && window.screen.isExtended === true;
-      precheckState.display = multi ? 2 : 1;
-      precheckState.screen = true;
-      setCheckIcon('pcIconDisplay', multi ? 'warn' : 'pass');
-      if (detail) {
-        detail.textContent = multi
-          ? `Entire screen shared${dims} — a second display seems to be connected; some exams don't allow that.`
-          : `Entire screen shared${dims}`;
-      }
-      btn.textContent = 'Change shared screen';
-      btn.disabled = false;
-      maybeEnablePrecheckContinue();
-    });
+    } catch (e) {
+      setCheckIcon('pcIconDisplay', 'warn');
+      if (detail) detail.textContent = 'Permission not granted — skipped.';
+    }
   }
 
   async function runNetworkSpeedTest() {
@@ -856,11 +757,6 @@
 
   if (precheckContinue) {
     precheckContinue.addEventListener('click', () => {
-      // Fullscreen needs a user gesture; this click is the earliest one, so
-      // the rest of the setup (room scan, identity check) happens fullscreen
-      // and the student never has to enter it by hand. Start exam re-enters
-      // it if they leave in the meantime.
-      if (cfg.requireFullscreen && !document.fullscreenElement) enterFullscreen();
       if (micLevelRaf) cancelAnimationFrame(micLevelRaf);
       if (micAudioCtx) { try { micAudioCtx.close(); } catch (e) {} }
       const track = sharedStream && sharedStream.getVideoTracks()[0];
@@ -871,8 +767,6 @@
         speaker_confirmed: precheckState.speaker,
         network_mbps: precheckState.network,
         display_count: precheckState.display,
-        screen_shared: precheckState.screen,
-        screen_surface: precheckState.screenSurface,
       };
       reportEvent('precheck_completed', 'info', JSON.stringify(summary));
       precheckOverlay.style.display = 'none';
@@ -954,7 +848,7 @@
   }
 
   function maybeEnableVerify() {
-    if (sharedStream && typeof faceapi !== 'undefined' && faceapi.nets.tinyFaceDetector.isLoaded && faceapi.nets.faceRecognitionNet.isLoaded) {
+    if (sharedStream && faceapi.nets.tinyFaceDetector.isLoaded && faceapi.nets.faceRecognitionNet.isLoaded) {
       if (cfg.referenceDescriptor) {
         verifyIdentityBtn.disabled = false;
       } else {
@@ -1011,37 +905,14 @@
   });
 
   // ---------- exam lifecycle ----------
-  async function enterFullscreen() {
-    const el = document.documentElement;
-    try {
-      if (el.requestFullscreen) await el.requestFullscreen();
-      else if (el.webkitRequestFullscreen) await el.webkitRequestFullscreen();
-    } catch (e) { /* fall through to the check below */ }
-    return !!(document.fullscreenElement || document.webkitFullscreenElement);
-  }
-
   async function startExam() {
     if (!identityVerified) return;
 
-    // Fullscreen is entered here, straight from the "Start exam" click —
-    // browsers only allow requestFullscreen() inside a user gesture, so
-    // this must be the first thing that happens (before any await on
-    // something slow), and it's why the screen-share prompt was moved
-    // earlier, into the pre-check.
-    const gotFullscreen = await enterFullscreen();
-    if (gotFullscreen) {
+    try {
+      await document.documentElement.requestFullscreen();
       fsStatus.textContent = 'Entered';
-    } else if (cfg.requireFullscreen) {
-      fsStatus.textContent = 'Fullscreen is required — click “Start exam” again and allow fullscreen.';
-      return;
-    } else {
+    } catch (e) {
       fsStatus.textContent = 'Could not enter fullscreen — continuing anyway.';
-    }
-
-    if (cfg.requireScreenShare && !(screenStream && screenStream.active)) {
-      fsStatus.textContent = 'Screen sharing is not active — go back through the pre-check and share your entire screen.';
-      try { if (document.fullscreenElement) await document.exitFullscreen(); } catch (e) { /* noop */ }
-      return;
     }
 
     consentOverlay.style.display = 'none';
@@ -1871,26 +1742,31 @@
   // permission prompt (which some lab/kiosk machines lock down entirely)
   // could block a student from an otherwise-legitimate attempt.
   async function startScreenRecording() {
-    if (typeof MediaRecorder === 'undefined') {
-      console.warn('MediaRecorder not supported — replay will only have the webcam track.');
+    if (typeof MediaRecorder === 'undefined' || !navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+      console.warn('Screen capture not supported in this browser — replay will only have the webcam track.');
       return;
     }
-    // Normally the entire screen was already shared during the pre-check
-    // (see acquireScreenStream). Only if screen sharing isn't required on
-    // this deployment and the student skipped it do we still try to ask
-    // here — a decline is then non-fatal, exactly as before.
-    if (!(screenStream && screenStream.active)) {
-      if (cfg.requireScreenShare) return; // startExam() already refused to begin without it
-      const res = await acquireScreenStream();
-      if (!res.ok) {
-        console.warn('Screen recording declined or unavailable — continuing with webcam recording only.', res.message);
-        return;
-      }
+    try {
+      screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 5 }, audio: false });
+    } catch (e) {
+      console.warn('Screen recording declined or unavailable — continuing with webcam recording only.', e);
+      return;
     }
-    beginScreenRecorder();
-  }
 
-  function beginScreenRecorder() {
+    // If the student stops sharing mid-exam (browser-native "Stop
+    // sharing" control), just end that track cleanly rather than trying
+    // to re-prompt mid-exam — a re-prompt would itself be a distracting
+    // interruption, and the webcam recording keeps covering the rest of
+    // the attempt regardless.
+    const [track] = screenStream.getVideoTracks();
+    if (track) {
+      track.addEventListener('ended', () => {
+        if (screenMediaRecorder && screenMediaRecorder.state !== 'inactive') {
+          try { screenMediaRecorder.stop(); } catch (e) { /* noop */ }
+        }
+      });
+    }
+
     const mimeCandidates = ['video/webm;codecs=vp8', 'video/webm'];
     const mimeType = mimeCandidates.find(m => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(m)) || '';
 
@@ -1908,27 +1784,6 @@
       }
     };
     screenMediaRecorder.start(30000);
-  }
-
-  // Mid-exam: student stopped sharing → overlay → this re-share button.
-  const screenShareLostBtn = document.getElementById('screenShareLostBtn');
-  if (screenShareLostBtn) {
-    screenShareLostBtn.addEventListener('click', async () => {
-      const msg = document.getElementById('screenShareLostMsg');
-      screenShareLostBtn.disabled = true;
-      if (msg) msg.textContent = '';
-      const res = await acquireScreenStream();
-      screenShareLostBtn.disabled = false;
-      if (!res.ok) {
-        if (msg) msg.textContent = res.message;
-        return;
-      }
-      beginScreenRecorder();
-      document.getElementById('screenShareLostOverlay').style.display = 'none';
-      reportEvent('screen_share_resumed', 'info', 'Student resumed sharing their screen');
-      // Sharing may have dropped us out of fullscreen — bring it back.
-      if (cfg.requireFullscreen && !document.fullscreenElement) enterFullscreen();
-    });
   }
 
   // IP Allowlisting / Geofencing (see app.access_control.check_geofence):
@@ -2103,29 +1958,10 @@
     }
   });
 
-  const fullscreenLostOverlay = document.getElementById('fullscreenLostOverlay');
-  const fullscreenLostBtn = document.getElementById('fullscreenLostBtn');
-  if (fullscreenLostBtn) {
-    fullscreenLostBtn.addEventListener('click', async () => {
-      if (await enterFullscreen() && fullscreenLostOverlay) fullscreenLostOverlay.style.display = 'none';
-    });
-  }
-
   document.addEventListener('fullscreenchange', () => {
-    if (!examActive) {
-      fsStatus.textContent = document.fullscreenElement ? 'Entered' : 'Not entered';
-      return;
-    }
-    if (examEnded) return;
-    if (!document.fullscreenElement) {
+    if (examActive && !examEnded && !document.fullscreenElement) {
       fsStatus.textContent = 'Exited';
       reportEvent('fullscreen_exit', 'violation', 'Student exited fullscreen mode');
-      // Re-entering needs a click (browser rule), so block the exam behind
-      // an overlay whose button does exactly that.
-      if (cfg.requireFullscreen && fullscreenLostOverlay) fullscreenLostOverlay.style.display = 'flex';
-    } else {
-      fsStatus.textContent = 'Entered';
-      if (fullscreenLostOverlay) fullscreenLostOverlay.style.display = 'none';
     }
   });
 
@@ -2155,9 +1991,6 @@
   // ---------- init ----------
   initCamera();
   initFaceModel();
-  // tf.js / coco-ssd are <script defer> CDN scripts, which only run once the
-  // document has finished parsing — after this file — so wait for them.
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initObjectModel);
-  else initObjectModel();
+  initObjectModel();
   startConnectionMonitoring();
 })();

@@ -5,21 +5,18 @@ from flask import Blueprint, render_template, redirect, url_for, flash, request,
 from flask_login import login_user, logout_user, login_required, current_user
 
 from app import db
-from app.forms import RegisterForm, LoginForm, ForgotPasswordForm, ResetPasswordForm, TwoFactorLoginForm, OtpForm
+from app.forms import RegisterForm, LoginForm, ForgotPasswordForm, ResetPasswordForm, TwoFactorLoginForm
 from app.models import User, Organization, gen_user_id
-from app.email_utils import send_email
+from app.email_utils import generate_token, verify_token, send_email
 from app.captcha import generate_captcha, verify_captcha
 from app.utils import is_rate_limited
 from app import security
 from app import twofa
-from app import otp
 
 bp = Blueprint("auth", __name__)
 
-# Session keys for the two OTP flows (see app.otp).
-PENDING_VERIFY_EMAIL_KEY = "pending_verify_email"
-PENDING_RESET_EMAIL_KEY = "pw_reset_email"
-RESET_OTP_ID_KEY = "pw_reset_otp_id"
+EMAIL_VERIFY_SALT = "email-verify"
+PASSWORD_RESET_SALT = "password-reset"
 
 MAX_FAILED_ATTEMPTS = 5
 LOCKOUT_MINUTES = 15
@@ -85,26 +82,25 @@ def _org_choices():
 
 
 def _send_verification_email(user):
-    """Email a fresh 6-digit verification code. Returns (code, mode) —
-    mode is "logged" when no SMTP is configured (dev fallback)."""
-    code = otp.issue_otp(user.email, otp.PURPOSE_VERIFY)
+    token = generate_token(user.email, EMAIL_VERIFY_SALT)
+    link = url_for("auth.verify_email", token=token, _external=True)
     mode = send_email(
         user.email,
-        "Your Exam Proctoring verification code",
-        otp.otp_email_body(user.name, otp.PURPOSE_VERIFY, code),
+        "Verify your Exam Proctoring account",
+        f"Hi {user.name},\n\nPlease verify your email by visiting:\n{link}\n\nThis link expires in 24 hours.",
     )
-    return code, mode
+    return link, mode
 
 
 def _send_reset_email(user):
-    """Email a fresh 6-digit password-reset code. Returns (code, mode)."""
-    code = otp.issue_otp(user.email, otp.PURPOSE_RESET)
+    token = generate_token(user.email, PASSWORD_RESET_SALT)
+    link = url_for("auth.reset_password", token=token, _external=True)
     mode = send_email(
         user.email,
-        "Your Exam Proctoring password reset code",
-        otp.otp_email_body(user.name, otp.PURPOSE_RESET, code),
+        "Reset your Exam Proctoring password",
+        f"Hi {user.name},\n\nReset your password by visiting:\n{link}\n\nThis link expires in 1 hour.",
     )
-    return code, mode
+    return link, mode
 
 
 @bp.route("/register", methods=["GET", "POST"])
@@ -151,50 +147,32 @@ def register():
             db.session.add(user)
             db.session.commit()
 
-            code, mode = _send_verification_email(user)
-            session[PENDING_VERIFY_EMAIL_KEY] = user.email
-            flash(
-                f"Registration successful as {form.role.data} under {org.name}! "
-                "We emailed you a 6-digit code — enter it below to verify your email.",
-                "success",
-            )
+            link, mode = _send_verification_email(user)
+            flash(f"Registration successful as {form.role.data} under {org.name}! Please verify your email to log in.", "success")
             if mode == "logged":
-                flash(f"(Dev mode — no SMTP configured) Verification code: {code}", "info")
-            return redirect(url_for("auth.verify_email"))
+                flash(f"(Dev mode — no SMTP configured) Verification link: {link}", "info")
+            return redirect(url_for("auth.login"))
     return render_template("auth/register.html", form=form)
 
 
-@bp.route("/verify-email", methods=["GET", "POST"])
-def verify_email():
-    """Enter the 6-digit code emailed at registration (or via "Send
-    verification code" on the login page) to verify the account's email."""
-    email = session.get(PENDING_VERIFY_EMAIL_KEY) or request.form.get("email", "").lower().strip()
+@bp.route("/verify-email/<token>")
+def verify_email(token):
+    email = verify_token(token, EMAIL_VERIFY_SALT, max_age_seconds=86400)
     if not email:
-        flash("Enter your email on the login page to get a verification code.", "info")
+        flash("That verification link is invalid or has expired.", "error")
         return redirect(url_for("auth.login"))
 
-    form = OtpForm()
-    if form.validate_on_submit():
-        result, _row = otp.verify_otp(email, otp.PURPOSE_VERIFY, form.code.data)
-        if result == otp.OK:
-            user = User.query.filter_by(email=email).first()
-            session.pop(PENDING_VERIFY_EMAIL_KEY, None)
-            if not user:
-                flash("Account not found.", "error")
-                return redirect(url_for("auth.login"))
-            if not user.email_verified:
-                user.email_verified = True
-                db.session.commit()
-            flash("Email verified! You can now log in.", "success")
-            return redirect(url_for("auth.login"))
-        flash(otp.failure_message(result), "error")
-    return render_template("auth/verify_email_otp.html", form=form, email=email)
+    user = User.query.filter_by(email=email).first()
+    if not user:
+        flash("Account not found.", "error")
+        return redirect(url_for("auth.login"))
 
-
-@bp.route("/verify-email/<token>")
-def verify_email_legacy(token):
-    """Old emailed verification links — verification is by 6-digit code now."""
-    flash("Email verification now uses a 6-digit code. Log in or register to get a new one.", "info")
+    if user.email_verified:
+        flash("Your email is already verified — you can log in.", "info")
+    else:
+        user.email_verified = True
+        db.session.commit()
+        flash("Email verified! You can now log in.", "success")
     return redirect(url_for("auth.login"))
 
 
@@ -211,18 +189,13 @@ def resend_verification():
     email = request.form.get("email", "").lower().strip()
     user = User.query.filter_by(email=email).first()
     if user and not user.email_verified:
-        wait = otp.seconds_until_resend(user.email, otp.PURPOSE_VERIFY)
-        session[PENDING_VERIFY_EMAIL_KEY] = user.email
-        if wait:
-            flash(f"A code was just sent. You can request another in {wait} second(s).", "info")
-        else:
-            code, mode = _send_verification_email(user)
-            flash("Verification code sent to your email.", "success")
-            if mode == "logged":
-                flash(f"(Dev mode — no SMTP configured) Verification code: {code}", "info")
-        return redirect(url_for("auth.verify_email"))
-    # Don't reveal whether the account exists.
-    flash("If that account exists and is unverified, a new code has been sent.", "info")
+        link, mode = _send_verification_email(user)
+        flash("Verification email sent.", "success")
+        if mode == "logged":
+            flash(f"(Dev mode — no SMTP configured) Verification link: {link}", "info")
+    else:
+        # Don't reveal whether the account exists.
+        flash("If that account exists and is unverified, a new email has been sent.", "info")
     return redirect(url_for("auth.login"))
 
 
@@ -275,7 +248,6 @@ def login():
                 session[twofa.PENDING_2FA_SESSION_KEY] = user.id
                 session["pending_2fa_next"] = request.args.get("next")
                 return redirect(url_for("auth.login_verify_2fa"))
-            session.pop("impersonate_org_id", None)
             login_user(user)
             security.register_login(user)
             flash(f"Welcome back, {user.name}!", "success")
@@ -310,7 +282,6 @@ def login_verify_2fa():
         if ok:
             session.pop(twofa.PENDING_2FA_SESSION_KEY, None)
             next_url = session.pop("pending_2fa_next", None)
-            session.pop("impersonate_org_id", None)
             login_user(user)
             security.register_login(user)
             flash(f"Welcome back, {user.name}!", "success")
@@ -325,7 +296,6 @@ def login_verify_2fa():
 def logout():
     security.end_session(reason="logout")
     logout_user()
-    session.pop("impersonate_org_id", None)
     flash("You have been logged out.", "info")
     return redirect(url_for("auth.login"))
 
@@ -346,99 +316,37 @@ def forgot_password():
         return render_template("auth/forgot_password.html", form=form)
 
     if form.validate_on_submit():
-        email = form.email.data.lower().strip()
-        user = User.query.filter_by(email=email).first()
-        # Same response and same next page whether or not the account
-        # exists, so this can't be used to probe which emails are registered.
-        if user and not otp.seconds_until_resend(user.email, otp.PURPOSE_RESET):
-            code, mode = _send_reset_email(user)
+        user = User.query.filter_by(email=form.email.data.lower().strip()).first()
+        if user:
+            link, mode = _send_reset_email(user)
+            flash("If that email is registered, a reset link has been sent.", "success")
             if mode == "logged":
-                flash(f"(Dev mode — no SMTP configured) Reset code: {code}", "info")
-        session[PENDING_RESET_EMAIL_KEY] = email
-        session.pop(RESET_OTP_ID_KEY, None)
-        flash("If that email is registered, a 6-digit reset code has been sent.", "success")
-        return redirect(url_for("auth.reset_password"))
+                flash(f"(Dev mode — no SMTP configured) Reset link: {link}", "info")
+        else:
+            flash("If that email is registered, a reset link has been sent.", "success")
+        return redirect(url_for("auth.login"))
     return render_template("auth/forgot_password.html", form=form)
 
 
-@bp.route("/forgot-password/resend", methods=["POST"])
-def resend_reset_code():
-    if current_user.is_authenticated:
-        return redirect(url_for("index"))
-    email = session.get(PENDING_RESET_EMAIL_KEY)
-    if not email:
-        return redirect(url_for("auth.forgot_password"))
-    if is_rate_limited(
-        "forgot_password",
-        current_app.config["FORGOT_PASSWORD_MAX_PER_IP"],
-        current_app.config["FORGOT_PASSWORD_WINDOW_MINUTES"],
-    ):
-        flash("Too many requests from this network. Please try again later.", "error")
-        return redirect(url_for("auth.reset_password"))
-    user = User.query.filter_by(email=email).first()
-    if user:
-        wait = otp.seconds_until_resend(user.email, otp.PURPOSE_RESET)
-        if wait:
-            flash(f"A code was just sent. You can request another in {wait} second(s).", "info")
-            return redirect(url_for("auth.reset_password"))
-        code, mode = _send_reset_email(user)
-        if mode == "logged":
-            flash(f"(Dev mode — no SMTP configured) Reset code: {code}", "info")
-    session.pop(RESET_OTP_ID_KEY, None)
-    flash("If that email is registered, a new 6-digit code has been sent.", "success")
-    return redirect(url_for("auth.reset_password"))
-
-
-@bp.route("/reset-password", methods=["GET", "POST"])
-def reset_password():
-    """Two steps on one page: (1) enter the emailed 6-digit code; once it
-    checks out, (2) the same page shows the new-password form."""
+@bp.route("/reset-password/<token>", methods=["GET", "POST"])
+def reset_password(token):
     if current_user.is_authenticated:
         return redirect(url_for("index"))
 
-    email = session.get(PENDING_RESET_EMAIL_KEY)
+    email = verify_token(token, PASSWORD_RESET_SALT, max_age_seconds=3600)
     if not email:
-        flash("Enter your email to get a reset code.", "info")
+        flash("That reset link is invalid or has expired.", "error")
         return redirect(url_for("auth.forgot_password"))
 
-    verified_row = otp.is_redeemable(session.get(RESET_OTP_ID_KEY), email, otp.PURPOSE_RESET)
-
-    if verified_row is None:
-        # Step 1 — code entry.
-        form = OtpForm()
-        if form.validate_on_submit():
-            result, row = otp.verify_otp(email, otp.PURPOSE_RESET, form.code.data)
-            if result == otp.OK:
-                session[RESET_OTP_ID_KEY] = row.id
-                flash("Code verified — choose a new password.", "success")
-                return redirect(url_for("auth.reset_password"))
-            flash(otp.failure_message(result), "error")
-        return render_template("auth/reset_password.html", stage="otp", otp_form=form, email=email)
-
-    # Step 2 — code already verified; set the new password.
     user = User.query.filter_by(email=email).first()
     if not user:
-        session.pop(PENDING_RESET_EMAIL_KEY, None)
-        session.pop(RESET_OTP_ID_KEY, None)
         flash("Account not found.", "error")
         return redirect(url_for("auth.forgot_password"))
 
     form = ResetPasswordForm()
     if form.validate_on_submit():
         user.set_password(form.password.data)
-        user.failed_login_attempts = 0
-        user.locked_until = None
-        otp.redeem(verified_row)  # commits with the password change
         db.session.commit()
-        session.pop(PENDING_RESET_EMAIL_KEY, None)
-        session.pop(RESET_OTP_ID_KEY, None)
         flash("Password updated — you can now log in.", "success")
         return redirect(url_for("auth.login"))
-    return render_template("auth/reset_password.html", stage="password", form=form, email=email)
-
-
-@bp.route("/reset-password/<token>")
-def reset_password_legacy(token):
-    """Old emailed reset links — password reset is by 6-digit code now."""
-    flash("Password reset now uses a 6-digit code. Request a new one below.", "info")
-    return redirect(url_for("auth.forgot_password"))
+    return render_template("auth/reset_password.html", form=form)

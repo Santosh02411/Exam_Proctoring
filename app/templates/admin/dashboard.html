@@ -9,7 +9,7 @@
     <h1>{{ 'Examiner' if current_user.role == 'examiner' else 'Admin' }} Dashboard</h1>
     <div class="lead">Welcome back, {{ current_user.name }}.</div>
   </div>
-  {% if not is_impersonating_org %}
+  {% if not session.get('impersonate_org_id') %}
   <a class="btn" href="{{ url_for('admin.create_test') }}">{{ icon('plus', 16) }} New Test</a>
   {% endif %}
 </div>

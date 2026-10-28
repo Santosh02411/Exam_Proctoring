@@ -46,7 +46,7 @@
     {% if unverified_email %}
     <form method="post" action="{{ url_for('auth.resend_verification') }}" style="margin-top:12px;text-align:center">
       <input type="hidden" name="email" value="{{ unverified_email }}">
-      <button type="submit" class="btn ghost small">Send verification code</button>
+      <button type="submit" class="btn ghost small">Resend verification email</button>
     </form>
     {% endif %}
 
