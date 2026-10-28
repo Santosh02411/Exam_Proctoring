@@ -30,8 +30,48 @@ def _env_or(key, default):
     return val if val else default
 
 
+# Environment parsing problems are collected here (instead of crashing at
+# import time with a bare "invalid literal for int()" that doesn't say which
+# variable was wrong) and reported together, by name, when the app starts —
+# see app.config_validation.validate_config.
+ENV_ERRORS = []
+
+
+def _int_env(key, default):
+    raw = os.environ.get(key)
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        return int(raw.strip())
+    except ValueError:
+        ENV_ERRORS.append(f"{key} must be a whole number, got {raw!r}")
+        return default
+
+
+def _float_env(key, default):
+    raw = os.environ.get(key)
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        return float(raw.strip())
+    except ValueError:
+        ENV_ERRORS.append(f"{key} must be a number, got {raw!r}")
+        return default
+
+
 class Config:
-    SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-key-change-this-in-production")
+    # Deployment environment: "production" (the default — i.e. the SAFE one),
+    # "development", or "testing". Production refuses to start with a missing
+    # or placeholder SECRET_KEY etc. — see app.config_validation. Set
+    # APP_ENV=development in your local .env to relax those checks.
+    APP_ENV = (os.environ.get("APP_ENV") or "production").strip().lower()
+
+    # NO built-in default: a hard-coded fallback secret is a published secret
+    # (anyone who has read this repo can forge session cookies and
+    # invitation/OTP signatures for a deployment that forgot to set it).
+    # Missing in production => startup fails; missing in development => a
+    # random per-process key is generated (sessions reset on restart).
+    SECRET_KEY = (os.environ.get("SECRET_KEY") or "").strip() or None
 
     # The real, public URL this app is reached at — e.g.
     # https://exams.my-college.edu — used to build every link this app
@@ -68,16 +108,16 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     # Proctoring settings
-    MAX_VIOLATIONS_BEFORE_TERMINATION = int(os.environ.get("MAX_VIOLATIONS", 5))
+    MAX_VIOLATIONS_BEFORE_TERMINATION = _int_env("MAX_VIOLATIONS", 5)
     # Warning-based disqualification default (see Test.max_warnings): how
     # many total warnings a test allows, platform-wide, before the next one
     # disqualifies the student. A test can override this per-test.
-    MAX_WARNINGS_BEFORE_TERMINATION = int(os.environ.get("MAX_WARNINGS", 2))
+    MAX_WARNINGS_BEFORE_TERMINATION = _int_env("MAX_WARNINGS", 2)
     SNAPSHOT_UPLOAD_DIR = os.path.join(BASE_DIR, "instance", "snapshots")
     RECORDINGS_DIR = os.path.join(BASE_DIR, "instance", "recordings")
     # face-api.js euclideanDistance threshold below which two descriptors are
     # considered the same person. face-api.js's own docs suggest ~0.6.
-    FACE_MATCH_THRESHOLD = float(os.environ.get("FACE_MATCH_THRESHOLD", 0.6))
+    FACE_MATCH_THRESHOLD = _float_env("FACE_MATCH_THRESHOLD", 0.6)
 
     # Enhanced identity verification: government/college ID upload + OCR +
     # ID-photo-to-live-face matching (see app.proctoring's id-document
@@ -87,22 +127,26 @@ class Config:
     ID_DOCUMENT_ALLOWED_EXTS = {"png", "jpg", "jpeg", "webp"}
     # Random interval bounds (seconds) between in-exam identity spot checks —
     # randomized per attempt so the timing can't be anticipated/gamed.
-    IDENTITY_SPOTCHECK_MIN_SECONDS = int(os.environ.get("IDENTITY_SPOTCHECK_MIN_SECONDS", 180))
-    IDENTITY_SPOTCHECK_MAX_SECONDS = int(os.environ.get("IDENTITY_SPOTCHECK_MAX_SECONDS", 420))
+    IDENTITY_SPOTCHECK_MIN_SECONDS = _int_env("IDENTITY_SPOTCHECK_MIN_SECONDS", 180)
+    IDENTITY_SPOTCHECK_MAX_SECONDS = _int_env("IDENTITY_SPOTCHECK_MAX_SECONDS", 420)
 
     # Notifications & Reminders: how far ahead of a test's scheduled
     # start_time to send the "starting soon" reminder — see
     # app.notifications.send_starting_soon_reminders and the `send-reminders`
     # CLI command, which is meant to be run periodically by an external cron.
-    EXAM_REMINDER_WINDOW_MINUTES = int(os.environ.get("EXAM_REMINDER_WINDOW_MINUTES", 60))
+    EXAM_REMINDER_WINDOW_MINUTES = _int_env("EXAM_REMINDER_WINDOW_MINUTES", 60)
     # In-process background scheduler (see app/scheduler.py) that fires the
     # starting-soon reminder sweep automatically, in real time, without
     # needing an external cron job. Set to "false" to disable it (e.g. if
     # you'd rather run `flask send-reminders` from cron yourself, which
     # still works either way — NotificationLog dedup means a student is
     # never emailed twice for the same test regardless of which path sent it).
+    # external (production default; run `flask run-scheduler` as ONE dedicated
+    # process) | embedded (a thread per process; lease-guarded, dev default) | off
+    SCHEDULER_MODE = os.environ.get("SCHEDULER_MODE", "").strip().lower()
+    INVITATION_TTL_HOURS = _int_env("INVITATION_TTL_HOURS", 72)
     ENABLE_BACKGROUND_SCHEDULER = os.environ.get("ENABLE_BACKGROUND_SCHEDULER", "true").lower() not in ("false", "0", "")
-    REMINDER_SCHEDULER_INTERVAL_SECONDS = int(os.environ.get("REMINDER_SCHEDULER_INTERVAL_SECONDS", 300))
+    REMINDER_SCHEDULER_INTERVAL_SECONDS = _int_env("REMINDER_SCHEDULER_INTERVAL_SECONDS", 300)
 
     # Uploads — raised to comfortably fit ~30s webm video chunks plus base64 JPEG snapshots.
     MAX_CONTENT_LENGTH = 25 * 1024 * 1024  # 25 MB
@@ -111,7 +155,7 @@ class Config:
     # written to instance/outbox.log and the link is also flashed directly in the
     # browser, so the whole flow works out of the box with no SMTP server to set up.
     MAIL_SERVER = os.environ.get("MAIL_SERVER")
-    MAIL_PORT = int(os.environ.get("MAIL_PORT", 587))
+    MAIL_PORT = _int_env("MAIL_PORT", 587)
     MAIL_USE_TLS = os.environ.get("MAIL_USE_TLS", "true").lower() == "true"
     MAIL_USERNAME = os.environ.get("MAIL_USERNAME")
     MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD")
@@ -122,15 +166,31 @@ class Config:
     # further requests are rejected with a flash message until the window
     # rolls forward. Disable only for local dev/testing — see IpRateLimit.
     RATE_LIMIT_ENABLED = os.environ.get("RATE_LIMIT_ENABLED", "true").lower() == "true"
-    REGISTER_MAX_PER_IP = int(os.environ.get("REGISTER_MAX_PER_IP", 5))
-    REGISTER_WINDOW_MINUTES = int(os.environ.get("REGISTER_WINDOW_MINUTES", 60))
-    FORGOT_PASSWORD_MAX_PER_IP = int(os.environ.get("FORGOT_PASSWORD_MAX_PER_IP", 5))
-    FORGOT_PASSWORD_WINDOW_MINUTES = int(os.environ.get("FORGOT_PASSWORD_WINDOW_MINUTES", 15))
-    RESEND_VERIFICATION_MAX_PER_IP = int(os.environ.get("RESEND_VERIFICATION_MAX_PER_IP", 5))
-    RESEND_VERIFICATION_WINDOW_MINUTES = int(os.environ.get("RESEND_VERIFICATION_WINDOW_MINUTES", 15))
+    REGISTER_MAX_PER_IP = _int_env("REGISTER_MAX_PER_IP", 5)
+    REGISTER_WINDOW_MINUTES = _int_env("REGISTER_WINDOW_MINUTES", 60)
+    FORGOT_PASSWORD_MAX_PER_IP = _int_env("FORGOT_PASSWORD_MAX_PER_IP", 5)
+    FORGOT_PASSWORD_WINDOW_MINUTES = _int_env("FORGOT_PASSWORD_WINDOW_MINUTES", 15)
+    RESEND_VERIFICATION_MAX_PER_IP = _int_env("RESEND_VERIFICATION_MAX_PER_IP", 5)
+    RESEND_VERIFICATION_WINDOW_MINUTES = _int_env("RESEND_VERIFICATION_WINDOW_MINUTES", 15)
+
+    # Email OTP codes (password reset + email verification — see app.otp).
+    OTP_TTL_MINUTES = _int_env("OTP_TTL_MINUTES", 10)
+    OTP_MAX_ATTEMPTS = _int_env("OTP_MAX_ATTEMPTS", 5)
+    OTP_RESEND_COOLDOWN_SECONDS = _int_env("OTP_RESEND_COOLDOWN_SECONDS", 30)
+
+    # Pre-exam environment requirements enforced by proctor.js: the student
+    # must share their ENTIRE screen (not a tab/window) and the exam must
+    # run fullscreen. Set either to "false" for lab/kiosk machines that
+    # block getDisplayMedia, in which case that step becomes optional.
+    REQUIRE_SCREEN_SHARE = os.environ.get("REQUIRE_SCREEN_SHARE", "true").lower() == "true"
+    # Optional: URL of a self-hosted COCO-SSD model.json (e.g.
+    # "/static/models/coco-ssd/model.json"). Empty = the library's default,
+    # which downloads the model from storage.googleapis.com on every exam start.
+    OBJECT_MODEL_URL = os.environ.get("OBJECT_MODEL_URL", "")
+    REQUIRE_FULLSCREEN = os.environ.get("REQUIRE_FULLSCREEN", "true").lower() == "true"
 
     # Password complexity policy, enforced on registration and password reset.
-    PASSWORD_MIN_LENGTH = int(os.environ.get("PASSWORD_MIN_LENGTH", 8))
+    PASSWORD_MIN_LENGTH = _int_env("PASSWORD_MIN_LENGTH", 8)
 
     # Exam integrity: session/device tracking (see app.security).
     # When on, a new successful login ends every other still-active
@@ -145,12 +205,12 @@ class Config:
     VPN_DETECTION_ENABLED = os.environ.get("VPN_DETECTION_ENABLED", "false").lower() == "true"
     VPN_DETECTION_API_URL = os.environ.get("VPN_DETECTION_API_URL")
     VPN_DETECTION_API_KEY = os.environ.get("VPN_DETECTION_API_KEY")
-    VPN_DETECTION_TIMEOUT_SECONDS = float(os.environ.get("VPN_DETECTION_TIMEOUT_SECONDS", 3))
+    VPN_DETECTION_TIMEOUT_SECONDS = _float_env("VPN_DETECTION_TIMEOUT_SECONDS", 3)
 
     # Plagiarism / answer similarity detection (see app.similarity).
     # Default match threshold, as a percentage, for two descriptive/coding
     # answers to the same question to get flagged for examiner review.
-    SIMILARITY_THRESHOLD_DEFAULT = float(os.environ.get("SIMILARITY_THRESHOLD_DEFAULT", 70))
+    SIMILARITY_THRESHOLD_DEFAULT = _float_env("SIMILARITY_THRESHOLD_DEFAULT", 70)
 
     # System Monitoring & Operations (see app.system_ops, app.backup, app.retention).
     BACKUPS_DIR = _env_or("BACKUPS_DIR", os.path.join(BASE_DIR, "instance", "backups"))
@@ -159,42 +219,42 @@ class Config:
     # run manually from /ops/retention or periodically via the
     # `flask apply-retention` CLI command (same "no built-in scheduler,
     # bring your own cron" pattern as send-reminders/backup-db).
-    RECORDING_RETENTION_DAYS = int(os.environ.get("RECORDING_RETENTION_DAYS", 90))
-    SNAPSHOT_RETENTION_DAYS = int(os.environ.get("SNAPSHOT_RETENTION_DAYS", 90))
-    ENDED_LOGIN_SESSION_RETENTION_DAYS = int(os.environ.get("ENDED_LOGIN_SESSION_RETENTION_DAYS", 180))
-    LOGIN_SECURITY_EVENT_RETENTION_DAYS = int(os.environ.get("LOGIN_SECURITY_EVENT_RETENTION_DAYS", 180))
-    ACTIVITY_LOG_RETENTION_DAYS = int(os.environ.get("ACTIVITY_LOG_RETENTION_DAYS", 365))
-    NOTIFICATION_LOG_RETENTION_DAYS = int(os.environ.get("NOTIFICATION_LOG_RETENTION_DAYS", 180))
-    ERROR_LOG_RETENTION_DAYS = int(os.environ.get("ERROR_LOG_RETENTION_DAYS", 90))
+    RECORDING_RETENTION_DAYS = _int_env("RECORDING_RETENTION_DAYS", 90)
+    SNAPSHOT_RETENTION_DAYS = _int_env("SNAPSHOT_RETENTION_DAYS", 90)
+    ENDED_LOGIN_SESSION_RETENTION_DAYS = _int_env("ENDED_LOGIN_SESSION_RETENTION_DAYS", 180)
+    LOGIN_SECURITY_EVENT_RETENTION_DAYS = _int_env("LOGIN_SECURITY_EVENT_RETENTION_DAYS", 180)
+    ACTIVITY_LOG_RETENTION_DAYS = _int_env("ACTIVITY_LOG_RETENTION_DAYS", 365)
+    NOTIFICATION_LOG_RETENTION_DAYS = _int_env("NOTIFICATION_LOG_RETENTION_DAYS", 180)
+    ERROR_LOG_RETENTION_DAYS = _int_env("ERROR_LOG_RETENTION_DAYS", 90)
 
     # Live Proctor Alerts (see app.admin.proctor_alerts_stream): how often
     # the SSE stream polls the database for new high-severity events, and
     # how long a single stream is kept open before it ends and the
     # browser's EventSource reconnects on its own.
-    PROCTOR_ALERT_POLL_SECONDS = int(os.environ.get("PROCTOR_ALERT_POLL_SECONDS", 3))
-    PROCTOR_ALERT_STREAM_SECONDS = int(os.environ.get("PROCTOR_ALERT_STREAM_SECONDS", 55))
+    PROCTOR_ALERT_POLL_SECONDS = _int_env("PROCTOR_ALERT_POLL_SECONDS", 3)
+    PROCTOR_ALERT_STREAM_SECONDS = _int_env("PROCTOR_ALERT_STREAM_SECONDS", 55)
 
     # Exam Session Device Management (see app.exam_sessions): how long a
     # claimed exam session can go without a heartbeat/autosave before it's
     # considered abandoned (crash, closed tab) and safe for a new tab/
     # device to take over without being treated as a concurrent session.
-    EXAM_SESSION_STALE_AFTER_SECONDS = int(os.environ.get("EXAM_SESSION_STALE_AFTER_SECONDS", 45))
+    EXAM_SESSION_STALE_AFTER_SECONDS = _int_env("EXAM_SESSION_STALE_AFTER_SECONDS", 45)
     # When on (default), a second tab/device trying to open an exam that's
     # still actively held by another is blocked outright. Turning this off
     # keeps recording device/browser info and rotating session tokens, but
     # never blocks — useful for a deployment that only wants the audit
     # trail, not the enforcement.
     # Appeals: how many days after an attempt ends a student may still contest it.
-    APPEAL_WINDOW_DAYS = int(os.environ.get("APPEAL_WINDOW_DAYS", 14))
+    APPEAL_WINDOW_DAYS = _int_env("APPEAL_WINDOW_DAYS", 14)
     # Live Monitor: an in-progress attempt with no heartbeat for this long is shown as "no signal".
-    LIVE_MONITOR_NO_SIGNAL_SECONDS = int(os.environ.get("LIVE_MONITOR_NO_SIGNAL_SECONDS", 60))
+    LIVE_MONITOR_NO_SIGNAL_SECONDS = _int_env("LIVE_MONITOR_NO_SIGNAL_SECONDS", 60)
     EXAM_SESSION_ENFORCE_SINGLE_SESSION = os.environ.get("EXAM_SESSION_ENFORCE_SINGLE_SESSION", "true").lower() == "true"
 
     # LMS/API Integrations (see app.api_v1). Timeout for the optional
     # outbound result-published webhook (Organization.lms_webhook_url) —
     # kept short since this fires inline on the result-publish request
     # path and must never let a slow/unreachable receiver hang it.
-    LMS_WEBHOOK_TIMEOUT_SECONDS = float(os.environ.get("LMS_WEBHOOK_TIMEOUT_SECONDS", 4))
+    LMS_WEBHOOK_TIMEOUT_SECONDS = _float_env("LMS_WEBHOOK_TIMEOUT_SECONDS", 4)
 
     # Real-time system health alerts (see app.alerting). Disk usage is
     # checked whenever /ops health-related pages load and via the
@@ -202,9 +262,9 @@ class Config:
     # same pattern as backup-db/apply-retention/send-reminders); the error
     # rate is additionally checked inline, right after every error is
     # logged, so a spike triggers a notification without waiting for cron.
-    DISK_USAGE_ALERT_THRESHOLD_PCT = float(os.environ.get("DISK_USAGE_ALERT_THRESHOLD_PCT", 90))
-    ERROR_RATE_ALERT_THRESHOLD = int(os.environ.get("ERROR_RATE_ALERT_THRESHOLD", 10))
-    ERROR_RATE_ALERT_WINDOW_MINUTES = int(os.environ.get("ERROR_RATE_ALERT_WINDOW_MINUTES", 15))
+    DISK_USAGE_ALERT_THRESHOLD_PCT = _float_env("DISK_USAGE_ALERT_THRESHOLD_PCT", 90)
+    ERROR_RATE_ALERT_THRESHOLD = _int_env("ERROR_RATE_ALERT_THRESHOLD", 10)
+    ERROR_RATE_ALERT_WINDOW_MINUTES = _int_env("ERROR_RATE_ALERT_WINDOW_MINUTES", 15)
     # Comma-separated override for alert recipients; defaults to every
     # super_admin account's email when unset.
     ALERT_EMAIL_OVERRIDE = os.environ.get("ALERT_EMAIL_OVERRIDE")
