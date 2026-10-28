@@ -94,16 +94,12 @@ def get_outbox(app):
         return f.read()
 
 
-def get_last_otp(app):
-    """The most recent 6-digit code written to the dev outbox log."""
-    codes = re.findall(r"one-time code to [^\n]*is:\s+(\d{6})", get_outbox(app))
-    return codes[-1] if codes else None
-
-
 def register_and_verify(client, app, name, email, phone, role, password):
     client.post("/register", data=dict(name=name, email=email, phone=phone, role=role, password=password))
-    code = get_last_otp(app)
-    client.post("/verify-email", data={"email": email, "code": code})
+    content = get_outbox(app)
+    tokens = re.findall(r"/verify-email/([^\s]+)", content)
+    token = tokens[-1]
+    client.get(f"/verify-email/{token}")
 
 
 def login(client, email, password):

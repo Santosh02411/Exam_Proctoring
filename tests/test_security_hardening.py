@@ -1,6 +1,6 @@
 import re
 
-from tests.conftest import register_and_verify, login, get_outbox, get_last_otp
+from tests.conftest import register_and_verify, login, get_outbox
 
 
 # --- Password complexity -----------------------------------------------
@@ -66,9 +66,10 @@ def test_registration_accepts_strong_password(client, app):
 def test_reset_password_rejects_weak_new_password(client, app):
     register_and_verify(client, app, "Iris", "iris_rl@test.com", "9000001030", "student", "Password1!")
     client.post("/forgot-password", data={"email": "iris_rl@test.com"})
-    client.post("/reset-password", data={"code": get_last_otp(app)})
+    outbox = get_outbox(app)
+    token = re.findall(r"/reset-password/([^\s]+)", outbox)[-1]
 
-    r = client.post("/reset-password", data={"password": "weakpass", "confirm_password": "weakpass"})
+    r = client.post(f"/reset-password/{token}", data={"password": "weakpass", "confirm_password": "weakpass"})
     assert b"must also include" in r.data.lower()
 
     # Old password should still work — the weak reset never took effect.
@@ -133,18 +134,17 @@ def test_forgot_password_blocked_after_ip_limit(client, app):
     app.config["RATE_LIMIT_ENABLED"] = True
     app.config["FORGOT_PASSWORD_MAX_PER_IP"] = 2
     app.config["FORGOT_PASSWORD_WINDOW_MINUTES"] = 60
-    app.config["OTP_RESEND_COOLDOWN_SECONDS"] = 0
 
     for _ in range(2):
         r = client.post("/forgot-password", data={"email": "hank_rl@test.com"}, follow_redirects=True)
-        assert b"reset code has been sent" in r.data
+        assert b"reset link has been sent" in r.data
 
     r = client.post("/forgot-password", data={"email": "hank_rl@test.com"}, follow_redirects=True)
     assert b"Too many requests" in r.data
 
     outbox = get_outbox(app)
-    codes = re.findall(r"one-time code to reset[^\n]*is:\s+(\d{6})", outbox)
-    assert len(codes) == 2
+    tokens = re.findall(r"/reset-password/([^\s]+)", outbox)
+    assert len(tokens) == 2
 
 
 def test_resend_verification_blocked_after_ip_limit(client, app):
@@ -155,10 +155,9 @@ def test_resend_verification_blocked_after_ip_limit(client, app):
     app.config["RATE_LIMIT_ENABLED"] = True
     app.config["RESEND_VERIFICATION_MAX_PER_IP"] = 1
     app.config["RESEND_VERIFICATION_WINDOW_MINUTES"] = 60
-    app.config["OTP_RESEND_COOLDOWN_SECONDS"] = 0
 
     r = client.post("/resend-verification", data={"email": "jill_rl@test.com"}, follow_redirects=True)
-    assert b"Verification code sent" in r.data
+    assert b"Verification email sent" in r.data
 
     r = client.post("/resend-verification", data={"email": "jill_rl@test.com"}, follow_redirects=True)
     assert b"Too many requests" in r.data
